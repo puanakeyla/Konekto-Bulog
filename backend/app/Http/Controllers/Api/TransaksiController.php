@@ -25,7 +25,7 @@ class TransaksiController extends Controller
         $transaksi = Transaksi::where('current_stage', $request->user()->role->nama_role)
             ->with(['dataJemputPangan', 'dataMakloonMpp', 'dataMakloonTjp', 'dataUbJastasma'])
             ->orderBy('created_at')
-            ->paginate(20);
+            ->paginate($request->integer('per_page', 20));
 
         return TransaksiResource::collection($transaksi);
     }

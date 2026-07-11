@@ -5,6 +5,7 @@ use App\Http\Controllers\Api\AdminUserController;
 use App\Http\Controllers\Api\FotoController;
 use App\Http\Controllers\Api\FotoStreamController;
 use App\Http\Controllers\Api\MakloonOptionController;
+use App\Http\Controllers\Api\MonitoringController;
 use App\Http\Controllers\Api\OperasiController;
 use App\Http\Controllers\Api\PengadaanController;
 use App\Http\Controllers\Api\TransaksiController;
@@ -23,6 +24,11 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/me', [AuthController::class, 'me']);
 
     Route::get('/makloon-options', [MakloonOptionController::class, 'index']);
+
+    Route::prefix('monitoring')->group(function () {
+        Route::get('/sebaran-tahap', [MonitoringController::class, 'sebaranTahap']);
+        Route::get('/makloon', [MonitoringController::class, 'makloon']);
+    });
 
     Route::middleware('role:admin')->prefix('admin')->group(function () {
         Route::get('/roles', [AdminUserController::class, 'roles']);

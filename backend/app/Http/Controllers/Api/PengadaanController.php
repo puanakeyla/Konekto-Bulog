@@ -21,7 +21,7 @@ class PengadaanController extends Controller
     {
         $dataPengadaan = DataPengadaan::with(['poDetail', 'dataKeuangan', 'dataOperasi.dataGudang'])
             ->orderByDesc('created_at')
-            ->get();
+            ->paginate($request->integer('per_page', 20));
 
         return response()->json(['data' => $dataPengadaan]);
     }
