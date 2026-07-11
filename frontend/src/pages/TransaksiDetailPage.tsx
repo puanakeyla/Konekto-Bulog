@@ -73,7 +73,33 @@ const MAKLOON_FOTO_FIELDS = [
   { key: 'foto_nota_timbang', label: 'Nota timbang' },
 ]
 
+const JEMPUT_PANGAN_FOTO_FIELDS = [
+  { key: 'foto_petani', label: 'Foto petani' },
+  { key: 'foto_gabah', label: 'Foto gabah' },
+  { key: 'foto_serah_terima', label: 'Foto serah terima' },
+  { key: 'foto_kwitansi', label: 'Foto kwitansi' },
+  { key: 'foto_surat_pernyataan', label: 'Foto surat pernyataan' },
+  { key: 'foto_surat_jalan', label: 'Foto surat jalan' },
+]
+
+const MAKLOON_MPP_FOTO_FIELDS = [
+  { key: 'foto_petani', label: 'Foto petani' },
+  { key: 'foto_gabah', label: 'Foto gabah' },
+  { key: 'foto_serah_terima', label: 'Foto serah terima' },
+  { key: 'foto_pembayaran', label: 'Foto pembayaran' },
+  { key: 'foto_surat_pernyataan', label: 'Foto surat pernyataan' },
+  { key: 'foto_surat_jalan', label: 'Foto surat jalan' },
+  { key: 'foto_nota_timbang', label: 'Foto nota timbang' },
+]
+
 const UB_FOTO_FIELDS = [{ key: 'foto_lhpk_hpk', label: 'Foto LHPK/HPK' }]
+
+function photoFieldsFor(stageId: string, skema: 'TJP' | 'MPP') {
+  if (stageId === 'jemput_pangan') return JEMPUT_PANGAN_FOTO_FIELDS
+  if (stageId === 'makloon') return skema === 'MPP' ? MAKLOON_MPP_FOTO_FIELDS : MAKLOON_FOTO_FIELDS
+  if (stageId === 'ub_jastasma') return UB_FOTO_FIELDS
+  return []
+}
 
 function formatDateTime(value: string) {
   return new Intl.DateTimeFormat('id-ID', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }).format(new Date(value))
@@ -235,6 +261,7 @@ export default function TransaksiDetailPage() {
                     </div>
 
                     {data && !showMakloonForm && !showUbForm && <StageReadOnly data={data} collapsed={!isCurrent} />}
+                    {data && <FotoLinks transaksiId={transaksi.id_transaksi} fields={photoFieldsFor(stage.id, transaksi.skema)} />}
                     {isRejected && <div className="alert-danger mt-4">Tahap ini ditolak. Perbaiki data pada role terkait lalu kirim ulang.</div>}
                     {showMakloonForm && <MakloonTjpForm form={makloonForm} setForm={setMakloonForm} mutation={simpanMakloon} error={makloonError} fotos={fotosMakloon} setFotos={setFotosMakloon} progress={progressMakloon} fotoGagal={fotoMakloonGagal} />}
                     {showUbForm && <UbForm form={ubForm} setForm={setUbForm} mutation={simpanUb} error={ubError} fotos={fotosUb} setFotos={setFotosUb} progress={progressUb} fotoGagal={fotoUbGagal} />}
@@ -264,6 +291,41 @@ export default function TransaksiDetailPage() {
             })}
           </ol>
         </div>
+      </div>
+    </div>
+  )
+}
+
+function FotoLinks({ transaksiId, fields }: { transaksiId: string; fields: { key: string; label: string }[] }) {
+  const [loadingKey, setLoadingKey] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  if (fields.length === 0) return null
+
+  const openFoto = async (jenisFoto: string) => {
+    setLoadingKey(jenisFoto)
+    setError(null)
+    try {
+      const { data } = await api.get<{ url: string }>(`/api/transaksi/${encodeURIComponent(transaksiId)}/foto/${jenisFoto}`)
+      window.open(data.url, '_blank', 'noopener,noreferrer')
+    } catch (err) {
+      const message = (err as { response?: { status?: number; data?: { message?: string } } }).response?.data?.message
+      setError(message ?? 'Foto belum tersedia atau tidak dapat diakses oleh role Anda.')
+    } finally {
+      setLoadingKey(null)
+    }
+  }
+
+  return (
+    <div className="mt-4 border-t border-border pt-3">
+      <div className="section-title mb-2">Foto tersimpan</div>
+      {error && <div className="alert-warning mb-2">{error}</div>}
+      <div className="flex flex-wrap gap-2">
+        {fields.map((field) => (
+          <button key={field.key} type="button" className="btn btn-ghost border border-border bg-white" onClick={() => openFoto(field.key)} disabled={loadingKey === field.key}>
+            {loadingKey === field.key ? 'Membuka...' : field.label}
+          </button>
+        ))}
       </div>
     </div>
   )
