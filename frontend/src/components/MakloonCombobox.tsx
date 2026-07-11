@@ -22,18 +22,23 @@ export default function MakloonCombobox({ value, onChange }: Props) {
 
   return (
     <div className="relative">
-      <input
-        type="text"
-        className="input"
-        placeholder={isLoading ? 'Memuat daftar makloon...' : 'Cari nama makloon...'}
-        value={open ? query : (selected?.nama_maklon ?? '')}
-        onFocus={() => {
-          setOpen(true)
-          setQuery('')
-        }}
-        onChange={(e) => setQuery(e.target.value)}
-        onBlur={() => setTimeout(() => setOpen(false), 150)}
-      />
+      <div className="relative">
+        <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-400">
+          Q
+        </span>
+        <input
+          type="text"
+          className="input pl-8"
+          placeholder={isLoading ? 'Memuat daftar makloon...' : 'Cari nama makloon...'}
+          value={open ? query : (selected?.nama_maklon ?? '')}
+          onFocus={() => {
+            setOpen(true)
+            setQuery('')
+          }}
+          onChange={(e) => setQuery(e.target.value)}
+          onBlur={() => setTimeout(() => setOpen(false), 150)}
+        />
+      </div>
       {open && (
         <ul className="absolute z-10 mt-1 w-full max-h-56 overflow-auto rounded-md border border-border bg-white shadow-lg">
           {filtered.length === 0 && (
@@ -43,13 +48,18 @@ export default function MakloonCombobox({ value, onChange }: Props) {
             <li key={option.id}>
               <button
                 type="button"
-                className="w-full text-left px-3 py-2 text-sm hover:bg-primary-tint"
+                className={`w-full text-left px-3 py-2 text-sm hover:bg-primary-tint ${
+                  option.id === value ? 'bg-primary-tint' : ''
+                }`}
                 onMouseDown={() => {
                   onChange(option.id)
                   setOpen(false)
                 }}
               >
-                <span className="font-medium">{option.nama_maklon}</span>
+                <span className="flex items-center justify-between gap-3 font-semibold text-ink">
+                  {option.nama_maklon}
+                  {option.id === value && <span className="text-primary">✓</span>}
+                </span>
                 {(option.kecamatan || option.kabupaten) && (
                   <span className="block text-xs text-gray-500">
                     {[option.kecamatan, option.kabupaten].filter(Boolean).join(', ')}
