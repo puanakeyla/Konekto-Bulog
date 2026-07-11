@@ -81,30 +81,35 @@ export default function TransaksiJemputPanganPage() {
       ?.message
 
   return (
-    <div className="min-h-screen bg-surface p-8 flex justify-center">
-      <div className="w-full max-w-xl">
-        <h1 className="text-xl font-medium text-primary mb-6">Buat Transaksi Jemput Pangan</h1>
+    <div className="page-shell">
+      <div className="page-container-narrow">
+        <header className="page-header">
+          <div>
+            <h1 className="page-title">Buat Transaksi Jemput Pangan</h1>
+            <p className="page-subtitle">Isi data pemasok, tujuan makloon, kuantum, dan dokumen.</p>
+          </div>
+          <span className="badge">Skema TJP</span>
+        </header>
 
         <form
-          className="bg-white rounded-lg shadow p-8 space-y-4"
+          className="panel panel-pad space-y-4"
           onSubmit={(e) => {
             e.preventDefault()
             mutation.mutate(form)
           }}
         >
           {errorMessage && (
-            <div className="bg-danger-bg text-danger text-sm rounded px-3 py-2">
-              {errorMessage}
-            </div>
+            <div className="alert-danger">{errorMessage}</div>
           )}
 
           {mutation.isSuccess && fotoGagal.length > 0 && (
-            <div className="bg-warning-bg text-warning text-sm rounded px-3 py-2">
+            <div className="alert-warning">
               Data tersimpan, tapi {fotoGagal.length} foto gagal terupload. Buka transaksi ini lagi
               untuk mengulang foto yang gagal.
             </div>
           )}
 
+          <div className="form-grid">
           <Field label="ID Pemasok">
             <input
               required
@@ -196,9 +201,10 @@ export default function TransaksiJemputPanganPage() {
               onChange={(e) => setField('jarak_ke_makloon_km', e.target.value)}
             />
           </Field>
+          </div>
 
           <div className="border-t border-border pt-4 space-y-3">
-            <div className="text-xs font-medium text-primary uppercase tracking-wide">Dokumen</div>
+            <div className="section-title">Dokumen</div>
             {FOTO_FIELDS.map(({ key, label }) => (
               <FotoPicker
                 key={key}
@@ -214,7 +220,7 @@ export default function TransaksiJemputPanganPage() {
           <button
             type="submit"
             disabled={mutation.isPending || !form.makloon_user_id}
-            className="w-full bg-primary text-white rounded py-2.5 font-medium hover:bg-primary-dark disabled:opacity-50"
+            className="btn btn-primary w-full"
           >
             {mutation.isPending ? 'Mengirim...' : 'Simpan & Kirim'}
           </button>
@@ -227,7 +233,7 @@ export default function TransaksiJemputPanganPage() {
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="block">
-      <span className="block text-sm text-primary-dark mb-1">{label}</span>
+      <span className="label">{label}</span>
       {children}
     </label>
   )

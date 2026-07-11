@@ -2,6 +2,7 @@ import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { AuthProvider, useAuth } from './hooks/useAuth'
 import LoginPage from './pages/LoginPage'
+import LandingPage from './pages/LandingPage'
 import DashboardPage from './pages/DashboardPage'
 import TransaksiJemputPanganPage from './pages/TransaksiJemputPanganPage'
 import TransaksiDetailPage from './pages/TransaksiDetailPage'
@@ -29,8 +30,9 @@ function AppRoutes() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/" element={<LandingPage />} />
       <Route
-        path="/"
+        path="/dashboard"
         element={
           <ProtectedRoute>
             <DashboardPage />

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import api from '../lib/api'
@@ -23,6 +23,22 @@ function groupKeyOf(t: TransaksiListItem) {
   return { id_pemasok: '-', tanggal_bongkar: '-', kuantum: '-' }
 }
 
+function formatNumber(value: string | number) {
+  return Number(value).toLocaleString('id-ID', { maximumFractionDigits: 2 })
+}
+
+function formatMoney(value: string | number) {
+  return Number(value).toLocaleString('id-ID', {
+    style: 'currency',
+    currency: 'IDR',
+    maximumFractionDigits: 0,
+  })
+}
+
+function formatDate(value: string) {
+  return new Date(value).toLocaleDateString('id-ID')
+}
+
 export default function PengadaanPage() {
   const { data: transaksiList, isLoading: loadingTransaksi } = useTransaksiList()
   const { data: poList, isLoading: loadingPo } = usePoList()
@@ -31,6 +47,17 @@ export default function PengadaanPage() {
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [noPo, setNoPo] = useState('')
   const [harga, setHarga] = useState('')
+
+  const selectedRows = useMemo(
+    () => (transaksiList ?? []).filter((item) => selected.has(item.id_transaksi)),
+    [selected, transaksiList],
+  )
+  const poBelumLengkap = poList?.filter((po) => po.status === 'proses') ?? []
+  const totalSelectedKuantum = selectedRows.reduce((sum, item) => sum + Number(groupKeyOf(item).kuantum || 0), 0)
+  const detailBelumIn = poBelumLengkap.reduce(
+    (sum, po) => sum + po.po_detail.filter((detail) => !detail.no_in).length,
+    0,
+  )
 
   const gabungMutation = useMutation({
     mutationFn: () =>
@@ -49,8 +76,7 @@ export default function PengadaanPage() {
   })
 
   const errorMessage =
-    (gabungMutation.error as { response?: { data?: { message?: string } } } | null)?.response
-      ?.data?.message
+    (gabungMutation.error as { response?: { data?: { message?: string } } } | null)?.response?.data?.message
 
   const toggle = (id: string) => {
     setSelected((prev) => {
@@ -61,134 +87,94 @@ export default function PengadaanPage() {
     })
   }
 
-  const poBelumLengkap = poList?.filter((po) => po.status === 'proses') ?? []
-
   return (
-    <div className="min-h-screen bg-surface p-8">
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-xl font-medium text-primary">Pengadaan</h1>
-        <Link to="/" className="text-sm text-primary-dark">
-          &larr; Dashboard
-        </Link>
-      </div>
-
-      <div className="grid gap-6 max-w-4xl">
-        <section className="bg-white rounded-lg shadow p-6">
-          <h2 className="text-sm font-medium text-primary uppercase tracking-wide mb-4">
-            Gabungkan Transaksi Menjadi PO
-          </h2>
-
-          {errorMessage && (
-            <div className="bg-danger-bg text-danger text-sm rounded px-3 py-2 mb-4">
-              {errorMessage}
-            </div>
-          )}
-
-          {loadingTransaksi && <p className="text-sm text-gray-400">Memuat...</p>}
-          {!loadingTransaksi && transaksiList?.length === 0 && (
-            <p className="text-sm text-gray-400">
-              Tidak ada transaksi yang menunggu digabung menjadi PO.
-            </p>
-          )}
-
-          {transaksiList && transaksiList.length > 0 && (
-            <>
-              <div className="border border-border rounded-md overflow-hidden mb-4">
-                <table className="w-full text-sm">
-                  <thead className="bg-primary-tint text-primary-dark text-left">
-                    <tr>
-                      <th className="px-3 py-2 w-8"></th>
-                      <th className="px-3 py-2">ID Transaksi</th>
-                      <th className="px-3 py-2">ID Pemasok</th>
-                      <th className="px-3 py-2">Tanggal Bongkar</th>
-                      <th className="px-3 py-2">Kuantum</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {transaksiList.map((t) => {
-                      const key = groupKeyOf(t)
-                      return (
-                        <tr key={t.id_transaksi} className="border-t border-border">
-                          <td className="px-3 py-2">
-                            <input
-                              type="checkbox"
-                              checked={selected.has(t.id_transaksi)}
-                              onChange={() => toggle(t.id_transaksi)}
-                            />
-                          </td>
-                          <td className="px-3 py-2">{t.id_transaksi}</td>
-                          <td className="px-3 py-2">{key.id_pemasok}</td>
-                          <td className="px-3 py-2">{key.tanggal_bongkar}</td>
-                          <td className="px-3 py-2">{key.kuantum}</td>
-                        </tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
-              </div>
-
-              <p className="text-xs text-gray-500 mb-4">
-                Pilih transaksi dengan ID Pemasok &amp; Tanggal Bongkar yang sama untuk digabung
-                menjadi satu PO.
-              </p>
-
-              <form
-                className="flex flex-wrap items-end gap-3"
-                onSubmit={(e) => {
-                  e.preventDefault()
-                  gabungMutation.mutate()
-                }}
-              >
-                <label className="block">
-                  <span className="block text-sm text-primary-dark mb-1">No. PO</span>
-                  <input
-                    required
-                    className="input"
-                    value={noPo}
-                    onChange={(e) => setNoPo(e.target.value)}
-                  />
-                </label>
-                <label className="block">
-                  <span className="block text-sm text-primary-dark mb-1">
-                    Harga/kg (default 6500)
-                  </span>
-                  <input
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    className="input"
-                    value={harga}
-                    onChange={(e) => setHarga(e.target.value)}
-                  />
-                </label>
-                <button
-                  type="submit"
-                  disabled={selected.size === 0 || !noPo || gabungMutation.isPending}
-                  className="bg-primary text-white rounded px-4 py-2.5 text-sm font-medium hover:bg-primary-dark disabled:opacity-50"
-                >
-                  {gabungMutation.isPending ? 'Menggabungkan...' : `Gabungkan (${selected.size})`}
-                </button>
-              </form>
-            </>
-          )}
-        </section>
-
-        <section className="bg-white rounded-lg shadow p-6">
-          <h2 className="text-sm font-medium text-primary uppercase tracking-wide mb-4">
-            PO Belum Lengkap &mdash; Isi Nomor IN
-          </h2>
-
-          {loadingPo && <p className="text-sm text-gray-400">Memuat...</p>}
-          {!loadingPo && poBelumLengkap.length === 0 && (
-            <p className="text-sm text-gray-400">Tidak ada PO yang menunggu nomor IN.</p>
-          )}
-
-          <div className="space-y-4">
-            {poBelumLengkap.map((po) => (
-              <PoInForm key={po.id} po={po} />
-            ))}
+    <div className="page-shell">
+      <div className="page-container">
+        <div className="page-header">
+          <div>
+            <h1 className="page-title">Pengadaan</h1>
+            <p className="page-subtitle">Gabungkan transaksi Makloon menjadi PO, lalu isi nomor IN per transaksi asal.</p>
           </div>
-        </section>
+          <Link to="/dashboard" className="btn btn-ghost">Dashboard</Link>
+        </div>
+
+        <div className="work-layout">
+          <div className="stats-grid">
+            <div className="stat-card"><div className="stat-label">Transaksi siap PO</div><div className="stat-value">{transaksiList?.length ?? 0}</div></div>
+            <div className="stat-card"><div className="stat-label">Dipilih</div><div className="stat-value">{selected.size}</div></div>
+            <div className="stat-card"><div className="stat-label">PO proses</div><div className="stat-value">{poBelumLengkap.length}</div></div>
+            <div className="stat-card"><div className="stat-label">Nomor IN kosong</div><div className="stat-value">{detailBelumIn}</div></div>
+          </div>
+
+          <section className="panel panel-pad">
+            <div className="toolbar-card mb-4">
+              <div>
+                <h2 className="section-title">Gabungkan Transaksi Menjadi PO</h2>
+                <p className="page-subtitle">Pilih transaksi dengan pemasok, tanggal bongkar, dan makloon yang sama.</p>
+              </div>
+              <span className="badge">Total dipilih: {formatNumber(totalSelectedKuantum)} kg</span>
+            </div>
+
+            {errorMessage && <div className="alert-danger mb-4">{errorMessage}</div>}
+            {loadingTransaksi && <p className="text-sm text-gray-400">Memuat transaksi...</p>}
+            {!loadingTransaksi && transaksiList?.length === 0 && (
+              <div className="empty-state">
+                <div className="empty-title">Belum ada transaksi siap digabung</div>
+                <p className="empty-copy">Transaksi akan muncul setelah tahap Makloon dan UB Jastasma diterima.</p>
+              </div>
+            )}
+
+            {transaksiList && transaksiList.length > 0 && (
+              <>
+                <div className="data-table-wrap mb-4">
+                  <table className="data-table">
+                    <thead><tr><th className="w-10"></th><th>ID Transaksi</th><th>Skema</th><th>ID Pemasok</th><th>Tanggal Bongkar</th><th className="text-right">Kuantum</th></tr></thead>
+                    <tbody>
+                      {transaksiList.map((t) => {
+                        const key = groupKeyOf(t)
+                        return (
+                          <tr key={t.id_transaksi}>
+                            <td><input type="checkbox" checked={selected.has(t.id_transaksi)} onChange={() => toggle(t.id_transaksi)} aria-label={`Pilih ${t.id_transaksi}`} /></td>
+                            <td className="font-semibold text-primary-dark">{t.id_transaksi}</td>
+                            <td><span className="badge">{t.skema}</span></td>
+                            <td>{key.id_pemasok}</td>
+                            <td>{key.tanggal_bongkar === '-' ? '-' : formatDate(key.tanggal_bongkar)}</td>
+                            <td className="text-right font-medium">{formatNumber(key.kuantum)} kg</td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+
+                <form className="form-grid" onSubmit={(e) => { e.preventDefault(); gabungMutation.mutate() }}>
+                  <label className="block"><span className="label">No. PO</span><input required className="input" value={noPo} onChange={(e) => setNoPo(e.target.value)} placeholder="Contoh: PO-0001/VII/2026" /></label>
+                  <label className="block"><span className="label">Harga per kg</span><input type="number" step="0.01" min="0" className="input" value={harga} onChange={(e) => setHarga(e.target.value)} placeholder="Default 6500" /></label>
+                  <div className="form-grid-full flex flex-wrap items-center justify-between gap-3">
+                    <p className="text-xs text-muted">Tersambung ke POST /api/pengadaan/gabungkan-po</p>
+                    <button type="submit" disabled={selected.size === 0 || !noPo || gabungMutation.isPending} className="btn btn-primary">
+                      {gabungMutation.isPending ? 'Menggabungkan...' : `Buat PO dari ${selected.size} transaksi`}
+                    </button>
+                  </div>
+                </form>
+              </>
+            )}
+          </section>
+
+          <section className="panel panel-pad">
+            <div className="toolbar-card mb-4">
+              <div><h2 className="section-title">PO Proses - Isi Nomor IN</h2><p className="page-subtitle">Setelah seluruh nomor IN terisi, PO masuk ke antrean Keuangan.</p></div>
+              <span className="badge badge-warning">{poBelumLengkap.length} PO proses</span>
+            </div>
+
+            {loadingPo && <p className="text-sm text-gray-400">Memuat PO...</p>}
+            {!loadingPo && poBelumLengkap.length === 0 && (
+              <div className="empty-state"><div className="empty-title">Tidak ada PO yang menunggu nomor IN</div><p className="empty-copy">PO yang sudah lengkap otomatis lanjut ke antrean Keuangan.</p></div>
+            )}
+
+            <div className="space-y-4">{poBelumLengkap.map((po) => <PoInForm key={po.id} po={po} />)}</div>
+          </section>
+        </div>
       </div>
     </div>
   )
@@ -206,58 +192,38 @@ function PoInForm({ po }: { po: PoItem }) {
           .map(([po_detail_id, no_in]) => ({ po_detail_id: Number(po_detail_id), no_in })),
       }),
     onSuccess: () => {
+      setValues({})
       queryClient.invalidateQueries({ queryKey: ['po-list'] })
     },
   })
 
   const errorMessage =
-    (mutation.error as { response?: { data?: { message?: string } } } | null)?.response?.data
-      ?.message
-
+    (mutation.error as { response?: { data?: { message?: string } } } | null)?.response?.data?.message
   const isiCount = Object.values(values).filter((v) => v.trim() !== '').length
+  const lengkapCount = po.po_detail.filter((d) => d.no_in).length
 
   return (
-    <form
-      className="border border-border rounded-md p-4"
-      onSubmit={(e) => {
-        e.preventDefault()
-        mutation.mutate()
-      }}
-    >
-      <div className="flex justify-between items-center mb-3">
-        <div className="text-sm font-medium text-primary-dark">
-          {po.no_po} &middot; {po.id_pemasok} &middot; {po.total_kuantum} kg
-        </div>
+    <form className="po-card" onSubmit={(e) => { e.preventDefault(); mutation.mutate() }}>
+      <div className="po-card-header">
+        <div><div className="po-title">{po.no_po}</div><div className="po-meta">Pemasok {po.id_pemasok} - {formatNumber(po.total_kuantum)} kg - {formatMoney(po.total_harga)}</div></div>
+        <span className="badge badge-warning">{lengkapCount}/{po.po_detail.length} IN terisi</span>
       </div>
-
-      {errorMessage && (
-        <div className="bg-danger-bg text-danger text-sm rounded px-3 py-2 mb-3">
-          {errorMessage}
-        </div>
-      )}
-
-      <div className="space-y-2 mb-3">
-        {po.po_detail.map((d) => (
-          <div key={d.id} className="flex items-center gap-3">
-            <span className="text-xs text-gray-500 w-40 truncate">{d.transaksi_id}</span>
-            <input
-              className="input"
-              placeholder={d.no_in ?? 'Nomor IN'}
-              disabled={!!d.no_in}
-              value={values[d.id] ?? ''}
-              onChange={(e) => setValues((prev) => ({ ...prev, [d.id]: e.target.value }))}
-            />
-          </div>
-        ))}
+      {errorMessage && <div className="alert-danger mb-3">{errorMessage}</div>}
+      <div className="data-table-wrap mb-3">
+        <table className="data-table">
+          <thead><tr><th>ID Transaksi</th><th className="text-right">Kuantum</th><th>Nomor IN</th></tr></thead>
+          <tbody>
+            {po.po_detail.map((d) => (
+              <tr key={d.id}>
+                <td className="font-semibold text-primary-dark">{d.transaksi_id}</td>
+                <td className="text-right">{formatNumber(d.kuantum_kontribusi)} kg</td>
+                <td><input className="input" placeholder={d.no_in ?? 'Masukkan nomor IN'} disabled={!!d.no_in} value={values[d.id] ?? ''} onChange={(e) => setValues((prev) => ({ ...prev, [d.id]: e.target.value }))} /></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
-
-      <button
-        type="submit"
-        disabled={isiCount === 0 || mutation.isPending}
-        className="bg-primary text-white rounded px-4 py-2 text-sm disabled:opacity-50"
-      >
-        {mutation.isPending ? 'Menyimpan...' : 'Simpan Nomor IN'}
-      </button>
+      <div className="flex justify-end"><button type="submit" disabled={isiCount === 0 || mutation.isPending} className="btn btn-primary">{mutation.isPending ? 'Menyimpan...' : 'Simpan Nomor IN'}</button></div>
     </form>
   )
 }

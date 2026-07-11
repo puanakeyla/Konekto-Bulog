@@ -64,52 +64,58 @@ export default function TransaksiMakloonPage() {
       ?.message
 
   return (
-    <div className="min-h-screen bg-surface p-8 flex justify-center">
-      <div className="w-full max-w-xl">
-        <h1 className="text-xl font-medium text-primary mb-6">Isi Data Makloon &mdash; {id}</h1>
+    <div className="page-shell">
+      <div className="page-container-narrow">
+        <header className="page-header">
+          <div>
+            <h1 className="page-title">Makloon — sedang diisi</h1>
+            <p className="page-subtitle">Transaksi {id}</p>
+          </div>
+          <span className="badge">Giliran Anda</span>
+        </header>
 
         <form
-          className="bg-white rounded-lg shadow p-8 space-y-4"
+          className="panel panel-pad space-y-4"
           onSubmit={(e) => {
             e.preventDefault()
             mutation.mutate()
           }}
         >
           {errorMessage && (
-            <div className="bg-danger-bg text-danger text-sm rounded px-3 py-2">
-              {errorMessage}
-            </div>
+            <div className="alert-danger">{errorMessage}</div>
           )}
 
           {mutation.isSuccess && fotoGagal.length > 0 && (
-            <div className="bg-warning-bg text-warning text-sm rounded px-3 py-2">
+            <div className="alert-warning">
               Data tersimpan, tapi {fotoGagal.length} foto gagal terupload. Coba lagi di bawah.
             </div>
           )}
 
-          <Field label="Tanggal Bongkar">
-            <input
-              required
-              type="date"
-              className="input"
-              value={form.tanggal_bongkar}
-              onChange={(e) => setField('tanggal_bongkar', e.target.value)}
-            />
-          </Field>
-          <Field label="Kuantum Bongkar (kg)">
-            <input
-              required
-              type="number"
-              step="0.01"
-              min="0"
-              className="input"
-              value={form.kuantum_bongkar}
-              onChange={(e) => setField('kuantum_bongkar', e.target.value)}
-            />
-          </Field>
+          <div className="form-grid">
+            <Field label="Tanggal Bongkar">
+              <input
+                required
+                type="date"
+                className="input"
+                value={form.tanggal_bongkar}
+                onChange={(e) => setField('tanggal_bongkar', e.target.value)}
+              />
+            </Field>
+            <Field label="Kuantum Bongkar (kg)">
+              <input
+                required
+                type="number"
+                step="0.01"
+                min="0"
+                className="input"
+                value={form.kuantum_bongkar}
+                onChange={(e) => setField('kuantum_bongkar', e.target.value)}
+              />
+            </Field>
+          </div>
 
           <div className="border-t border-border pt-4 space-y-3">
-            <div className="text-xs font-medium text-primary uppercase tracking-wide">Dokumen</div>
+            <div className="section-title">Dokumen</div>
             {FOTO_FIELDS.map(({ key, label }) => (
               <FotoPicker
                 key={key}
@@ -125,7 +131,7 @@ export default function TransaksiMakloonPage() {
           <button
             type="submit"
             disabled={mutation.isPending}
-            className="w-full bg-primary text-white rounded py-2.5 font-medium hover:bg-primary-dark disabled:opacity-50"
+            className="btn btn-primary w-full"
           >
             {mutation.isPending ? 'Mengirim...' : 'Simpan & Kirim'}
           </button>
@@ -138,7 +144,7 @@ export default function TransaksiMakloonPage() {
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="block">
-      <span className="block text-sm text-primary-dark mb-1">{label}</span>
+      <span className="label">{label}</span>
       {children}
     </label>
   )

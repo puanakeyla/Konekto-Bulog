@@ -132,39 +132,40 @@ export default function AdminUsersPage() {
   }
 
   return (
-    <div className="min-h-screen bg-surface p-8">
-      <div className="flex items-center justify-between mb-6">
+    <div className="page-shell">
+      <div className="page-container">
+      <div className="page-header">
         <div>
-          <h1 className="text-xl font-medium text-primary">Admin User</h1>
-          <p className="text-sm text-gray-500 mt-1">Kelola akun, role, dan status akses.</p>
+          <h1 className="page-title">Admin User</h1>
+          <p className="page-subtitle">Kelola akun, role, dan status akses.</p>
         </div>
-        <Link to="/" className="text-sm text-primary-dark">
-          &larr; Dashboard
+        <Link to="/" className="btn btn-ghost">
+          Dashboard
         </Link>
       </div>
 
-      <div className="grid gap-6 max-w-6xl">
-        <section className="bg-white rounded-lg shadow p-6">
-          <h2 className="text-sm font-medium text-primary uppercase tracking-wide mb-4">
+      <div className="grid gap-6">
+        <section className="panel panel-pad">
+          <h2 className="section-title mb-4">
             {editing ? `Edit User ${editing.username}` : 'Tambah User'}
           </h2>
 
-          {notice && <div className="bg-success-bg text-success text-sm rounded px-3 py-2 mb-4">{notice}</div>}
+          {notice && <div className="mb-4 rounded-lg bg-success-bg px-3 py-2 text-sm text-success">{notice}</div>}
           {saveMutation.error && (
-            <div className="bg-danger-bg text-danger text-sm rounded px-3 py-2 mb-4">
+            <div className="alert-danger mb-4">
               {errorMessage(saveMutation.error)}
             </div>
           )}
 
           <form
-            className="grid gap-4 md:grid-cols-2"
+            className="form-grid"
             onSubmit={(event) => {
               event.preventDefault()
               saveMutation.mutate()
             }}
           >
             <label className="block">
-              <span className="block text-sm text-primary-dark mb-1">Username</span>
+              <span className="label">Username</span>
               <input
                 required
                 className="input"
@@ -174,7 +175,7 @@ export default function AdminUsersPage() {
             </label>
 
             <label className="block">
-              <span className="block text-sm text-primary-dark mb-1">Role</span>
+              <span className="label">Role</span>
               <select
                 required
                 className="input"
@@ -191,8 +192,8 @@ export default function AdminUsersPage() {
             </label>
 
             {isMakloon && (
-              <label className="block md:col-span-2">
-                <span className="block text-sm text-primary-dark mb-1">Nama Makloon</span>
+              <label className="block form-grid-full">
+                <span className="label">Nama Makloon</span>
                 <input
                   required
                   className="input"
@@ -205,7 +206,7 @@ export default function AdminUsersPage() {
             )}
 
             <label className="block">
-              <span className="block text-sm text-primary-dark mb-1">Kecamatan</span>
+              <span className="label">Kecamatan</span>
               <input
                 className="input"
                 value={form.kecamatan}
@@ -214,7 +215,7 @@ export default function AdminUsersPage() {
             </label>
 
             <label className="block">
-              <span className="block text-sm text-primary-dark mb-1">Kabupaten</span>
+              <span className="label">Kabupaten</span>
               <input
                 className="input"
                 value={form.kabupaten}
@@ -223,7 +224,7 @@ export default function AdminUsersPage() {
             </label>
 
             <label className="block">
-              <span className="block text-sm text-primary-dark mb-1">
+              <span className="label">
                 Password {editing ? 'baru' : ''}
               </span>
               <input
@@ -236,7 +237,7 @@ export default function AdminUsersPage() {
             </label>
 
             <label className="block">
-              <span className="block text-sm text-primary-dark mb-1">Konfirmasi Password</span>
+              <span className="label">Konfirmasi Password</span>
               <input
                 required={!editing || form.password !== ''}
                 type="password"
@@ -257,11 +258,11 @@ export default function AdminUsersPage() {
               Aktif
             </label>
 
-            <div className="flex items-center gap-3 md:col-span-2">
+            <div className="flex items-center gap-3 form-grid-full">
               <button
                 type="submit"
                 disabled={saveMutation.isPending || loadingRoles}
-                className="bg-primary text-white rounded px-4 py-2 text-sm font-medium disabled:opacity-50"
+                className="btn btn-primary"
               >
                 {saveMutation.isPending ? 'Menyimpan...' : editing ? 'Simpan Perubahan' : 'Tambah User'}
               </button>
@@ -269,7 +270,7 @@ export default function AdminUsersPage() {
                 <button
                   type="button"
                   onClick={cancelEdit}
-                  className="border border-border rounded px-4 py-2 text-sm text-primary-dark"
+                  className="btn btn-ghost"
                 >
                   Batal
                 </button>
@@ -278,13 +279,13 @@ export default function AdminUsersPage() {
           </form>
         </section>
 
-        <section className="bg-white rounded-lg shadow overflow-hidden">
+        <section className="panel overflow-hidden">
           <div className="p-6 border-b border-border">
-            <h2 className="text-sm font-medium text-primary uppercase tracking-wide">Daftar User</h2>
+            <h2 className="section-title">Daftar User</h2>
           </div>
 
           {(deactivateMutation.error || deleteMutation.error) && (
-            <div className="bg-danger-bg text-danger text-sm px-6 py-3">
+            <div className="alert-danger rounded-none px-6 py-3">
               {errorMessage(deactivateMutation.error || deleteMutation.error)}
             </div>
           )}
@@ -368,22 +369,22 @@ export default function AdminUsersPage() {
       {resetUser && (
         <div className="fixed inset-0 bg-black/30 flex items-center justify-center p-4">
           <form
-            className="bg-white rounded-lg shadow p-6 w-full max-w-md"
+            className="panel panel-pad w-full max-w-md"
             onSubmit={(event) => {
               event.preventDefault()
               resetMutation.mutate()
             }}
           >
-            <h2 className="text-lg font-medium text-primary mb-4">
+            <h2 className="page-title mb-4">
               Reset Password {resetUser.username}
             </h2>
             {resetMutation.error && (
-              <div className="bg-danger-bg text-danger text-sm rounded px-3 py-2 mb-4">
+              <div className="alert-danger mb-4">
                 {errorMessage(resetMutation.error)}
               </div>
             )}
             <label className="block mb-3">
-              <span className="block text-sm text-primary-dark mb-1">Password Baru</span>
+              <span className="label">Password Baru</span>
               <input
                 required
                 type="password"
@@ -393,7 +394,7 @@ export default function AdminUsersPage() {
               />
             </label>
             <label className="block mb-4">
-              <span className="block text-sm text-primary-dark mb-1">Konfirmasi Password</span>
+              <span className="label">Konfirmasi Password</span>
               <input
                 required
                 type="password"
@@ -405,7 +406,7 @@ export default function AdminUsersPage() {
             <div className="flex justify-end gap-3">
               <button
                 type="button"
-                className="border border-border rounded px-4 py-2 text-sm text-primary-dark"
+                className="btn btn-ghost"
                 onClick={() => setResetUser(null)}
               >
                 Batal
@@ -413,7 +414,7 @@ export default function AdminUsersPage() {
               <button
                 type="submit"
                 disabled={resetMutation.isPending}
-                className="bg-primary text-white rounded px-4 py-2 text-sm font-medium disabled:opacity-50"
+                className="btn btn-primary"
               >
                 {resetMutation.isPending ? 'Menyimpan...' : 'Reset Password'}
               </button>
@@ -421,6 +422,7 @@ export default function AdminUsersPage() {
           </form>
         </div>
       )}
+      </div>
     </div>
   )
 }
