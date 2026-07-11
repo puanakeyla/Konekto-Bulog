@@ -3,19 +3,16 @@ import { useNavigate } from 'react-router-dom'
 import { useMutation } from '@tanstack/react-query'
 import api from '../lib/api'
 import { uploadSemuaFoto } from '../lib/uploadFoto'
-import MakloonCombobox from '../components/MakloonCombobox'
 import FotoPicker from '../components/FotoPicker'
 
 type FormState = {
   id_pemasok: string
   supir: string
   plat_mobil: string
-  nama_poktan_gapoktan: string
   desa: string
   kecamatan: string
   kabupaten: string
-  makloon_user_id: number | null
-  tanggal_kirim: string
+  tanggal_bongkar: string
   kuantum: string
   jarak_ke_makloon_km: string
 }
@@ -24,12 +21,10 @@ const initialState: FormState = {
   id_pemasok: '',
   supir: '',
   plat_mobil: '',
-  nama_poktan_gapoktan: '',
   desa: '',
   kecamatan: '',
   kabupaten: '',
-  makloon_user_id: null,
-  tanggal_kirim: '',
+  tanggal_bongkar: '',
   kuantum: '',
   jarak_ke_makloon_km: '',
 }
@@ -38,12 +33,17 @@ const FOTO_FIELDS: { key: string; label: string }[] = [
   { key: 'foto_petani', label: 'Foto Petani' },
   { key: 'foto_gabah', label: 'Foto Gabah' },
   { key: 'foto_serah_terima', label: 'Foto Serah Terima' },
-  { key: 'foto_kwitansi', label: 'Foto Kwitansi' },
+  { key: 'foto_pembayaran', label: 'Foto Pembayaran' },
   { key: 'foto_surat_pernyataan', label: 'Foto Surat Pernyataan' },
   { key: 'foto_surat_jalan', label: 'Foto Surat Jalan' },
+  { key: 'foto_nota_timbang', label: 'Foto Nota Timbang' },
 ]
 
-export default function TransaksiJemputPanganPage() {
+/**
+ * Skema MPP: Makloon membuat transaksi baru langsung (bukan lanjutan dari Jemput Pangan),
+ * mengisi data lengkap sekaligus di sini (Bagian 3.1).
+ */
+export default function TransaksiMakloonBaruPage() {
   const navigate = useNavigate()
   const [form, setForm] = useState<FormState>(initialState)
   const [fotos, setFotos] = useState<Record<string, File | null>>({})
@@ -55,7 +55,7 @@ export default function TransaksiJemputPanganPage() {
       const { data: created } = await api.post<{ data: { id_transaksi: string } }>('/api/transaksi')
       const idTransaksi = created.data.id_transaksi
 
-      await api.patch(`/api/transaksi/${encodeURIComponent(idTransaksi)}/jemput-pangan`, {
+      await api.patch(`/api/transaksi/${encodeURIComponent(idTransaksi)}/makloon`, {
         ...values,
         kuantum: Number(values.kuantum),
         jarak_ke_makloon_km: Number(values.jarak_ke_makloon_km),
@@ -83,7 +83,7 @@ export default function TransaksiJemputPanganPage() {
   return (
     <div className="min-h-screen bg-surface p-8 flex justify-center">
       <div className="w-full max-w-xl">
-        <h1 className="text-xl font-medium text-primary mb-6">Buat Transaksi Jemput Pangan</h1>
+        <h1 className="text-xl font-medium text-primary mb-6">Buat Baru (MPP)</h1>
 
         <form
           className="bg-white rounded-lg shadow p-8 space-y-4"
@@ -129,14 +129,6 @@ export default function TransaksiJemputPanganPage() {
               onChange={(e) => setField('plat_mobil', e.target.value)}
             />
           </Field>
-          <Field label="Nama Poktan/Gapoktan">
-            <input
-              required
-              className="input"
-              value={form.nama_poktan_gapoktan}
-              onChange={(e) => setField('nama_poktan_gapoktan', e.target.value)}
-            />
-          </Field>
           <Field label="Desa">
             <input
               required
@@ -161,19 +153,13 @@ export default function TransaksiJemputPanganPage() {
               onChange={(e) => setField('kabupaten', e.target.value)}
             />
           </Field>
-          <Field label="Makloon Tujuan">
-            <MakloonCombobox
-              value={form.makloon_user_id}
-              onChange={(id) => setField('makloon_user_id', id)}
-            />
-          </Field>
-          <Field label="Tanggal Kirim">
+          <Field label="Tanggal Bongkar">
             <input
               required
               type="date"
               className="input"
-              value={form.tanggal_kirim}
-              onChange={(e) => setField('tanggal_kirim', e.target.value)}
+              value={form.tanggal_bongkar}
+              onChange={(e) => setField('tanggal_bongkar', e.target.value)}
             />
           </Field>
           <Field label="Kuantum (kg)">
@@ -181,6 +167,7 @@ export default function TransaksiJemputPanganPage() {
               required
               type="number"
               step="0.01"
+              min="0"
               className="input"
               value={form.kuantum}
               onChange={(e) => setField('kuantum', e.target.value)}
@@ -191,6 +178,7 @@ export default function TransaksiJemputPanganPage() {
               required
               type="number"
               step="0.01"
+              min="0"
               className="input"
               value={form.jarak_ke_makloon_km}
               onChange={(e) => setField('jarak_ke_makloon_km', e.target.value)}
@@ -213,7 +201,7 @@ export default function TransaksiJemputPanganPage() {
 
           <button
             type="submit"
-            disabled={mutation.isPending || !form.makloon_user_id}
+            disabled={mutation.isPending}
             className="w-full bg-primary text-white rounded py-2.5 font-medium hover:bg-primary-dark disabled:opacity-50"
           >
             {mutation.isPending ? 'Mengirim...' : 'Simpan & Kirim'}

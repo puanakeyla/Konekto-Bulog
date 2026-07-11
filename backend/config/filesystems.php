@@ -47,6 +47,17 @@ return [
             'report' => false,
         ],
 
+        // Bagian 6 panduan: foto transaksi TIDAK boleh ada di storage/app/public
+        // yang ter-symlink publik. File hanya bisa diakses lewat route
+        // terautentikasi (Bagian 6 & 3.3), bukan URL langsung.
+        'foto-transaksi' => [
+            'driver' => 'local',
+            'root' => storage_path('app/foto-transaksi'),
+            'serve' => false,
+            'throw' => false,
+            'report' => false,
+        ],
+
         's3' => [
             'driver' => 's3',
             'key' => env('AWS_ACCESS_KEY_ID'),

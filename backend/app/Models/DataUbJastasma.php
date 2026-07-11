@@ -4,10 +4,14 @@ namespace App\Models;
 
 use App\Models\Concerns\HasStageLifecycle;
 use Illuminate\Database\Eloquent\Model;
+use Spatie\MediaLibrary\HasMedia;
+use Spatie\MediaLibrary\InteractsWithMedia;
+use Spatie\MediaLibrary\MediaCollections\Models\Media;
 
-class DataUbJastasma extends Model
+class DataUbJastasma extends Model implements HasMedia
 {
     use HasStageLifecycle;
+    use InteractsWithMedia;
 
     protected $table = 'data_ub_jastasma';
 
@@ -37,5 +41,19 @@ class DataUbJastasma extends Model
             'hampa' => 'decimal:2',
             'butir_hijau' => 'decimal:2',
         ];
+    }
+
+    public function registerMediaCollections(): void
+    {
+        $this->addMediaCollection('foto_lhpk_hpk')
+            ->singleFile()
+            ->acceptsMimeTypes(['image/jpeg', 'image/png']);
+    }
+
+    public function registerMediaConversions(?Media $media = null): void
+    {
+        $this->addMediaConversion('thumb')
+            ->width(300)
+            ->queued();
     }
 }

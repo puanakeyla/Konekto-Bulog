@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import api from '../lib/api'
 import { useAuth } from '../hooks/useAuth'
@@ -15,6 +15,7 @@ type TransaksiDetail = {
   data_jemput_pangan: StageData | null
   data_makloon_mpp: StageData | null
   data_makloon_tjp: StageData | null
+  data_ub_jastasma: StageData | null
 }
 
 const HIDDEN_FIELDS = new Set([
@@ -25,6 +26,13 @@ const HIDDEN_FIELDS = new Set([
   'created_at',
   'updated_at',
 ])
+
+const STAGE_LABELS: Record<string, string> = {
+  data_jemput_pangan: 'Jemput Pangan',
+  data_makloon_mpp: 'Makloon',
+  data_makloon_tjp: 'Makloon',
+  data_ub_jastasma: 'UB Jastasma',
+}
 
 export default function TransaksiDetailPage() {
   const { id } = useParams<{ id: string }>()
@@ -48,7 +56,7 @@ export default function TransaksiDetailPage() {
     mutationFn: () => api.post(`/api/transaksi/${encodeURIComponent(id!)}/terima`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['transaksi-list'] })
-      navigate('/')
+      queryClient.invalidateQueries({ queryKey: ['transaksi', id] })
     },
   })
 
@@ -65,11 +73,33 @@ export default function TransaksiDetailPage() {
     return <div className="min-h-screen bg-surface p-8">Memuat...</div>
   }
 
-  const stageData =
-    transaksi.data_jemput_pangan ?? transaksi.data_makloon_mpp ?? transaksi.data_makloon_tjp
+  const stageKeys = [
+    'data_jemput_pangan',
+    'data_makloon_mpp',
+    'data_makloon_tjp',
+    'data_ub_jastasma',
+  ] as const
+
+  type StageSection = { key: string; label: string; data: StageData }
+
+  const stageSections = stageKeys
+    .map((key): StageSection | null => {
+      const data = transaksi[key]
+      return data ? { key, label: STAGE_LABELS[key], data } : null
+    })
+    .filter((section): section is StageSection => section !== null)
+
+  const pendingSection = stageSections.find((s) => s.data.status === 'menunggu_review') ?? null
 
   const canAct = user?.role.nama_role === transaksi.current_stage || user?.role.nama_role === 'admin'
-  const hasPendingReview = stageData?.status === 'menunggu_review'
+  const hasPendingReview = pendingSection !== null
+  const canIsiUbJastasma =
+    canAct && !hasPendingReview && transaksi.current_stage === 'ub_jastasma'
+  const canIsiMakloon =
+    canAct &&
+    !hasPendingReview &&
+    transaksi.current_stage === 'makloon' &&
+    transaksi.skema === 'TJP'
 
   return (
     <div className="min-h-screen bg-surface p-8 flex justify-center">
@@ -82,11 +112,19 @@ export default function TransaksiDetailPage() {
           <div className="text-sm text-gray-500">
             Skema {transaksi.skema} &middot; Tahap saat ini{' '}
             <span className="font-medium text-primary-dark">{transaksi.current_stage}</span>
+            {transaksi.status_keseluruhan === 'selesai' && (
+              <span className="ml-2 inline-block bg-success-bg text-success text-xs rounded px-2 py-0.5">
+                Selesai
+              </span>
+            )}
           </div>
 
-          {stageData && (
-            <div className="border-t border-border pt-4 space-y-2">
-              {Object.entries(stageData)
+          {stageSections.map((section) => (
+            <div key={section.key} className="border-t border-border pt-4 space-y-2">
+              <div className="text-xs font-medium text-primary uppercase tracking-wide">
+                {section.label}
+              </div>
+              {Object.entries(section.data)
                 .filter(([key]) => !HIDDEN_FIELDS.has(key))
                 .map(([key, value]) => (
                   <div key={key} className="flex justify-between text-sm">
@@ -94,6 +132,28 @@ export default function TransaksiDetailPage() {
                     <span className="text-primary-dark">{String(value ?? '-')}</span>
                   </div>
                 ))}
+            </div>
+          ))}
+
+          {canIsiMakloon && (
+            <div className="border-t border-border pt-4">
+              <Link
+                to={`/transaksi/${encodeURIComponent(transaksi.id_transaksi)}/makloon`}
+                className="inline-block bg-primary text-white rounded px-4 py-2 text-sm font-medium hover:bg-primary-dark"
+              >
+                Isi Data Makloon
+              </Link>
+            </div>
+          )}
+
+          {canIsiUbJastasma && (
+            <div className="border-t border-border pt-4">
+              <Link
+                to={`/transaksi/${encodeURIComponent(transaksi.id_transaksi)}/ub-jastasma`}
+                className="inline-block bg-primary text-white rounded px-4 py-2 text-sm font-medium hover:bg-primary-dark"
+              >
+                Isi Data UB Jastasma
+              </Link>
             </div>
           )}
 

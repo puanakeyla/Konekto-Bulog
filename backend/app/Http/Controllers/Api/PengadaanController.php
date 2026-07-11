@@ -17,6 +17,22 @@ class PengadaanController extends Controller
     ) {
     }
 
+    public function index(Request $request)
+    {
+        $dataPengadaan = DataPengadaan::with(['poDetail', 'dataKeuangan', 'dataOperasi.dataGudang'])
+            ->orderByDesc('created_at')
+            ->get();
+
+        return response()->json(['data' => $dataPengadaan]);
+    }
+
+    public function show(Request $request, DataPengadaan $dataPengadaan)
+    {
+        $dataPengadaan->load(['poDetail', 'dataKeuangan', 'dataOperasi.dataGudang', 'makloon']);
+
+        return response()->json(['data' => $dataPengadaan]);
+    }
+
     public function gabungkanPo(Request $request)
     {
         $validated = $request->validate([

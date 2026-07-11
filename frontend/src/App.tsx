@@ -5,6 +5,13 @@ import LoginPage from './pages/LoginPage'
 import DashboardPage from './pages/DashboardPage'
 import TransaksiJemputPanganPage from './pages/TransaksiJemputPanganPage'
 import TransaksiDetailPage from './pages/TransaksiDetailPage'
+import TransaksiUbJastasmaPage from './pages/TransaksiUbJastasmaPage'
+import TransaksiMakloonPage from './pages/TransaksiMakloonPage'
+import TransaksiMakloonBaruPage from './pages/TransaksiMakloonBaruPage'
+import PengadaanPage from './pages/PengadaanPage'
+import KeuanganPage from './pages/KeuanganPage'
+import OperasiPage from './pages/OperasiPage'
+import GudangPage from './pages/GudangPage'
 
 const queryClient = new QueryClient()
 
@@ -42,6 +49,62 @@ function AppRoutes() {
         element={
           <ProtectedRoute>
             <TransaksiDetailPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/transaksi/:id/ub-jastasma"
+        element={
+          <ProtectedRoute>
+            <TransaksiUbJastasmaPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/transaksi/:id/makloon"
+        element={
+          <ProtectedRoute>
+            <TransaksiMakloonPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/transaksi/baru-mpp"
+        element={
+          <ProtectedRoute>
+            <TransaksiMakloonBaruPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/pengadaan"
+        element={
+          <ProtectedRoute>
+            <PengadaanPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/keuangan"
+        element={
+          <ProtectedRoute>
+            <KeuanganPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/operasi"
+        element={
+          <ProtectedRoute>
+            <OperasiPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/gudang"
+        element={
+          <ProtectedRoute>
+            <GudangPage />
           </ProtectedRoute>
         }
       />

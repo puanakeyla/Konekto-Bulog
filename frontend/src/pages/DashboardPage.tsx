@@ -28,6 +28,46 @@ export default function DashboardPage() {
           Buat Transaksi Jemput Pangan
         </Link>
       )}
+      {user?.role.nama_role === 'makloon' && (
+        <Link
+          to="/transaksi/baru-mpp"
+          className="inline-block bg-primary text-white rounded px-4 py-2 text-sm mb-6"
+        >
+          Buat Baru (MPP)
+        </Link>
+      )}
+      {(user?.role.nama_role === 'pengadaan' || user?.role.nama_role === 'admin') && (
+        <Link
+          to="/pengadaan"
+          className="inline-block bg-primary text-white rounded px-4 py-2 text-sm mb-6"
+        >
+          Kelola Pengadaan (Gabung PO &amp; Nomor IN)
+        </Link>
+      )}
+      {(user?.role.nama_role === 'keuangan' || user?.role.nama_role === 'admin') && (
+        <Link
+          to="/keuangan"
+          className="inline-block bg-primary text-white rounded px-4 py-2 text-sm mb-6"
+        >
+          Kelola Pembayaran PO
+        </Link>
+      )}
+      {(user?.role.nama_role === 'operasi' || user?.role.nama_role === 'admin') && (
+        <Link
+          to="/operasi"
+          className="inline-block bg-primary text-white rounded px-4 py-2 text-sm mb-6"
+        >
+          Input Data Operasi
+        </Link>
+      )}
+      {(user?.role.nama_role === 'gudang' || user?.role.nama_role === 'admin') && (
+        <Link
+          to="/gudang"
+          className="inline-block bg-primary text-white rounded px-4 py-2 text-sm mb-6"
+        >
+          Input Penerimaan Gudang
+        </Link>
+      )}
 
       <div className="bg-white rounded-lg shadow overflow-hidden">
         <table className="w-full text-sm">

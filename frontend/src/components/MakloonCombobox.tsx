@@ -17,7 +17,7 @@ export default function MakloonCombobox({ value, onChange }: Props) {
     if (!options) return []
     const q = query.trim().toLowerCase()
     if (!q) return options
-    return options.filter((o) => o.nama_maklon.toLowerCase().includes(q))
+    return options.filter((o) => (o.nama_maklon ?? '').toLowerCase().includes(q))
   }, [options, query])
 
   return (

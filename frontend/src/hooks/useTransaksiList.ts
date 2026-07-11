@@ -7,6 +7,9 @@ export type TransaksiListItem = {
   current_stage: string
   status_keseluruhan: string
   created_at: string
+  data_makloon_mpp?: { id_pemasok: string; tanggal_bongkar: string; kuantum: string } | null
+  data_makloon_tjp?: { tanggal_bongkar: string; kuantum_bongkar: string } | null
+  data_jemput_pangan?: { id_pemasok: string; makloon_user_id: number } | null
 }
 
 export function useTransaksiList() {

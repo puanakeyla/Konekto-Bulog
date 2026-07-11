@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Resources\TransaksiResource;
 use App\Models\DataJemputPangan;
 use App\Models\DataMakloonMpp;
 use App\Models\DataMakloonTjp;
@@ -22,17 +23,18 @@ class TransaksiController extends Controller
     public function index(Request $request)
     {
         $transaksi = Transaksi::where('current_stage', $request->user()->role->nama_role)
+            ->with(['dataJemputPangan', 'dataMakloonMpp', 'dataMakloonTjp', 'dataUbJastasma'])
             ->orderBy('created_at')
             ->paginate(20);
 
-        return response()->json($transaksi);
+        return TransaksiResource::collection($transaksi);
     }
 
     public function show(Request $request, Transaksi $transaksi)
     {
         $transaksi->load(['dataJemputPangan', 'dataMakloonMpp', 'dataMakloonTjp', 'dataUbJastasma']);
 
-        return response()->json(['data' => $transaksi]);
+        return response()->json(['data' => new TransaksiResource($transaksi)]);
     }
 
     public function store(Request $request)
