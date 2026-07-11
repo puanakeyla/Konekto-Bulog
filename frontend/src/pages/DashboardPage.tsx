@@ -20,10 +20,18 @@ export default function DashboardPage() {
       <p className="mb-4">
         Masuk sebagai <strong>{user?.username}</strong> ({user?.role.nama_role})
       </p>
+      {user?.role.nama_role === 'admin' && (
+        <Link
+          to="/admin/users"
+          className="inline-block bg-primary text-white rounded px-4 py-2 text-sm mb-6 mr-3"
+        >
+          Kelola User
+        </Link>
+      )}
       {user?.role.nama_role === 'jemput_pangan' && (
         <Link
           to="/transaksi/baru"
-          className="inline-block bg-primary text-white rounded px-4 py-2 text-sm mb-6"
+          className="inline-block bg-primary text-white rounded px-4 py-2 text-sm mb-6 mr-3"
         >
           Buat Transaksi Jemput Pangan
         </Link>
@@ -31,7 +39,7 @@ export default function DashboardPage() {
       {user?.role.nama_role === 'makloon' && (
         <Link
           to="/transaksi/baru-mpp"
-          className="inline-block bg-primary text-white rounded px-4 py-2 text-sm mb-6"
+          className="inline-block bg-primary text-white rounded px-4 py-2 text-sm mb-6 mr-3"
         >
           Buat Baru (MPP)
         </Link>
@@ -39,7 +47,7 @@ export default function DashboardPage() {
       {(user?.role.nama_role === 'pengadaan' || user?.role.nama_role === 'admin') && (
         <Link
           to="/pengadaan"
-          className="inline-block bg-primary text-white rounded px-4 py-2 text-sm mb-6"
+          className="inline-block bg-primary text-white rounded px-4 py-2 text-sm mb-6 mr-3"
         >
           Kelola Pengadaan (Gabung PO &amp; Nomor IN)
         </Link>
@@ -47,7 +55,7 @@ export default function DashboardPage() {
       {(user?.role.nama_role === 'keuangan' || user?.role.nama_role === 'admin') && (
         <Link
           to="/keuangan"
-          className="inline-block bg-primary text-white rounded px-4 py-2 text-sm mb-6"
+          className="inline-block bg-primary text-white rounded px-4 py-2 text-sm mb-6 mr-3"
         >
           Kelola Pembayaran PO
         </Link>
@@ -55,7 +63,7 @@ export default function DashboardPage() {
       {(user?.role.nama_role === 'operasi' || user?.role.nama_role === 'admin') && (
         <Link
           to="/operasi"
-          className="inline-block bg-primary text-white rounded px-4 py-2 text-sm mb-6"
+          className="inline-block bg-primary text-white rounded px-4 py-2 text-sm mb-6 mr-3"
         >
           Input Data Operasi
         </Link>
@@ -63,7 +71,7 @@ export default function DashboardPage() {
       {(user?.role.nama_role === 'gudang' || user?.role.nama_role === 'admin') && (
         <Link
           to="/gudang"
-          className="inline-block bg-primary text-white rounded px-4 py-2 text-sm mb-6"
+          className="inline-block bg-primary text-white rounded px-4 py-2 text-sm mb-6 mr-3"
         >
           Input Penerimaan Gudang
         </Link>

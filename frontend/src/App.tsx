@@ -12,6 +12,7 @@ import PengadaanPage from './pages/PengadaanPage'
 import KeuanganPage from './pages/KeuanganPage'
 import OperasiPage from './pages/OperasiPage'
 import GudangPage from './pages/GudangPage'
+import AdminUsersPage from './pages/AdminUsersPage'
 
 const queryClient = new QueryClient()
 
@@ -105,6 +106,14 @@ function AppRoutes() {
         element={
           <ProtectedRoute>
             <GudangPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin/users"
+        element={
+          <ProtectedRoute>
+            <AdminUsersPage />
           </ProtectedRoute>
         }
       />
