@@ -5,13 +5,16 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\DataPengadaan;
 use App\Services\Pengadaan\PoGroupingService;
+use App\Services\Pengadaan\PoLifecycleService;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 
 class PengadaanController extends Controller
 {
-    public function __construct(private PoGroupingService $service)
-    {
+    public function __construct(
+        private PoGroupingService $service,
+        private PoLifecycleService $lifecycleService,
+    ) {
     }
 
     public function gabungkanPo(Request $request)
@@ -37,7 +40,7 @@ class PengadaanController extends Controller
     {
         $validated = $request->validate([
             'harga' => ['sometimes', 'numeric', 'min:0'],
-            'status' => ['sometimes', Rule::in(['lengkap', 'dibatalkan'])],
+            'status' => ['sometimes', Rule::in(['proses', 'lengkap', 'dibatalkan'])],
         ]);
 
         if (array_key_exists('harga', $validated)) {
@@ -57,5 +60,53 @@ class PengadaanController extends Controller
         $dataPengadaan->save();
 
         return response()->json(['data' => $dataPengadaan]);
+    }
+
+    public function isiNomorIn(Request $request, DataPengadaan $dataPengadaan)
+    {
+        $validated = $request->validate([
+            'items' => ['required', 'array', 'min:1'],
+            'items.*.po_detail_id' => ['required', 'integer'],
+            'items.*.no_in' => ['required', 'string', 'max:255'],
+        ]);
+
+        $dataPengadaan = $this->service->isiNomorIn($dataPengadaan, $validated['items']);
+
+        return response()->json(['data' => $dataPengadaan]);
+    }
+
+    public function pembayaran(Request $request, DataPengadaan $dataPengadaan)
+    {
+        $validated = $request->validate([
+            'status_bayar' => ['required', Rule::in(['belum', 'dibayarkan'])],
+            'tanggal_bayar' => ['required_if:status_bayar,dibayarkan', 'nullable', 'date'],
+            'no_spp' => ['nullable', 'string', 'max:255', Rule::unique('data_pengadaan', 'no_spp')->ignore($dataPengadaan->id)],
+        ]);
+
+        $dataKeuangan = $this->lifecycleService->updatePembayaran(
+            $dataPengadaan,
+            $validated['status_bayar'],
+            $validated['tanggal_bayar'] ?? null,
+            $validated['no_spp'] ?? null
+        );
+
+        return response()->json(['data' => $dataKeuangan]);
+    }
+
+    public function operasi(Request $request, DataPengadaan $dataPengadaan)
+    {
+        $validated = $request->validate([
+            'no_mo' => ['required', 'string', 'max:255'],
+            'no_tm' => ['required', 'string', 'max:255'],
+            'hgl_persen' => ['nullable', 'numeric', 'min:0', 'max:100'],
+            'broken_persen' => ['nullable', 'numeric', 'min:0', 'max:100'],
+            'menir_persen' => ['nullable', 'numeric', 'min:0', 'max:100'],
+            'katul_persen' => ['nullable', 'numeric', 'min:0', 'max:100'],
+            'rendemen_persen' => ['nullable', 'numeric', 'min:0', 'max:100'],
+        ]);
+
+        $dataOperasi = $this->lifecycleService->inputOperasi($dataPengadaan, $validated);
+
+        return response()->json(['data' => $dataOperasi], 201);
     }
 }

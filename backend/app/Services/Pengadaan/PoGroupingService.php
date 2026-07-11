@@ -79,7 +79,7 @@ class PoGroupingService
                 'harga' => number_format($hargaValue, 2, '.', ''),
                 'total_harga' => number_format($totalHarga, 2, '.', ''),
                 'no_po' => $noPo,
-                'status' => 'lengkap',
+                'status' => 'proses',
             ]);
 
             foreach ($rows as $id => $row) {
@@ -94,6 +94,60 @@ class PoGroupingService
             }
 
             return $dataPengadaan->load('poDetail');
+        });
+    }
+
+    /**
+     * Isi nomor IN per baris po_detail (Bagian 3.4: "saat proses IN, PO dipecah kembali
+     * ke baris transaksi asalnya"). Hanya boleh selama PO belum 'lengkap'/'dibatalkan';
+     * begitu semua baris terisi, status PO otomatis jadi 'lengkap'.
+     */
+    public function isiNomorIn(DataPengadaan $dataPengadaan, array $items): DataPengadaan
+    {
+        if (count($items) < 1) {
+            abort(422, 'Isi minimal satu nomor IN.');
+        }
+
+        return DB::transaction(function () use ($dataPengadaan, $items) {
+            $dataPengadaan = DataPengadaan::whereKey($dataPengadaan->id)->lockForUpdate()->firstOrFail();
+
+            if ($dataPengadaan->status !== 'proses') {
+                abort(422, 'PO sudah lengkap atau dibatalkan, nomor IN tidak bisa diubah.');
+            }
+
+            $noInList = array_column($items, 'no_in');
+            if (count($noInList) !== count(array_unique($noInList))) {
+                abort(422, 'Nomor IN tidak boleh duplikat dalam satu request.');
+            }
+
+            $poDetailIds = array_column($items, 'po_detail_id');
+            $poDetails = PoDetail::whereIn('id', $poDetailIds)
+                ->where('data_pengadaan_id', $dataPengadaan->id)
+                ->lockForUpdate()
+                ->get()
+                ->keyBy('id');
+
+            if ($poDetails->count() !== count(array_unique($poDetailIds))) {
+                abort(422, 'Salah satu po_detail tidak ditemukan pada PO ini.');
+            }
+
+            $dipakaiBarisLain = PoDetail::whereIn('no_in', $noInList)
+                ->whereNotIn('id', $poDetailIds)
+                ->exists();
+            if ($dipakaiBarisLain) {
+                abort(422, 'Salah satu nomor IN sudah dipakai baris lain.');
+            }
+
+            foreach ($items as $item) {
+                $poDetails[$item['po_detail_id']]->update(['no_in' => $item['no_in']]);
+            }
+
+            if (! $dataPengadaan->poDetail()->whereNull('no_in')->exists()) {
+                $dataPengadaan->status = 'lengkap';
+                $dataPengadaan->save();
+            }
+
+            return $dataPengadaan->fresh('poDetail');
         });
     }
 

@@ -60,6 +60,7 @@ class GabungkanPoTest extends TestCase
         $this->assertSame('6500.00', $po->harga);
         $this->assertSame('975000.00', $po->total_harga);
         $this->assertSame('PEMASOK-A', $po->id_pemasok);
+        $this->assertSame('proses', $po->status);
         $this->assertCount(2, $po->poDetail);
 
         $this->assertSame('keuangan', $t1->fresh()->current_stage);

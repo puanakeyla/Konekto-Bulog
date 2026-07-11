@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\MakloonOptionController;
+use App\Http\Controllers\Api\OperasiController;
 use App\Http\Controllers\Api\PengadaanController;
 use App\Http\Controllers\Api\TransaksiController;
 use Illuminate\Support\Facades\Route;
@@ -33,4 +34,12 @@ Route::middleware('auth:sanctum')->group(function () {
         ->middleware('role:pengadaan|admin');
     Route::patch('/po/{dataPengadaan}', [PengadaanController::class, 'update'])
         ->middleware('role:pengadaan|admin');
+    Route::patch('/po/{dataPengadaan}/in', [PengadaanController::class, 'isiNomorIn'])
+        ->middleware('role:pengadaan|admin');
+    Route::patch('/po/{dataPengadaan}/pembayaran', [PengadaanController::class, 'pembayaran'])
+        ->middleware('role:keuangan|admin');
+    Route::post('/po/{dataPengadaan}/operasi', [PengadaanController::class, 'operasi'])
+        ->middleware('role:operasi|admin');
+    Route::post('/operasi/{dataOperasi}/gudang', [OperasiController::class, 'gudang'])
+        ->middleware('role:gudang|admin');
 });
