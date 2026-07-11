@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, type Dispatch, type SetStateAction } from 'react'
 import { Link } from 'react-router-dom'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import api from '../lib/api'
@@ -40,19 +40,25 @@ function formatDate(value: string) {
 }
 
 export default function PengadaanPage() {
-  const { data: transaksiList, isLoading: loadingTransaksi } = useTransaksiList()
-  const { data: poList, isLoading: loadingPo } = usePoList()
+  const [transaksiPage, setTransaksiPage] = useState(1)
+  const [poPage, setPoPage] = useState(1)
+  const { data: transaksiResult, isLoading: loadingTransaksi } = useTransaksiList(transaksiPage)
+  const { data: poResult, isLoading: loadingPo } = usePoList(poPage)
   const queryClient = useQueryClient()
 
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [noPo, setNoPo] = useState('')
   const [harga, setHarga] = useState('')
 
+  const transaksiList = transaksiResult?.items ?? []
+  const transaksiMeta = transaksiResult?.meta
+  const poList = poResult?.items ?? []
+  const poMeta = poResult?.meta
   const selectedRows = useMemo(
-    () => (transaksiList ?? []).filter((item) => selected.has(item.id_transaksi)),
+    () => transaksiList.filter((item) => selected.has(item.id_transaksi)),
     [selected, transaksiList],
   )
-  const poBelumLengkap = poList?.filter((po) => po.status === 'proses') ?? []
+  const poBelumLengkap = poList.filter((po) => po.status === 'proses')
   const totalSelectedKuantum = selectedRows.reduce((sum, item) => sum + Number(groupKeyOf(item).kuantum || 0), 0)
   const detailBelumIn = poBelumLengkap.reduce(
     (sum, po) => sum + po.po_detail.filter((detail) => !detail.no_in).length,
@@ -100,7 +106,7 @@ export default function PengadaanPage() {
 
         <div className="work-layout">
           <div className="stats-grid">
-            <div className="stat-card"><div className="stat-label">Transaksi siap PO</div><div className="stat-value">{transaksiList?.length ?? 0}</div></div>
+            <div className="stat-card"><div className="stat-label">Transaksi siap PO</div><div className="stat-value">{transaksiMeta?.total ?? transaksiList.length}</div></div>
             <div className="stat-card"><div className="stat-label">Dipilih</div><div className="stat-value">{selected.size}</div></div>
             <div className="stat-card"><div className="stat-label">PO proses</div><div className="stat-value">{poBelumLengkap.length}</div></div>
             <div className="stat-card"><div className="stat-label">Nomor IN kosong</div><div className="stat-value">{detailBelumIn}</div></div>
@@ -117,14 +123,14 @@ export default function PengadaanPage() {
 
             {errorMessage && <div className="alert-danger mb-4">{errorMessage}</div>}
             {loadingTransaksi && <p className="text-sm text-gray-400">Memuat transaksi...</p>}
-            {!loadingTransaksi && transaksiList?.length === 0 && (
+            {!loadingTransaksi && transaksiList.length === 0 && (
               <div className="empty-state">
                 <div className="empty-title">Belum ada transaksi siap digabung</div>
                 <p className="empty-copy">Transaksi akan muncul setelah tahap Makloon dan UB Jastasma diterima.</p>
               </div>
             )}
 
-            {transaksiList && transaksiList.length > 0 && (
+            {transaksiList.length > 0 && (
               <>
                 <div className="data-table-wrap mb-4">
                   <table className="data-table">
@@ -157,6 +163,15 @@ export default function PengadaanPage() {
                     </button>
                   </div>
                 </form>
+                {transaksiMeta && transaksiMeta.last_page > 1 && (
+                  <PaginationBar
+                    className="mt-4"
+                    meta={transaksiMeta}
+                    page={transaksiPage}
+                    setPage={setTransaksiPage}
+                    label="transaksi"
+                  />
+                )}
               </>
             )}
           </section>
@@ -173,8 +188,22 @@ export default function PengadaanPage() {
             )}
 
             <div className="space-y-4">{poBelumLengkap.map((po) => <PoInForm key={po.id} po={po} />)}</div>
+            {poMeta && poMeta.last_page > 1 && <PaginationBar className="mt-4" meta={poMeta} page={poPage} setPage={setPoPage} label="PO" />}
           </section>
         </div>
+      </div>
+    </div>
+  )
+}
+
+function PaginationBar({ meta, page, setPage, label, className = '' }: { meta: { current_page: number; last_page: number; total: number; from: number | null; to: number | null }; page: number; setPage: Dispatch<SetStateAction<number>>; label: string; className?: string }) {
+  return (
+    <div className={`flex flex-wrap items-center justify-between gap-3 text-sm text-muted ${className}`}>
+      <span>Menampilkan {meta.from ?? 0}-{meta.to ?? 0} dari {meta.total} {label}</span>
+      <div className="flex gap-2">
+        <button className="btn btn-ghost" disabled={page <= 1} onClick={() => setPage((prev) => Math.max(1, prev - 1))}>Sebelumnya</button>
+        <span className="badge">Halaman {meta.current_page}/{meta.last_page}</span>
+        <button className="btn btn-ghost" disabled={page >= meta.last_page} onClick={() => setPage((prev) => prev + 1)}>Berikutnya</button>
       </div>
     </div>
   )
@@ -183,6 +212,8 @@ export default function PengadaanPage() {
 function PoInForm({ po }: { po: PoItem }) {
   const queryClient = useQueryClient()
   const [values, setValues] = useState<Record<number, string>>({})
+  const [hargaPo, setHargaPo] = useState(String(Number(po.harga)))
+  const [statusPo, setStatusPo] = useState(po.status)
 
   const mutation = useMutation({
     mutationFn: () =>
@@ -197,8 +228,13 @@ function PoInForm({ po }: { po: PoItem }) {
     },
   })
 
+  const updatePo = useMutation({
+    mutationFn: () => api.patch(`/api/po/${po.id}`, { harga: Number(hargaPo), status: statusPo }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['po-list'] }),
+  })
+
   const errorMessage =
-    (mutation.error as { response?: { data?: { message?: string } } } | null)?.response?.data?.message
+    ((mutation.error || updatePo.error) as { response?: { data?: { message?: string } } } | null)?.response?.data?.message
   const isiCount = Object.values(values).filter((v) => v.trim() !== '').length
   const lengkapCount = po.po_detail.filter((d) => d.no_in).length
 
@@ -209,6 +245,14 @@ function PoInForm({ po }: { po: PoItem }) {
         <span className="badge badge-warning">{lengkapCount}/{po.po_detail.length} IN terisi</span>
       </div>
       {errorMessage && <div className="alert-danger mb-3">{errorMessage}</div>}
+      <div className="mb-4 rounded-lg border border-border bg-surface p-3">
+        <div className="section-title mb-3">Harga dan Status PO</div>
+        <div className="form-grid">
+          <label className="block"><span className="label">Harga per kg</span><input className="input" type="number" step="0.01" min="0" value={hargaPo} onChange={(e) => setHargaPo(e.target.value)} /></label>
+          <label className="block"><span className="label">Status</span><select className="input" value={statusPo} onChange={(e) => setStatusPo(e.target.value as PoItem['status'])}><option value="proses">Proses</option><option value="lengkap">Lengkap</option><option value="dibatalkan">Dibatalkan</option></select></label>
+          <div className="form-grid-full flex justify-end"><button type="button" disabled={!hargaPo || updatePo.isPending} onClick={() => updatePo.mutate()} className="btn btn-primary">{updatePo.isPending ? 'Menyimpan...' : 'Update PO'}</button></div>
+        </div>
+      </div>
       <div className="data-table-wrap mb-3">
         <table className="data-table">
           <thead><tr><th>ID Transaksi</th><th className="text-right">Kuantum</th><th>Nomor IN</th></tr></thead>

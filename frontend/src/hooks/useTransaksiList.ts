@@ -1,6 +1,15 @@
 import { useQuery } from '@tanstack/react-query'
 import api from '../lib/api'
 
+export type PaginationMeta = {
+  current_page: number
+  last_page: number
+  per_page: number
+  total: number
+  from: number | null
+  to: number | null
+}
+
 export type TransaksiListItem = {
   id_transaksi: string
   skema: 'TJP' | 'MPP'
@@ -12,12 +21,14 @@ export type TransaksiListItem = {
   data_jemput_pangan?: { id_pemasok: string; makloon_user_id: number } | null
 }
 
-export function useTransaksiList() {
+export function useTransaksiList(page = 1, perPage = 20) {
   return useQuery({
-    queryKey: ['transaksi-list'],
+    queryKey: ['transaksi-list', page, perPage],
     queryFn: async () => {
-      const { data } = await api.get<{ data: TransaksiListItem[] }>('/api/transaksi')
-      return data.data
+      const { data } = await api.get<{ data: TransaksiListItem[]; meta: PaginationMeta }>('/api/transaksi', {
+        params: { page, per_page: perPage },
+      })
+      return { items: data.data, meta: data.meta }
     },
   })
 }

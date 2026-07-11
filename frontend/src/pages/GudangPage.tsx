@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, type Dispatch, type SetStateAction } from 'react'
 import { Link } from 'react-router-dom'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import api from '../lib/api'
@@ -23,9 +23,12 @@ function formatNumber(value: string | number) {
 }
 
 export default function GudangPage() {
-  const { data: poList, isLoading } = usePoList()
-  const menungguGudang = poList?.filter((po) => po.data_operasi && !po.data_operasi.data_gudang) ?? []
-  const sudahGudang = poList?.filter((po) => !!po.data_operasi?.data_gudang).length ?? 0
+  const [page, setPage] = useState(1)
+  const { data: poResult, isLoading } = usePoList(page)
+  const poList = poResult?.items ?? []
+  const meta = poResult?.meta
+  const menungguGudang = poList.filter((po) => po.data_operasi && !po.data_operasi.data_gudang)
+  const sudahGudang = poList.filter((po) => !!po.data_operasi?.data_gudang).length
   const totalKuantum = menungguGudang.reduce((sum, po) => sum + Number(po.total_kuantum || 0), 0)
 
   return (
@@ -44,7 +47,7 @@ export default function GudangPage() {
             <div className="stat-card"><div className="stat-label">Menunggu gudang</div><div className="stat-value">{menungguGudang.length}</div></div>
             <div className="stat-card"><div className="stat-label">Sudah diterima</div><div className="stat-value">{sudahGudang}</div></div>
             <div className="stat-card"><div className="stat-label">Kuantum antrean</div><div className="stat-value">{formatNumber(totalKuantum)}</div></div>
-            <div className="stat-card"><div className="stat-label">Total PO</div><div className="stat-value">{poList?.length ?? 0}</div></div>
+            <div className="stat-card"><div className="stat-label">Total PO</div><div className="stat-value">{poResult?.meta.total ?? poList.length}</div></div>
           </div>
 
           <section className="panel panel-pad">
@@ -59,8 +62,22 @@ export default function GudangPage() {
             )}
 
             <div className="space-y-4">{menungguGudang.map((po) => <GudangForm key={po.id} po={po} />)}</div>
+            {meta && meta.last_page > 1 && <PaginationBar meta={meta} page={page} setPage={setPage} />}
           </section>
         </div>
+      </div>
+    </div>
+  )
+}
+
+function PaginationBar({ meta, page, setPage }: { meta: { current_page: number; last_page: number; total: number; from: number | null; to: number | null }; page: number; setPage: Dispatch<SetStateAction<number>> }) {
+  return (
+    <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm text-muted">
+      <span>Menampilkan {meta.from ?? 0}-{meta.to ?? 0} dari {meta.total} PO</span>
+      <div className="flex gap-2">
+        <button className="btn btn-ghost" disabled={page <= 1} onClick={() => setPage((prev) => Math.max(1, prev - 1))}>Sebelumnya</button>
+        <span className="badge">Halaman {meta.current_page}/{meta.last_page}</span>
+        <button className="btn btn-ghost" disabled={page >= meta.last_page} onClick={() => setPage((prev) => prev + 1)}>Berikutnya</button>
       </div>
     </div>
   )
