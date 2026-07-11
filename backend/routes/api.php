@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\MakloonOptionController;
+use App\Http\Controllers\Api\PengadaanController;
 use App\Http\Controllers\Api\TransaksiController;
 use Illuminate\Support\Facades\Route;
 
@@ -27,4 +28,9 @@ Route::middleware('auth:sanctum')->group(function () {
         ->middleware('role:ub_jastasma|admin');
     Route::post('/transaksi/{transaksi}/terima', [TransaksiController::class, 'terima']);
     Route::post('/transaksi/{transaksi}/tolak', [TransaksiController::class, 'tolak']);
+
+    Route::post('/pengadaan/gabungkan-po', [PengadaanController::class, 'gabungkanPo'])
+        ->middleware('role:pengadaan|admin');
+    Route::patch('/po/{dataPengadaan}', [PengadaanController::class, 'update'])
+        ->middleware('role:pengadaan|admin');
 });
