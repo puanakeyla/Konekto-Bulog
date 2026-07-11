@@ -1,4 +1,4 @@
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
+import { BrowserRouter, Navigate, Route, Routes, useParams } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { AuthProvider, useAuth } from './hooks/useAuth'
 import LoginPage from './pages/LoginPage'
@@ -6,14 +6,13 @@ import LandingPage from './pages/LandingPage'
 import DashboardPage from './pages/DashboardPage'
 import TransaksiJemputPanganPage from './pages/TransaksiJemputPanganPage'
 import TransaksiDetailPage from './pages/TransaksiDetailPage'
-import TransaksiUbJastasmaPage from './pages/TransaksiUbJastasmaPage'
-import TransaksiMakloonPage from './pages/TransaksiMakloonPage'
 import TransaksiMakloonBaruPage from './pages/TransaksiMakloonBaruPage'
 import PengadaanPage from './pages/PengadaanPage'
 import KeuanganPage from './pages/KeuanganPage'
 import OperasiPage from './pages/OperasiPage'
 import GudangPage from './pages/GudangPage'
 import AdminUsersPage from './pages/AdminUsersPage'
+import MonitoringPage from './pages/MonitoringPage'
 
 const queryClient = new QueryClient()
 
@@ -24,6 +23,11 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   if (!user) return <Navigate to="/login" replace />
 
   return <>{children}</>
+}
+
+function RedirectToTransaksiDetail() {
+  const { id } = useParams<{ id: string }>()
+  return <Navigate to={`/transaksi/${encodeURIComponent(id ?? '')}`} replace />
 }
 
 function AppRoutes() {
@@ -59,7 +63,7 @@ function AppRoutes() {
         path="/transaksi/:id/ub-jastasma"
         element={
           <ProtectedRoute>
-            <TransaksiUbJastasmaPage />
+            <RedirectToTransaksiDetail />
           </ProtectedRoute>
         }
       />
@@ -67,7 +71,7 @@ function AppRoutes() {
         path="/transaksi/:id/makloon"
         element={
           <ProtectedRoute>
-            <TransaksiMakloonPage />
+            <RedirectToTransaksiDetail />
           </ProtectedRoute>
         }
       />
@@ -116,6 +120,14 @@ function AppRoutes() {
         element={
           <ProtectedRoute>
             <AdminUsersPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/monitoring"
+        element={
+          <ProtectedRoute>
+            <MonitoringPage />
           </ProtectedRoute>
         }
       />

@@ -7,10 +7,13 @@ type SkemaFilter = 'semua' | 'TJP' | 'MPP'
 
 export default function DashboardPage() {
   const { user, logout } = useAuth()
-  const { data: transaksi, isLoading } = useTransaksiList()
+  const [page, setPage] = useState(1)
+  const { data: transaksiPage, isLoading } = useTransaksiList(page)
   const [skemaFilter, setSkemaFilter] = useState<SkemaFilter>('semua')
+  const transaksi = transaksiPage?.items ?? []
+  const meta = transaksiPage?.meta
   const filteredTransaksi = useMemo(
-    () => (transaksi ?? []).filter((item) => skemaFilter === 'semua' || item.skema === skemaFilter),
+    () => transaksi.filter((item) => skemaFilter === 'semua' || item.skema === skemaFilter),
     [transaksi, skemaFilter],
   )
 
@@ -27,6 +30,7 @@ export default function DashboardPage() {
 
         <div className="mb-5 flex flex-wrap gap-3">
           {user?.role.nama_role === 'admin' && <Link to="/admin/users" className="btn btn-primary">Kelola User</Link>}
+          {user?.role.nama_role === 'admin' && <Link to="/monitoring" className="btn btn-primary">Monitoring</Link>}
           {user?.role.nama_role === 'jemput_pangan' && <Link to="/transaksi/baru" className="btn btn-primary">Buat Transaksi Jemput Pangan</Link>}
           {user?.role.nama_role === 'makloon' && <Link to="/transaksi/baru-mpp" className="btn btn-primary">Buat Baru (MPP)</Link>}
           {(user?.role.nama_role === 'pengadaan' || user?.role.nama_role === 'admin') && <Link to="/pengadaan" className="btn btn-primary">Kelola Pengadaan</Link>}
@@ -76,6 +80,16 @@ export default function DashboardPage() {
             </tbody>
           </table>
         </div>
+        {meta && meta.last_page > 1 && (
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm text-muted">
+            <span>Menampilkan {meta.from ?? 0}-{meta.to ?? 0} dari {meta.total} transaksi</span>
+            <div className="flex gap-2">
+              <button className="btn btn-ghost" disabled={page <= 1} onClick={() => setPage((prev) => Math.max(1, prev - 1))}>Sebelumnya</button>
+              <span className="badge">Halaman {meta.current_page}/{meta.last_page}</span>
+              <button className="btn btn-ghost" disabled={page >= meta.last_page} onClick={() => setPage((prev) => prev + 1)}>Berikutnya</button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )
