@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\AdminUserController;
 use App\Http\Controllers\Api\FotoController;
 use App\Http\Controllers\Api\FotoStreamController;
 use App\Http\Controllers\Api\MakloonOptionController;
@@ -22,6 +23,13 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/me', [AuthController::class, 'me']);
 
     Route::get('/makloon-options', [MakloonOptionController::class, 'index']);
+
+    Route::middleware('role:admin')->prefix('admin')->group(function () {
+        Route::get('/roles', [AdminUserController::class, 'roles']);
+        Route::patch('/users/{user}/reset-password', [AdminUserController::class, 'resetPassword']);
+        Route::patch('/users/{user}/deactivate', [AdminUserController::class, 'deactivate']);
+        Route::apiResource('users', AdminUserController::class);
+    });
 
     Route::get('/transaksi', [TransaksiController::class, 'index']);
     // Route dengan suffix di belakang {transaksi} (pattern '.*', greedy) HARUS didaftarkan
