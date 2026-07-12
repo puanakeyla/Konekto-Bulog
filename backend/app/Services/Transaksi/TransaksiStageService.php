@@ -65,7 +65,7 @@ class TransaksiStageService
             abort(422, 'Data tahap ini sudah dikirim dan tidak dapat diubah.');
         }
 
-        return DB::transaction(function () use ($record, $data, $transaksi, $actor, $index) {
+         return DB::transaction(function () use ($record, $data, $transaksi, $actor, $index, $role) {
             $record->fill($data);
             $record->transaksi_id = $transaksi->id_transaksi;
             $record->status = 'menunggu_review';
