@@ -23,7 +23,7 @@ class TransaksiController extends Controller
     public function index(Request $request)
     {
         $transaksi = Transaksi::where('current_stage', $request->user()->role->nama_role)
-            ->with(['dataJemputPangan', 'dataMakloonMpp', 'dataMakloonTjp', 'dataUbJastasma'])
+            ->with(['dataJemputPangan.makloon', 'dataMakloonMpp', 'dataMakloonTjp', 'dataUbJastasma', 'creator'])
             ->orderBy('created_at')
             ->paginate($request->integer('per_page', 20));
 
@@ -32,7 +32,7 @@ class TransaksiController extends Controller
 
     public function show(Request $request, Transaksi $transaksi)
     {
-        $transaksi->load(['dataJemputPangan', 'dataMakloonMpp', 'dataMakloonTjp', 'dataUbJastasma']);
+        $transaksi->load(['dataJemputPangan.makloon', 'dataMakloonMpp', 'dataMakloonTjp', 'dataUbJastasma', 'creator']);
 
         return response()->json(['data' => new TransaksiResource($transaksi)]);
     }

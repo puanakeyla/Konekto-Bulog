@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import api from '../lib/api'
 import { usePoList, type PoItem } from '../hooks/usePoList'
+import ConfirmDialog from '../components/ConfirmDialog'
 
 type FormState = {
   no_mo: string
@@ -92,6 +93,7 @@ function PaginationBar({ meta, page, setPage }: { meta: { current_page: number; 
 function OperasiForm({ po }: { po: PoItem }) {
   const queryClient = useQueryClient()
   const [form, setForm] = useState<FormState>(initialState)
+  const [confirmOperasi, setConfirmOperasi] = useState(false)
 
   const mutation = useMutation({
     mutationFn: () =>
@@ -104,14 +106,14 @@ function OperasiForm({ po }: { po: PoItem }) {
         katul_persen: form.katul_persen ? Number(form.katul_persen) : undefined,
         rendemen_persen: form.rendemen_persen ? Number(form.rendemen_persen) : undefined,
       }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['po-list'] }),
+    onSuccess: () => { setConfirmOperasi(false); queryClient.invalidateQueries({ queryKey: ['po-list'] }) },
   })
 
   const setField = <K extends keyof FormState>(key: K, value: FormState[K]) => setForm((prev) => ({ ...prev, [key]: value }))
   const errorMessage = (mutation.error as { response?: { data?: { message?: string } } } | null)?.response?.data?.message
 
   return (
-    <form className="po-card" onSubmit={(e) => { e.preventDefault(); mutation.mutate() }}>
+    <form className="po-card" onSubmit={(e) => { e.preventDefault(); setConfirmOperasi(true) }}>
       <div className="po-card-header">
         <div><div className="po-title">{po.no_po}</div><div className="po-meta">Pemasok {po.id_pemasok} - {formatNumber(po.total_kuantum)} kg - No. SPP {po.no_spp ?? '-'}</div></div>
         <span className="badge badge-success">Sudah dibayar</span>
@@ -127,6 +129,17 @@ function OperasiForm({ po }: { po: PoItem }) {
         <Field label="Rendemen (%)"><input type="number" step="0.01" min="0" max="100" className="input" value={form.rendemen_persen} onChange={(e) => setField('rendemen_persen', e.target.value)} /></Field>
       </div>
       <div className="mt-4 flex justify-end"><button type="submit" disabled={!form.no_mo || !form.no_tm || mutation.isPending} className="btn btn-primary">{mutation.isPending ? 'Menyimpan...' : 'Simpan Data Operasi'}</button></div>
+
+      <ConfirmDialog
+        open={confirmOperasi}
+        title="Simpan data Operasi?"
+        description={<>Data Operasi PO <strong>{po.no_po}</strong> akan disimpan dan PO diteruskan ke tahap <strong>Gudang</strong>. Data tidak dapat diubah lagi setelah disimpan. Lanjutkan?</>}
+        confirmLabel="Simpan Data Operasi"
+        loading={mutation.isPending}
+        error={errorMessage}
+        onCancel={() => setConfirmOperasi(false)}
+        onConfirm={() => mutation.mutate()}
+      />
     </form>
   )
 }

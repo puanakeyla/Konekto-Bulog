@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import api from '../lib/api'
 import { usePoList, type PoItem } from '../hooks/usePoList'
+import ConfirmDialog from '../components/ConfirmDialog'
 
 function formatNumber(value: string | number) {
   return Number(value).toLocaleString('id-ID', { maximumFractionDigits: 2 })
@@ -77,16 +78,17 @@ function PembayaranForm({ po }: { po: PoItem }) {
   const queryClient = useQueryClient()
   const [tanggalBayar, setTanggalBayar] = useState('')
   const [noSpp, setNoSpp] = useState(po.no_spp ?? '')
+  const [confirmBayar, setConfirmBayar] = useState(false)
 
   const mutation = useMutation({
     mutationFn: () => api.patch(`/api/po/${po.id}/pembayaran`, { status_bayar: 'dibayarkan', tanggal_bayar: tanggalBayar, no_spp: noSpp || undefined }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['po-list'] }),
+    onSuccess: () => { setConfirmBayar(false); queryClient.invalidateQueries({ queryKey: ['po-list'] }) },
   })
 
   const errorMessage = (mutation.error as { response?: { data?: { message?: string } } } | null)?.response?.data?.message
 
   return (
-    <form className="po-card" onSubmit={(e) => { e.preventDefault(); mutation.mutate() }}>
+    <form className="po-card" onSubmit={(e) => { e.preventDefault(); setConfirmBayar(true) }}>
       <div className="po-card-header">
         <div><div className="po-title">{po.no_po}</div><div className="po-meta">Pemasok {po.id_pemasok} - {formatNumber(po.total_kuantum)} kg - {formatMoney(po.total_harga)}</div></div>
         <span className="badge badge-warning">Belum dibayar</span>
@@ -97,6 +99,17 @@ function PembayaranForm({ po }: { po: PoItem }) {
         <label className="block"><span className="label">Tanggal Bayar</span><input required type="date" className="input" value={tanggalBayar} onChange={(e) => setTanggalBayar(e.target.value)} /></label>
       </div>
       <div className="mt-4 flex justify-end"><button type="submit" disabled={!tanggalBayar || mutation.isPending} className="btn btn-primary">{mutation.isPending ? 'Menyimpan...' : 'Tandai Dibayarkan'}</button></div>
+
+      <ConfirmDialog
+        open={confirmBayar}
+        title="Tandai PO sudah dibayarkan?"
+        description={<>PO <strong>{po.no_po}</strong> akan ditandai sudah dibayarkan dan diteruskan ke tahap <strong>Operasi</strong>. Status pembayaran tidak dapat dibatalkan. Lanjutkan?</>}
+        confirmLabel="Tandai Dibayarkan"
+        loading={mutation.isPending}
+        error={errorMessage}
+        onCancel={() => setConfirmBayar(false)}
+        onConfirm={() => mutation.mutate()}
+      />
     </form>
   )
 }

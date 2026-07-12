@@ -4,6 +4,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import api from '../lib/api'
 import { useTransaksiList, type TransaksiListItem } from '../hooks/useTransaksiList'
 import { usePoList, type PoItem } from '../hooks/usePoList'
+import ConfirmDialog from '../components/ConfirmDialog'
 
 function groupKeyOf(t: TransaksiListItem) {
   if (t.data_makloon_mpp) {
@@ -49,6 +50,7 @@ export default function PengadaanPage() {
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [noPo, setNoPo] = useState('')
   const [harga, setHarga] = useState('')
+  const [confirmGabung, setConfirmGabung] = useState(false)
 
   const transaksiList = transaksiResult?.items ?? []
   const transaksiMeta = transaksiResult?.meta
@@ -73,6 +75,7 @@ export default function PengadaanPage() {
         harga: harga ? Number(harga) : undefined,
       }),
     onSuccess: () => {
+      setConfirmGabung(false)
       setSelected(new Set())
       setNoPo('')
       setHarga('')
@@ -153,7 +156,7 @@ export default function PengadaanPage() {
                   </table>
                 </div>
 
-                <form className="form-grid" onSubmit={(e) => { e.preventDefault(); gabungMutation.mutate() }}>
+                <form className="form-grid" onSubmit={(e) => { e.preventDefault(); setConfirmGabung(true) }}>
                   <label className="block"><span className="label">No. PO</span><input required className="input" value={noPo} onChange={(e) => setNoPo(e.target.value)} placeholder="Contoh: PO-0001/VII/2026" /></label>
                   <label className="block"><span className="label">Harga per kg</span><input type="number" step="0.01" min="0" className="input" value={harga} onChange={(e) => setHarga(e.target.value)} placeholder="Default 6500" /></label>
                   <div className="form-grid-full flex flex-wrap items-center justify-between gap-3">
@@ -163,6 +166,17 @@ export default function PengadaanPage() {
                     </button>
                   </div>
                 </form>
+
+                <ConfirmDialog
+                  open={confirmGabung}
+                  title="Gabungkan menjadi PO?"
+                  description={<>PO <strong>{noPo}</strong> akan dibuat dari <strong>{selected.size} transaksi</strong> terpilih. Transaksi tersebut akan dikunci dan diteruskan ke tahap <strong>Keuangan</strong>. Lanjutkan?</>}
+                  confirmLabel="Buat PO"
+                  loading={gabungMutation.isPending}
+                  error={errorMessage}
+                  onCancel={() => setConfirmGabung(false)}
+                  onConfirm={() => gabungMutation.mutate()}
+                />
                 {transaksiMeta && transaksiMeta.last_page > 1 && (
                   <PaginationBar
                     className="mt-4"
@@ -214,6 +228,7 @@ function PoInForm({ po }: { po: PoItem }) {
   const [values, setValues] = useState<Record<number, string>>({})
   const [hargaPo, setHargaPo] = useState(String(Number(po.harga)))
   const [statusPo, setStatusPo] = useState(po.status)
+  const [confirmIn, setConfirmIn] = useState(false)
 
   const mutation = useMutation({
     mutationFn: () =>
@@ -223,6 +238,7 @@ function PoInForm({ po }: { po: PoItem }) {
           .map(([po_detail_id, no_in]) => ({ po_detail_id: Number(po_detail_id), no_in })),
       }),
     onSuccess: () => {
+      setConfirmIn(false)
       setValues({})
       queryClient.invalidateQueries({ queryKey: ['po-list'] })
     },
@@ -239,7 +255,7 @@ function PoInForm({ po }: { po: PoItem }) {
   const lengkapCount = po.po_detail.filter((d) => d.no_in).length
 
   return (
-    <form className="po-card" onSubmit={(e) => { e.preventDefault(); mutation.mutate() }}>
+    <form className="po-card" onSubmit={(e) => { e.preventDefault(); setConfirmIn(true) }}>
       <div className="po-card-header">
         <div><div className="po-title">{po.no_po}</div><div className="po-meta">Pemasok {po.id_pemasok} - {formatNumber(po.total_kuantum)} kg - {formatMoney(po.total_harga)}</div></div>
         <span className="badge badge-warning">{lengkapCount}/{po.po_detail.length} IN terisi</span>
@@ -268,6 +284,17 @@ function PoInForm({ po }: { po: PoItem }) {
         </table>
       </div>
       <div className="flex justify-end"><button type="submit" disabled={isiCount === 0 || mutation.isPending} className="btn btn-primary">{mutation.isPending ? 'Menyimpan...' : 'Simpan Nomor IN'}</button></div>
+
+      <ConfirmDialog
+        open={confirmIn}
+        title="Simpan nomor IN?"
+        description={<><strong>{isiCount} nomor IN</strong> akan disimpan dan tidak bisa diubah lagi. Jika seluruh nomor IN pada PO ini sudah terisi, PO otomatis diteruskan ke tahap <strong>Keuangan</strong>. Lanjutkan?</>}
+        confirmLabel="Simpan Nomor IN"
+        loading={mutation.isPending}
+        error={errorMessage}
+        onCancel={() => setConfirmIn(false)}
+        onConfirm={() => mutation.mutate()}
+      />
     </form>
   )
 }

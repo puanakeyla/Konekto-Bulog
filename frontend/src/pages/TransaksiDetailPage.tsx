@@ -5,6 +5,7 @@ import api from '../lib/api'
 import { useAuth } from '../hooks/useAuth'
 import { uploadSemuaFoto } from '../lib/uploadFoto'
 import FotoPicker from '../components/FotoPicker'
+import ConfirmDialog from '../components/ConfirmDialog'
 
 type StageData = Record<string, unknown> & { status: string }
 
@@ -124,7 +125,14 @@ export default function TransaksiDetailPage() {
   const { user } = useAuth()
   const queryClient = useQueryClient()
   const [catatan, setCatatan] = useState('')
-  const [rejectingStage, setRejectingStage] = useState<string | null>(null)
+  const [expandedStages, setExpandedStages] = useState<Set<string>>(new Set())
+  const toggleStage = (stageId: string) =>
+    setExpandedStages((prev) => {
+      const next = new Set(prev)
+      if (next.has(stageId)) next.delete(stageId)
+      else next.add(stageId)
+      return next
+    })
 
   const [makloonForm, setMakloonForm] = useState({ tanggal_bongkar: '', kuantum_bongkar: '' })
   const [fotosMakloon, setFotosMakloon] = useState<Record<string, File | null>>({})
@@ -152,7 +160,6 @@ export default function TransaksiDetailPage() {
   const terima = useMutation({
     mutationFn: () => api.post(`/api/transaksi/${encodeURIComponent(id!)}/terima`),
     onSuccess: () => {
-      setRejectingStage(null)
       setCatatan('')
       invalidate()
     },
@@ -161,7 +168,6 @@ export default function TransaksiDetailPage() {
   const tolak = useMutation({
     mutationFn: () => api.post(`/api/transaksi/${encodeURIComponent(id!)}/tolak`, { catatan }),
     onSuccess: () => {
-      setRejectingStage(null)
       setCatatan('')
       invalidate()
     },
@@ -255,28 +261,39 @@ export default function TransaksiDetailPage() {
                     <div className="flex items-start justify-between gap-3">
                       <div>
                         <h2 className="section-title">{stage.label}{isCurrent && !isPendingReview && !showMakloonForm && !showUbForm ? ' - sedang berjalan' : ''}</h2>
-                        <p className="mt-1 text-xs text-gray-500">{isComplete ? `Diterima oleh ${stage.owner}` : isPendingReview ? `Menunggu dicek oleh ${STAGES.find((s) => s.id === transaksi.current_stage)?.owner ?? transaksi.current_stage}` : showMakloonForm || showUbForm ? 'Giliran Anda mengisi data tahap ini' : isFuture ? 'Menunggu tahap sebelumnya' : stage.helper}</p>
+                        <p className="mt-1 text-xs text-gray-500">{isComplete ? `Diterima oleh ${stage.owner}${data?.locked_at ? ' · ' + formatDateTime(String(data.locked_at)) : ''}` : isPendingReview ? `Menunggu dicek oleh ${STAGES.find((s) => s.id === transaksi.current_stage)?.owner ?? transaksi.current_stage}` : showMakloonForm || showUbForm ? 'Giliran Anda mengisi data tahap ini' : isFuture ? 'Menunggu tahap sebelumnya' : stage.helper}</p>
                       </div>
                       {isCurrent && <span className="badge">{isPendingReview ? 'Menunggu review' : 'Giliran Anda'}</span>}
                     </div>
 
-                    {data && !showMakloonForm && !showUbForm && <StageReadOnly data={data} collapsed={!isCurrent} />}
-                    {data && <FotoLinks transaksiId={transaksi.id_transaksi} fields={photoFieldsFor(stage.id, transaksi.skema)} />}
+                    {data && (isComplete ? (
+                      <CompletedStageDetail
+                        data={data}
+                        transaksiId={transaksi.id_transaksi}
+                        fotoFields={photoFieldsFor(stage.id, transaksi.skema)}
+                        expanded={expandedStages.has(stage.id)}
+                        onToggle={() => toggleStage(stage.id)}
+                      />
+                    ) : (
+                      <>
+                        {!showMakloonForm && !showUbForm && <StageReadOnly data={data} collapsed={!isCurrent} />}
+                        <FotoLinks transaksiId={transaksi.id_transaksi} fields={photoFieldsFor(stage.id, transaksi.skema)} />
+                      </>
+                    ))}
                     {isRejected && <div className="alert-danger mt-4">Tahap ini ditolak. Perbaiki data pada role terkait lalu kirim ulang.</div>}
                     {showMakloonForm && <MakloonTjpForm form={makloonForm} setForm={setMakloonForm} mutation={simpanMakloon} error={makloonError} fotos={fotosMakloon} setFotos={setFotosMakloon} progress={progressMakloon} fotoGagal={fotoMakloonGagal} />}
                     {showUbForm && <UbForm form={ubForm} setForm={setUbForm} mutation={simpanUb} error={ubError} fotos={fotosUb} setFotos={setFotosUb} progress={progressUb} fotoGagal={fotoUbGagal} />}
 
                     {canReviewThis && (
                       <ReviewActions
-                        stageId={stage.id}
-                        rejectingStage={rejectingStage}
-                        setRejectingStage={setRejectingStage}
+                        stageLabel={stage.label}
                         catatan={catatan}
                         setCatatan={setCatatan}
                         onAccept={() => terima.mutate()}
                         onReject={() => tolak.mutate()}
                         acceptPending={terima.isPending}
                         rejectPending={tolak.isPending}
+                        actionError={actionError}
                       />
                     )}
 
@@ -327,6 +344,25 @@ function FotoLinks({ transaksiId, fields }: { transaksiId: string; fields: { key
           </button>
         ))}
       </div>
+    </div>
+  )
+}
+
+// Tahap yang sudah selesai & terkunci (Bagian 7.4): tampil ringkas (nama tahap +
+// diisi siapa + kapan ada di header), detail read-only (field + foto) disembunyikan
+// di balik "Lihat detail" supaya timeline tidak penuh.
+function CompletedStageDetail({ data, transaksiId, fotoFields, expanded, onToggle }: { data: StageData; transaksiId: string; fotoFields: { key: string; label: string }[]; expanded: boolean; onToggle: () => void }) {
+  return (
+    <div className="mt-3">
+      <button type="button" onClick={onToggle} className="text-xs font-semibold text-primary hover:underline">
+        {expanded ? 'Sembunyikan detail' : 'Lihat detail'}
+      </button>
+      {expanded && (
+        <>
+          <StageReadOnly data={data} collapsed={false} />
+          <FotoLinks transaksiId={transaksiId} fields={fotoFields} />
+        </>
+      )}
     </div>
   )
 }
@@ -387,19 +423,39 @@ function DokumenGrid({ fields, fotos, setFotos, progress, fotoGagal }: any) {
   )
 }
 
-function ReviewActions({ stageId, rejectingStage, setRejectingStage, catatan, setCatatan, onAccept, onReject, acceptPending, rejectPending }: any) {
-  if (rejectingStage === stageId) {
-    return (
-      <div className="mt-4 space-y-3 border-t border-border pt-4">
-        <textarea className="input min-h-24" placeholder="Catatan penolakan" value={catatan} onChange={(e) => setCatatan(e.target.value)} />
-        <div className="flex flex-wrap justify-end gap-3"><button type="button" onClick={() => setRejectingStage(null)} className="btn btn-ghost">Batal</button><button type="button" onClick={onReject} disabled={!catatan || rejectPending} className="btn btn-outline-danger">{rejectPending ? 'Mengirim...' : 'Kirim Penolakan'}</button></div>
-      </div>
-    )
-  }
+function ReviewActions({ stageLabel, catatan, setCatatan, onAccept, onReject, acceptPending, rejectPending, actionError }: any) {
+  const [dialog, setDialog] = useState<null | 'terima' | 'tolak'>(null)
   return (
     <div className="mt-4 flex flex-wrap justify-end gap-3 border-t border-border pt-4">
-      <button type="button" onClick={() => setRejectingStage(stageId)} className="btn btn-outline-danger">Tolak</button>
-      <button type="button" onClick={() => { if (confirm('Terima data tahap sebelumnya? Data akan dikunci dan alur lanjut.')) onAccept() }} disabled={acceptPending} className="btn btn-primary">{acceptPending ? 'Menyimpan...' : 'Terima & Lanjutkan'}</button>
+      <button type="button" onClick={() => setDialog('tolak')} className="btn btn-outline-danger">Tolak</button>
+      <button type="button" onClick={() => setDialog('terima')} className="btn btn-primary">Terima &amp; Lanjutkan</button>
+
+      <ConfirmDialog
+        open={dialog === 'terima'}
+        title="Terima data tahap ini?"
+        description={<>Data <strong>{stageLabel}</strong> akan dikunci dan tidak bisa diubah lagi setelah diterima. Lanjutkan?</>}
+        confirmLabel="Terima & Lanjutkan"
+        confirmVariant="primary"
+        loading={acceptPending}
+        error={actionError}
+        onCancel={() => setDialog(null)}
+        onConfirm={onAccept}
+      />
+
+      <ConfirmDialog
+        open={dialog === 'tolak'}
+        title="Tolak data tahap ini?"
+        description={<>Transaksi akan dikembalikan ke tahap <strong>{stageLabel}</strong> untuk direvisi. Lanjutkan?</>}
+        confirmLabel="Kirim Penolakan"
+        confirmVariant="danger"
+        loading={rejectPending}
+        confirmDisabled={!catatan.trim()}
+        error={actionError}
+        onCancel={() => { setDialog(null); setCatatan('') }}
+        onConfirm={onReject}
+      >
+        <textarea className="input mt-3 min-h-24" placeholder="Catatan penolakan (wajib diisi)" value={catatan} onChange={(e) => setCatatan(e.target.value)} />
+      </ConfirmDialog>
     </div>
   )
 }
