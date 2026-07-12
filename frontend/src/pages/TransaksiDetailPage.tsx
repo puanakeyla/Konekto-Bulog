@@ -1,11 +1,14 @@
 import { useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { toast } from 'sonner'
 import api from '../lib/api'
+import { apiErrorMessage } from '../lib/apiError'
 import { useAuth } from '../hooks/useAuth'
 import { uploadSemuaFoto } from '../lib/uploadFoto'
 import FotoPicker from '../components/FotoPicker'
 import ConfirmDialog from '../components/ConfirmDialog'
+import { SkeletonTimeline } from '../components/Skeleton'
 
 type StageData = Record<string, unknown> & { status: string }
 
@@ -95,6 +98,14 @@ const MAKLOON_MPP_FOTO_FIELDS = [
 
 const UB_FOTO_FIELDS = [{ key: 'foto_lhpk_hpk', label: 'Foto LHPK/HPK' }]
 
+const FOTO_LABELS: Record<string, string> = Object.fromEntries(
+  [...JEMPUT_PANGAN_FOTO_FIELDS, ...MAKLOON_MPP_FOTO_FIELDS, ...MAKLOON_FOTO_FIELDS, ...UB_FOTO_FIELDS].map((f) => [f.key, f.label]),
+)
+
+function fotoLabel(key: string) {
+  return FOTO_LABELS[key] ?? key.replaceAll('_', ' ')
+}
+
 function photoFieldsFor(stageId: string, skema: 'TJP' | 'MPP') {
   if (stageId === 'jemput_pangan') return JEMPUT_PANGAN_FOTO_FIELDS
   if (stageId === 'makloon') return skema === 'MPP' ? MAKLOON_MPP_FOTO_FIELDS : MAKLOON_FOTO_FIELDS
@@ -158,19 +169,23 @@ export default function TransaksiDetailPage() {
   }
 
   const terima = useMutation({
-    mutationFn: () => api.post(`/api/transaksi/${encodeURIComponent(id!)}/terima`),
-    onSuccess: () => {
+    mutationFn: (_stageLabel: string) => api.post(`/api/transaksi/${encodeURIComponent(id!)}/terima`),
+    onSuccess: (_res, stageLabel) => {
       setCatatan('')
       invalidate()
+      toast.success(`Data ${stageLabel} diterima & dikunci.`)
     },
+    onError: (err) => toast.error(apiErrorMessage(err, 'Gagal menerima data tahap.')),
   })
 
   const tolak = useMutation({
-    mutationFn: () => api.post(`/api/transaksi/${encodeURIComponent(id!)}/tolak`, { catatan }),
-    onSuccess: () => {
+    mutationFn: (_stageLabel: string) => api.post(`/api/transaksi/${encodeURIComponent(id!)}/tolak`, { catatan }),
+    onSuccess: (_res, stageLabel) => {
       setCatatan('')
       invalidate()
+      toast.success(`Transaksi dikembalikan ke ${stageLabel} untuk direvisi.`)
     },
+    onError: (err) => toast.error(apiErrorMessage(err, 'Gagal menolak data tahap.')),
   })
 
   const simpanMakloon = useMutation({
@@ -185,7 +200,10 @@ export default function TransaksiDetailPage() {
     onSuccess: ({ gagal }) => {
       setFotoMakloonGagal(gagal)
       invalidate()
+      toast.success('Data Makloon dikirim, transaksi diteruskan ke UB Jastasma.')
+      gagal.forEach((f) => toast.error(`Foto "${fotoLabel(f)}" gagal diupload, coba ulangi.`))
     },
+    onError: (err) => toast.error(apiErrorMessage(err, 'Gagal menyimpan data Makloon.')),
   })
 
   const simpanUb = useMutation({
@@ -203,10 +221,13 @@ export default function TransaksiDetailPage() {
     onSuccess: ({ gagal }) => {
       setFotoUbGagal(gagal)
       invalidate()
+      toast.success('Data UB Jastasma dikirim, transaksi diteruskan ke Pengadaan.')
+      gagal.forEach((f) => toast.error(`Foto "${fotoLabel(f)}" gagal diupload, coba ulangi.`))
     },
+    onError: (err) => toast.error(apiErrorMessage(err, 'Gagal menyimpan data UB Jastasma.')),
   })
 
-  if (isLoading || !transaksi) return <div className="page-shell">Memuat...</div>
+  if (isLoading || !transaksi) return <SkeletonTimeline />
 
   const role = user?.role.nama_role
   const activeStages = stagesFor(transaksi.skema)
@@ -289,8 +310,8 @@ export default function TransaksiDetailPage() {
                         stageLabel={stage.label}
                         catatan={catatan}
                         setCatatan={setCatatan}
-                        onAccept={() => terima.mutate()}
-                        onReject={() => tolak.mutate()}
+                        onAccept={() => terima.mutate(stage.label)}
+                        onReject={() => tolak.mutate(stage.label)}
                         acceptPending={terima.isPending}
                         rejectPending={tolak.isPending}
                         actionError={actionError}

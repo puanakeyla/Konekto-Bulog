@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import api from '../lib/api'
+import { SkeletonMakloonGroups, SkeletonSebaranTahap } from '../components/Skeleton'
 
 type StageCount = { stage: string; label: string; total: number }
 type SebaranTahap = { skema: 'TJP' | 'MPP'; stages: StageCount[] }
@@ -61,7 +62,7 @@ export default function MonitoringPage() {
             <div className="toolbar-card mb-4">
               <div><h2 className="section-title">Sebaran Tahap Saat Ini</h2><p className="page-subtitle">Data tersambung ke GET /api/monitoring/sebaran-tahap.</p></div>
             </div>
-            {loadingSebaran && <p className="text-sm text-gray-400">Memuat sebaran tahap...</p>}
+            {loadingSebaran && <SkeletonSebaranTahap />}
             <div className="grid gap-4 lg:grid-cols-2">
               {(sebaran ?? []).map((item) => (
                 <div key={item.skema} className="rounded-lg border border-border p-4">
@@ -87,7 +88,7 @@ export default function MonitoringPage() {
               </div>
             </div>
             <input className="input mb-4" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Cari nama makloon" />
-            {loadingMakloon && <p className="text-sm text-gray-400">Memuat makloon...</p>}
+            {loadingMakloon && <SkeletonMakloonGroups />}
             {!loadingMakloon && filteredGroups.length === 0 && <div className="empty-state"><div className="empty-title">Tidak ada makloon sesuai filter</div></div>}
             <div className="space-y-4">
               {filteredGroups.map((group) => (

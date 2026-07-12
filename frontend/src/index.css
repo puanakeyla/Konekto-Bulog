@@ -24,6 +24,31 @@ body {
   color: var(--color-ink);
 }
 
+/*
+ * Tema toast (sonner) memakai token warna Konekto (Bagian 7.1), bukan default sonner.
+ * Sengaja UNLAYERED (di luar @layer) supaya menang atas CSS bawaan sonner yang juga unlayered.
+ */
+[data-sonner-toast].toast-konekto-success {
+  background: #EAFAF0;
+  border: 1px solid #1E6B4F;
+  color: #1E6B4F;
+}
+[data-sonner-toast].toast-konekto-success [data-icon],
+[data-sonner-toast].toast-konekto-success [data-title],
+[data-sonner-toast].toast-konekto-success [data-description] {
+  color: #1E6B4F;
+}
+[data-sonner-toast].toast-konekto-error {
+  background: #FDE8E8;
+  border: 1px solid #A13030;
+  color: #A13030;
+}
+[data-sonner-toast].toast-konekto-error [data-icon],
+[data-sonner-toast].toast-konekto-error [data-title],
+[data-sonner-toast].toast-konekto-error [data-description] {
+  color: #A13030;
+}
+
 @layer components {
   .page-shell {
     min-height: 100vh;

@@ -1,9 +1,11 @@
 import { useMemo, useState } from 'react'
 import { Link, Navigate } from 'react-router-dom'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { toast } from 'sonner'
 import api from '../lib/api'
 import { useAuth } from '../hooks/useAuth'
 import { useAdminRoles, useAdminUsers, type AdminUser } from '../hooks/useAdminUsers'
+import { Skeleton } from '../components/Skeleton'
 
 type UserForm = {
   username: string
@@ -45,7 +47,6 @@ export default function AdminUsersPage() {
   const [resetUser, setResetUser] = useState<AdminUser | null>(null)
   const [resetPassword, setResetPassword] = useState('')
   const [resetConfirmation, setResetConfirmation] = useState('')
-  const [notice, setNotice] = useState('')
 
   const selectedRole = useMemo(
     () => roles?.find((role) => String(role.id) === form.role_id),
@@ -72,27 +73,30 @@ export default function AdminUsersPage() {
       return api.post('/api/admin/users', payload)
     },
     onSuccess: () => {
+      toast.success(`User ${form.username} ${editing ? 'diperbarui' : 'ditambahkan'}.`)
       setForm(emptyForm)
       setEditing(null)
-      setNotice(editing ? 'User berhasil diperbarui.' : 'User berhasil ditambahkan.')
       queryClient.invalidateQueries({ queryKey: ['admin-users'] })
     },
+    onError: (err) => toast.error(errorMessage(err)),
   })
 
   const deactivateMutation = useMutation({
     mutationFn: (target: AdminUser) => api.patch(`/api/admin/users/${target.id}/deactivate`),
-    onSuccess: () => {
-      setNotice('User berhasil dinonaktifkan.')
+    onSuccess: (_data, target) => {
+      toast.success(`User ${target.username} dinonaktifkan.`)
       queryClient.invalidateQueries({ queryKey: ['admin-users'] })
     },
+    onError: (err) => toast.error(errorMessage(err)),
   })
 
   const deleteMutation = useMutation({
     mutationFn: (target: AdminUser) => api.delete(`/api/admin/users/${target.id}`),
-    onSuccess: () => {
-      setNotice('User berhasil dihapus.')
+    onSuccess: (_data, target) => {
+      toast.success(`User ${target.username} dihapus.`)
       queryClient.invalidateQueries({ queryKey: ['admin-users'] })
     },
+    onError: (err) => toast.error(errorMessage(err)),
   })
 
   const resetMutation = useMutation({
@@ -102,11 +106,12 @@ export default function AdminUsersPage() {
         password_confirmation: resetConfirmation,
       }),
     onSuccess: () => {
+      toast.success(`Password ${resetUser?.username} direset.`)
       setResetUser(null)
       setResetPassword('')
       setResetConfirmation('')
-      setNotice('Password berhasil direset.')
     },
+    onError: (err) => toast.error(errorMessage(err)),
   })
 
   if (user?.role.nama_role !== 'admin') return <Navigate to="/" replace />
@@ -123,7 +128,6 @@ export default function AdminUsersPage() {
       kabupaten: target.kabupaten ?? '',
       is_active: target.is_active,
     })
-    setNotice('')
   }
 
   const cancelEdit = () => {
@@ -150,7 +154,6 @@ export default function AdminUsersPage() {
             {editing ? `Edit User ${editing.username}` : 'Tambah User'}
           </h2>
 
-          {notice && <div className="mb-4 rounded-lg bg-success-bg px-3 py-2 text-sm text-success">{notice}</div>}
           {saveMutation.error && (
             <div className="alert-danger mb-4">
               {errorMessage(saveMutation.error)}
@@ -301,13 +304,11 @@ export default function AdminUsersPage() {
               </tr>
             </thead>
             <tbody>
-              {loadingUsers && (
-                <tr>
-                  <td className="px-4 py-3 text-gray-400" colSpan={5}>
-                    Memuat user...
-                  </td>
+              {loadingUsers && Array.from({ length: 4 }, (_, i) => (
+                <tr key={i} className="border-t border-border">
+                  <td className="px-4 py-3" colSpan={5}><Skeleton className="h-4 w-full" /></td>
                 </tr>
-              )}
+              ))}
               {!loadingUsers && users?.length === 0 && (
                 <tr>
                   <td className="px-4 py-3 text-gray-400" colSpan={5}>

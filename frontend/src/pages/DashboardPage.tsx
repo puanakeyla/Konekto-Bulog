@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 import { useTransaksiList, type TransaksiListItem } from '../hooks/useTransaksiList'
+import { SkeletonMakloonGroups, SkeletonTable } from '../components/Skeleton'
 
 type SkemaFilter = 'semua' | 'TJP' | 'MPP'
 
@@ -110,7 +111,7 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {isLoading && <div className="panel px-4 py-3 text-sm text-gray-400">Memuat...</div>}
+        {isLoading && (useGrouped ? <SkeletonMakloonGroups /> : <SkeletonTable />)}
         {!isLoading && filteredTransaksi.length === 0 && <div className="panel px-4 py-3 text-sm text-gray-400">Tidak ada transaksi untuk filter ini.</div>}
 
         {!isLoading && filteredTransaksi.length > 0 && (

@@ -1,7 +1,9 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useMutation } from '@tanstack/react-query'
+import { toast } from 'sonner'
 import api from '../lib/api'
+import { apiErrorMessage } from '../lib/apiError'
 import { uploadSemuaFoto } from '../lib/uploadFoto'
 import MakloonCombobox from '../components/MakloonCombobox'
 import FotoPicker from '../components/FotoPicker'
@@ -43,6 +45,8 @@ const FOTO_FIELDS: { key: string; label: string }[] = [
   { key: 'foto_surat_jalan', label: 'Foto Surat Jalan' },
 ]
 
+const fotoLabel = (key: string) => FOTO_FIELDS.find((f) => f.key === key)?.label ?? key
+
 export default function TransaksiJemputPanganPage() {
   const navigate = useNavigate()
   const [form, setForm] = useState<FormState>(initialState)
@@ -67,10 +71,13 @@ export default function TransaksiJemputPanganPage() {
 
       return { idTransaksi, gagal }
     },
-    onSuccess: ({ gagal }) => {
+    onSuccess: ({ idTransaksi, gagal }) => {
       setFotoGagal(gagal)
+      toast.success(`Transaksi ${idTransaksi} dibuat & dikirim ke Makloon.`)
+      gagal.forEach((f) => toast.error(`Foto "${fotoLabel(f)}" gagal diupload, coba ulangi.`))
       if (gagal.length === 0) navigate('/')
     },
+    onError: (err) => toast.error(apiErrorMessage(err, 'Gagal membuat transaksi Jemput Pangan.')),
   })
 
   const setField = <K extends keyof FormState>(key: K, value: FormState[K]) =>

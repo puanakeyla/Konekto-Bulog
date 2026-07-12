@@ -4,6 +4,9 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import api from '../lib/api'
 import { usePoList, type PoItem } from '../hooks/usePoList'
 import ConfirmDialog from '../components/ConfirmDialog'
+import { toast } from 'sonner'
+import { apiErrorMessage } from '../lib/apiError'
+import { SkeletonPoCards } from '../components/Skeleton'
 
 type FormState = {
   no_mo: string
@@ -63,7 +66,7 @@ export default function OperasiPage() {
               <span className="badge badge-warning">{menungguOperasi.length} antrean</span>
             </div>
 
-            {isLoading && <p className="text-sm text-gray-400">Memuat PO...</p>}
+            {isLoading && <SkeletonPoCards />}
             {!isLoading && menungguOperasi.length === 0 && (
               <div className="empty-state"><div className="empty-title">Tidak ada PO yang menunggu data Operasi</div><p className="empty-copy">PO baru muncul setelah Keuangan menandai pembayaran sebagai dibayarkan.</p></div>
             )}
@@ -106,7 +109,12 @@ function OperasiForm({ po }: { po: PoItem }) {
         katul_persen: form.katul_persen ? Number(form.katul_persen) : undefined,
         rendemen_persen: form.rendemen_persen ? Number(form.rendemen_persen) : undefined,
       }),
-    onSuccess: () => { setConfirmOperasi(false); queryClient.invalidateQueries({ queryKey: ['po-list'] }) },
+    onSuccess: () => {
+      setConfirmOperasi(false)
+      queryClient.invalidateQueries({ queryKey: ['po-list'] })
+      toast.success(`Data Operasi PO ${po.no_po} tersimpan, diteruskan ke Gudang.`)
+    },
+    onError: (err) => toast.error(apiErrorMessage(err, 'Gagal menyimpan data Operasi.')),
   })
 
   const setField = <K extends keyof FormState>(key: K, value: FormState[K]) => setForm((prev) => ({ ...prev, [key]: value }))

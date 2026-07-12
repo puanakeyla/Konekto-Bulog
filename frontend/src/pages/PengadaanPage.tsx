@@ -1,10 +1,13 @@
 import { useMemo, useState, type Dispatch, type SetStateAction } from 'react'
 import { Link } from 'react-router-dom'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { toast } from 'sonner'
 import api from '../lib/api'
+import { apiErrorMessage } from '../lib/apiError'
 import { useTransaksiList, type TransaksiListItem } from '../hooks/useTransaksiList'
 import { usePoList, type PoItem } from '../hooks/usePoList'
 import ConfirmDialog from '../components/ConfirmDialog'
+import { SkeletonPoCards, SkeletonTable } from '../components/Skeleton'
 
 function groupKeyOf(t: TransaksiListItem) {
   if (t.data_makloon_mpp) {
@@ -75,6 +78,7 @@ export default function PengadaanPage() {
         harga: harga ? Number(harga) : undefined,
       }),
     onSuccess: () => {
+      toast.success(`PO ${noPo} dibuat dari ${selected.size} transaksi, diteruskan ke Keuangan.`)
       setConfirmGabung(false)
       setSelected(new Set())
       setNoPo('')
@@ -82,6 +86,7 @@ export default function PengadaanPage() {
       queryClient.invalidateQueries({ queryKey: ['transaksi-list'] })
       queryClient.invalidateQueries({ queryKey: ['po-list'] })
     },
+    onError: (err) => toast.error(apiErrorMessage(err, 'Gagal menggabungkan PO.')),
   })
 
   const errorMessage =
@@ -125,7 +130,7 @@ export default function PengadaanPage() {
             </div>
 
             {errorMessage && <div className="alert-danger mb-4">{errorMessage}</div>}
-            {loadingTransaksi && <p className="text-sm text-gray-400">Memuat transaksi...</p>}
+            {loadingTransaksi && <SkeletonTable cols={6} />}
             {!loadingTransaksi && transaksiList.length === 0 && (
               <div className="empty-state">
                 <div className="empty-title">Belum ada transaksi siap digabung</div>
@@ -196,7 +201,7 @@ export default function PengadaanPage() {
               <span className="badge badge-warning">{poBelumLengkap.length} PO proses</span>
             </div>
 
-            {loadingPo && <p className="text-sm text-gray-400">Memuat PO...</p>}
+            {loadingPo && <SkeletonPoCards />}
             {!loadingPo && poBelumLengkap.length === 0 && (
               <div className="empty-state"><div className="empty-title">Tidak ada PO yang menunggu nomor IN</div><p className="empty-copy">PO yang sudah lengkap otomatis lanjut ke antrean Keuangan.</p></div>
             )}
@@ -229,6 +234,7 @@ function PoInForm({ po }: { po: PoItem }) {
   const [hargaPo, setHargaPo] = useState(String(Number(po.harga)))
   const [statusPo, setStatusPo] = useState(po.status)
   const [confirmIn, setConfirmIn] = useState(false)
+  const [confirmBatal, setConfirmBatal] = useState(false)
 
   const mutation = useMutation({
     mutationFn: () =>
@@ -237,17 +243,35 @@ function PoInForm({ po }: { po: PoItem }) {
           .filter(([, no_in]) => no_in.trim() !== '')
           .map(([po_detail_id, no_in]) => ({ po_detail_id: Number(po_detail_id), no_in })),
       }),
-    onSuccess: () => {
+    onSuccess: (res) => {
       setConfirmIn(false)
       setValues({})
       queryClient.invalidateQueries({ queryKey: ['po-list'] })
+      const lengkap = (res.data as { data?: { status?: string } })?.data?.status === 'lengkap'
+      toast.success(lengkap ? `PO ${po.no_po} lengkap, diteruskan ke Keuangan.` : `Nomor IN PO ${po.no_po} tersimpan.`)
     },
+    onError: (err) => toast.error(apiErrorMessage(err, 'Gagal menyimpan nomor IN.')),
   })
 
   const updatePo = useMutation({
     mutationFn: () => api.patch(`/api/po/${po.id}`, { harga: Number(hargaPo), status: statusPo }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['po-list'] }),
+    onSuccess: () => {
+      setConfirmBatal(false)
+      queryClient.invalidateQueries({ queryKey: ['po-list'] })
+      toast.success(statusPo === 'dibatalkan' ? `PO ${po.no_po} dibatalkan.` : `PO ${po.no_po} diperbarui.`)
+    },
+    onError: (err) => toast.error(apiErrorMessage(err, 'Gagal memperbarui PO.')),
   })
+
+  // Harga bisa diubah bebas (tanpa dialog); khusus perubahan status ke 'dibatalkan'
+  // wajib konfirmasi karena membatalkan PO tidak bisa diurungkan lewat UI ini.
+  const submitUpdatePo = () => {
+    if (statusPo === 'dibatalkan' && po.status !== 'dibatalkan') {
+      setConfirmBatal(true)
+      return
+    }
+    updatePo.mutate()
+  }
 
   const errorMessage =
     ((mutation.error || updatePo.error) as { response?: { data?: { message?: string } } } | null)?.response?.data?.message
@@ -266,7 +290,7 @@ function PoInForm({ po }: { po: PoItem }) {
         <div className="form-grid">
           <label className="block"><span className="label">Harga per kg</span><input className="input" type="number" step="0.01" min="0" value={hargaPo} onChange={(e) => setHargaPo(e.target.value)} /></label>
           <label className="block"><span className="label">Status</span><select className="input" value={statusPo} onChange={(e) => setStatusPo(e.target.value as PoItem['status'])}><option value="proses">Proses</option><option value="lengkap">Lengkap</option><option value="dibatalkan">Dibatalkan</option></select></label>
-          <div className="form-grid-full flex justify-end"><button type="button" disabled={!hargaPo || updatePo.isPending} onClick={() => updatePo.mutate()} className="btn btn-primary">{updatePo.isPending ? 'Menyimpan...' : 'Update PO'}</button></div>
+          <div className="form-grid-full flex justify-end"><button type="button" disabled={!hargaPo || updatePo.isPending} onClick={submitUpdatePo} className="btn btn-primary">{updatePo.isPending ? 'Menyimpan...' : 'Update PO'}</button></div>
         </div>
       </div>
       <div className="data-table-wrap mb-3">
@@ -294,6 +318,17 @@ function PoInForm({ po }: { po: PoItem }) {
         error={errorMessage}
         onCancel={() => setConfirmIn(false)}
         onConfirm={() => mutation.mutate()}
+      />
+
+      <ConfirmDialog
+        open={confirmBatal}
+        title="Batalkan PO ini?"
+        description={<>PO <strong>{po.no_po}</strong> akan ditandai <strong>dibatalkan</strong> dan keluar dari alur pengadaan. Tindakan ini tidak bisa diurungkan dari layar ini. Lanjutkan?</>}
+        confirmLabel="Batalkan PO"
+        confirmVariant="danger"
+        loading={updatePo.isPending}
+        onCancel={() => setConfirmBatal(false)}
+        onConfirm={() => updatePo.mutate()}
       />
     </form>
   )

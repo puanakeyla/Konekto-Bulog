@@ -4,6 +4,9 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import api from '../lib/api'
 import { usePoList, type PoItem } from '../hooks/usePoList'
 import ConfirmDialog from '../components/ConfirmDialog'
+import { toast } from 'sonner'
+import { apiErrorMessage } from '../lib/apiError'
+import { SkeletonPoCards } from '../components/Skeleton'
 
 type FormState = {
   tanggal_masuk: string
@@ -57,7 +60,7 @@ export default function GudangPage() {
               <span className="badge badge-warning">{menungguGudang.length} antrean</span>
             </div>
 
-            {isLoading && <p className="text-sm text-gray-400">Memuat PO...</p>}
+            {isLoading && <SkeletonPoCards />}
             {!isLoading && menungguGudang.length === 0 && (
               <div className="empty-state"><div className="empty-title">Tidak ada PO yang menunggu penerimaan Gudang</div><p className="empty-copy">PO baru muncul setelah Operasi menyimpan data MO/TM.</p></div>
             )}
@@ -97,7 +100,12 @@ function GudangForm({ po }: { po: PoItem }) {
         realisasi_hgl: form.realisasi_hgl ? Number(form.realisasi_hgl) : undefined,
         no_tm: form.no_tm,
       }),
-    onSuccess: () => { setConfirmGudang(false); queryClient.invalidateQueries({ queryKey: ['po-list'] }) },
+    onSuccess: () => {
+      setConfirmGudang(false)
+      queryClient.invalidateQueries({ queryKey: ['po-list'] })
+      toast.success(`Penerimaan PO ${po.no_po} tercatat, alur transaksi selesai.`)
+    },
+    onError: (err) => toast.error(apiErrorMessage(err, 'Gagal menyimpan penerimaan Gudang.')),
   })
 
   const setField = <K extends keyof FormState>(key: K, value: FormState[K]) => setForm((prev) => ({ ...prev, [key]: value }))

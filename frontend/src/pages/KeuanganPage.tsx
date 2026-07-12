@@ -4,6 +4,9 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import api from '../lib/api'
 import { usePoList, type PoItem } from '../hooks/usePoList'
 import ConfirmDialog from '../components/ConfirmDialog'
+import { toast } from 'sonner'
+import { apiErrorMessage } from '../lib/apiError'
+import { SkeletonPoCards } from '../components/Skeleton'
 
 function formatNumber(value: string | number) {
   return Number(value).toLocaleString('id-ID', { maximumFractionDigits: 2 })
@@ -47,7 +50,7 @@ export default function KeuanganPage() {
               <span className="badge badge-warning">{belumDibayar.length} antrean</span>
             </div>
 
-            {isLoading && <p className="text-sm text-gray-400">Memuat PO...</p>}
+            {isLoading && <SkeletonPoCards />}
             {!isLoading && belumDibayar.length === 0 && (
               <div className="empty-state"><div className="empty-title">Tidak ada PO yang menunggu pembayaran</div><p className="empty-copy">PO baru muncul setelah Pengadaan mengisi seluruh nomor IN.</p></div>
             )}
@@ -82,7 +85,12 @@ function PembayaranForm({ po }: { po: PoItem }) {
 
   const mutation = useMutation({
     mutationFn: () => api.patch(`/api/po/${po.id}/pembayaran`, { status_bayar: 'dibayarkan', tanggal_bayar: tanggalBayar, no_spp: noSpp || undefined }),
-    onSuccess: () => { setConfirmBayar(false); queryClient.invalidateQueries({ queryKey: ['po-list'] }) },
+    onSuccess: () => {
+      setConfirmBayar(false)
+      queryClient.invalidateQueries({ queryKey: ['po-list'] })
+      toast.success(`PO ${po.no_po} ditandai dibayarkan, diteruskan ke Operasi.`)
+    },
+    onError: (err) => toast.error(apiErrorMessage(err, 'Gagal menyimpan pembayaran.')),
   })
 
   const errorMessage = (mutation.error as { response?: { data?: { message?: string } } } | null)?.response?.data?.message
