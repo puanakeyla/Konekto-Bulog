@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Resources\DataPengadaanResource;
 use App\Models\DataPengadaan;
 use App\Services\Pengadaan\PoGroupingService;
 use App\Services\Pengadaan\PoLifecycleService;
@@ -23,14 +24,14 @@ class PengadaanController extends Controller
             ->orderByDesc('created_at')
             ->paginate($request->integer('per_page', 20));
 
-        return response()->json(['data' => $dataPengadaan]);
+        return DataPengadaanResource::collection($dataPengadaan);
     }
 
     public function show(Request $request, DataPengadaan $dataPengadaan)
     {
         $dataPengadaan->load(['poDetail', 'dataKeuangan', 'dataOperasi.dataGudang', 'makloon']);
 
-        return response()->json(['data' => $dataPengadaan]);
+        return response()->json(['data' => new DataPengadaanResource($dataPengadaan)]);
     }
 
     public function gabungkanPo(Request $request)

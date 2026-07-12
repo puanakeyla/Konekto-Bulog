@@ -50,8 +50,11 @@ class PoListingTest extends TestCase
         $response = $this->getJson('/api/po');
 
         $response->assertOk();
+        // /api/po memakai ResourceCollection: item di `data.*` dan metadata di `meta.*`,
+        // seragam dengan /api/transaksi.
         $response->assertJsonPath('data.0.no_po', 'PO-LIST-001');
         $response->assertJsonPath('data.0.status', 'proses');
+        $response->assertJsonPath('meta.total', 1);
     }
 
     public function test_get_po_ditolak_untuk_role_selain_pengadaan_keuangan_operasi_gudang_admin(): void

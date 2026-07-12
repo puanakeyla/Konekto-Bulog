@@ -2,6 +2,7 @@
 
 namespace App\Services\Transaksi;
 
+use App\Models\NomorUrutTransaksi;
 use App\Models\Transaksi;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Model;
@@ -129,17 +130,64 @@ class TransaksiStageService
         }
     }
 
+    /**
+     * Nomor urut diambil dari counter atomik per (skema, tahun, bulan), bukan dari
+     * count(created_at)+1 yang rawan race (dua create bersamaan bisa membaca angka sama)
+     * dan ikut mengecil kalau ada transaksi dihapus/dibatalkan sehingga bisa memproduksi
+     * id yang bertabrakan dengan yang sudah ada. Dipanggil di dalam DB::transaction milik
+     * createTransaksi(), jadi lockForUpdate menahan baris counter sampai insert transaksi
+     * commit -- request lain menunggu lalu membaca nilai terbaru.
+     */
     private function generateIdTransaksi(string $skema): string
     {
         $month = (int) now()->format('m');
         $year = (int) now()->format('Y');
 
-        $count = Transaksi::where('skema', $skema)
-            ->whereYear('created_at', $year)
-            ->whereMonth('created_at', $month)
-            ->lockForUpdate()
-            ->count();
+        // insertOrIgnore memastikan baris counter ada tanpa melempar exception kalau dua
+        // request pertama di bulan itu sama-sama mencoba membuatnya (dijaga unique key).
+        NomorUrutTransaksi::insertOrIgnore([
+            'skema' => $skema,
+            'tahun' => $year,
+            'bulan' => $month,
+            'urut' => 0,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
 
-        return sprintf('%05d/%02d/%04d/%s', $count + 1, $month, $year, $skema);
+        $counter = NomorUrutTransaksi::where('skema', $skema)
+            ->where('tahun', $year)
+            ->where('bulan', $month)
+            ->lockForUpdate()
+            ->first();
+
+        // Kalau counter baru dibuat (urut masih 0), selaraskan dengan nomor tertinggi yang
+        // mungkin sudah ada -- mis. data lama yang dibuat sebelum counter ini diterapkan,
+        // atau saat deploy ke DB yang sudah berisi transaksi. Tanpa ini, bulan yang sudah
+        // punya transaksi akan mengulang 00001 dan bentrok PK. Hanya jalan sekali di awal
+        // tiap (skema, bulan), di dalam lockForUpdate jadi tetap aman terhadap race.
+        if ($counter->urut === 0) {
+            $counter->urut = $this->nomorUrutTertinggiTerpakai($skema, $year, $month);
+        }
+
+        $counter->urut += 1;
+        $counter->save();
+
+        return sprintf('%05d/%02d/%04d/%s', $counter->urut, $month, $year, $skema);
+    }
+
+    /**
+     * Nomor urut terbesar yang sudah terpakai untuk (skema, tahun, bulan) dari id_transaksi
+     * yang ada. Prefix 5 digit di-zero-pad sehingga urutan leksikografis id sama dengan
+     * urutan numerik untuk suffix yang identik -- cukup ambil id terbesar lalu baca prefix-nya.
+     */
+    private function nomorUrutTertinggiTerpakai(string $skema, int $year, int $month): int
+    {
+        $suffix = sprintf('/%02d/%04d/%s', $month, $year, $skema);
+
+        $terakhir = Transaksi::where('id_transaksi', 'like', '%'.$suffix)
+            ->orderByDesc('id_transaksi')
+            ->value('id_transaksi');
+
+        return $terakhir ? (int) substr($terakhir, 0, 5) : 0;
     }
 }

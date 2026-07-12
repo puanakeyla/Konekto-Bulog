@@ -55,34 +55,16 @@ export type PoItem = {
   data_operasi: DataOperasi | null
 }
 
-type LaravelPaginator<T> = {
-  data: T[]
-  current_page: number
-  last_page: number
-  per_page: number
-  total: number
-  from: number | null
-  to: number | null
-}
-
 export function usePoList(page = 1, perPage = 20) {
   return useQuery({
     queryKey: ['po-list', page, perPage],
     queryFn: async () => {
-      const { data } = await api.get<{ data: LaravelPaginator<PoItem> }>('/api/po', {
+      // /api/po memakai ResourceCollection, sama seperti /api/transaksi:
+      // item ada di `data`, metadata pagination di `meta`.
+      const { data } = await api.get<{ data: PoItem[]; meta: PaginationMeta }>('/api/po', {
         params: { page, per_page: perPage },
       })
-      const paginator = data.data
-      const meta: PaginationMeta = {
-        current_page: paginator.current_page,
-        last_page: paginator.last_page,
-        per_page: paginator.per_page,
-        total: paginator.total,
-        from: paginator.from,
-        to: paginator.to,
-      }
-
-      return { items: paginator.data, meta }
+      return { items: data.data, meta: data.meta }
     },
   })
 }
