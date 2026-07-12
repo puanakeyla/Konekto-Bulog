@@ -28,6 +28,7 @@ class TransaksiResource extends JsonResource
             'data_makloon_mpp' => $this->whenLoaded('dataMakloonMpp'),
             'data_makloon_tjp' => $this->whenLoaded('dataMakloonTjp'),
             'data_ub_jastasma' => $this->whenLoaded('dataUbJastasma'),
+            'riwayat_penolakan' => RiwayatPenolakanResource::collection($this->whenLoaded('riwayatPenolakan')),
         ];
     }
 

@@ -32,7 +32,16 @@ class TransaksiController extends Controller
 
     public function show(Request $request, Transaksi $transaksi)
     {
-        $transaksi->load(['dataJemputPangan.makloon', 'dataMakloonMpp', 'dataMakloonTjp', 'dataUbJastasma', 'creator']);
+        $transaksi->load([
+            'dataJemputPangan.makloon',
+            'dataMakloonMpp',
+            'dataMakloonTjp',
+            'dataUbJastasma',
+            'creator',
+            'riwayatPenolakan.penolak',
+        ]);
+
+        $transaksi->setRelation('riwayatPenolakan', $transaksi->riwayatPenolakan->sortBy('ditolak_pada')->values());
 
         return response()->json(['data' => new TransaksiResource($transaksi)]);
     }

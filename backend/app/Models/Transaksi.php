@@ -65,4 +65,14 @@ class Transaksi extends Model
     {
         return $this->hasMany(PoDetail::class, 'transaksi_id', 'id_transaksi');
     }
+
+    public function riwayatPenolakan(): HasMany
+    {
+        return $this->hasMany(RiwayatPenolakan::class, 'transaksi_id', 'id_transaksi');
+    }
+
+    public function auditLogs(): HasMany
+    {
+        return $this->hasMany(AuditLog::class, 'transaksi_id', 'id_transaksi');
+    }
 }

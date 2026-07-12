@@ -3,13 +3,19 @@
 namespace App\Services\Transaksi;
 
 use App\Models\NomorUrutTransaksi;
+use App\Models\RiwayatPenolakan;
 use App\Models\Transaksi;
 use App\Models\User;
+use App\Services\AuditLogService;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
 
 class TransaksiStageService
 {
+    public function __construct(private AuditLogService $auditLog)
+    {
+    }
+
     public function createTransaksi(User $creator): Transaksi
     {
         $role = $creator->role->nama_role;
@@ -67,6 +73,12 @@ class TransaksiStageService
             $record->submitted_at = now();
             $record->save();
 
+            $this->auditLog->log($actor, 'submit_stage', $transaksi->id_transaksi, [
+                'stage' => $role,
+                'skema' => $transaksi->skema,
+                'model' => class_basename($record),
+            ]);
+
             $next = TransaksiStages::stageAt($transaksi->skema, $index + 1);
             if ($next) {
                 $transaksi->current_stage = $next['role'];
@@ -86,6 +98,12 @@ class TransaksiStageService
         $record->locked_by = $actor->id;
         $record->save();
 
+        $this->auditLog->log($actor, 'terima', $transaksi->id_transaksi, [
+            'stage' => $prevStage['role'],
+            'review_stage' => $transaksi->current_stage,
+            'model' => class_basename($record),
+        ]);
+
         return $record;
     }
 
@@ -93,14 +111,31 @@ class TransaksiStageService
     {
         [$index, $prevStage, $record] = $this->pendingReview($transaksi, $actor);
 
-        $record->status = 'ditolak';
-        $record->catatan_penolakan = $catatan;
-        $record->save();
+        return DB::transaction(function () use ($transaksi, $actor, $catatan, $prevStage, $record) {
+            RiwayatPenolakan::create([
+                'transaksi_id' => $transaksi->id_transaksi,
+                'tahap' => $prevStage['role'],
+                'catatan' => $catatan,
+                'ditolak_oleh' => $actor->id,
+                'ditolak_pada' => now(),
+            ]);
 
-        $transaksi->current_stage = $prevStage['role'];
-        $transaksi->save();
+            $record->status = 'ditolak';
+            $record->catatan_penolakan = $catatan;
+            $record->save();
 
-        return $record;
+            $this->auditLog->log($actor, 'tolak', $transaksi->id_transaksi, [
+                'stage' => $prevStage['role'],
+                'review_stage' => $transaksi->current_stage,
+                'model' => class_basename($record),
+                'catatan' => $catatan,
+            ]);
+
+            $transaksi->current_stage = $prevStage['role'];
+            $transaksi->save();
+
+            return $record;
+        });
     }
 
     private function pendingReview(Transaksi $transaksi, User $actor): array
