@@ -1,4 +1,3 @@
-import imageCompression from 'browser-image-compression'
 import api from './api'
 
 // Target ~1-2MB per foto sebelum upload (Bagian 6). Resolusi sisi terpanjang dijaga
@@ -10,7 +9,46 @@ const OPSI_KOMPRESI = {
   maxSizeMB: 1.5,
   maxWidthOrHeight: 2048,
   initialQuality: 0.8,
-  useWebWorker: true,
+}
+
+function muatGambar(file: File): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file)
+    const img = new Image()
+    img.onload = () => {
+      URL.revokeObjectURL(url)
+      resolve(img)
+    }
+    img.onerror = () => {
+      URL.revokeObjectURL(url)
+      reject(new Error('Gagal membaca gambar.'))
+    }
+    img.src = url
+  })
+}
+
+async function kompresGambarBrowser(file: File): Promise<File> {
+  const img = await muatGambar(file)
+  const rasio = Math.min(1, OPSI_KOMPRESI.maxWidthOrHeight / Math.max(img.naturalWidth, img.naturalHeight))
+  const width = Math.max(1, Math.round(img.naturalWidth * rasio))
+  const height = Math.max(1, Math.round(img.naturalHeight * rasio))
+  const canvas = document.createElement('canvas')
+  canvas.width = width
+  canvas.height = height
+
+  const ctx = canvas.getContext('2d')
+  if (!ctx) return file
+
+  ctx.drawImage(img, 0, 0, width, height)
+
+  const type = file.type === 'image/png' ? 'image/png' : 'image/jpeg'
+  const blob = await new Promise<Blob | null>((resolve) => {
+    canvas.toBlob(resolve, type, OPSI_KOMPRESI.initialQuality)
+  })
+
+  if (!blob || blob.size >= file.size) return file
+
+  return new File([blob], file.name, { type })
 }
 
 /**
@@ -24,9 +62,7 @@ async function kompresFoto(file: File): Promise<File> {
   if (file.size <= OPSI_KOMPRESI.maxSizeMB * 1024 * 1024) return file
 
   try {
-    const compressed = await imageCompression(file, OPSI_KOMPRESI)
-    // Bungkus ulang jadi File dengan nama & tipe yang dikenali server (jpeg/png).
-    return new File([compressed], file.name, { type: compressed.type || file.type })
+    return await kompresGambarBrowser(file)
   } catch {
     return file
   }
