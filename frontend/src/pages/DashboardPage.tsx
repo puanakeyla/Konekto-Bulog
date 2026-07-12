@@ -10,6 +10,42 @@ type SkemaFilter = 'semua' | 'TJP' | 'MPP'
 // Semua role operasional + Admin, KECUALI Makloon (dia hanya melihat transaksinya sendiri).
 const GROUPED_ROLES = new Set(['jemput_pangan', 'ub_jastasma', 'pengadaan', 'keuangan', 'operasi', 'gudang', 'admin'])
 
+// Label ramah + kalimat pembuka per role untuk hero sambutan dashboard.
+const ROLE_LABEL: Record<string, string> = {
+  admin: 'Administrator',
+  jemput_pangan: 'Jemput Pangan',
+  ub_jastasma: 'UB Jastasma',
+  pengadaan: 'Pengadaan',
+  keuangan: 'Keuangan',
+  operasi: 'Operasi',
+  gudang: 'Gudang',
+  makloon: 'Makloon',
+}
+
+const ROLE_SUBTITLE: Record<string, string> = {
+  jemput_pangan: 'Jemput gabah dari petani dan kirim ke makloon. Setiap transaksi yang kamu buat menggerakkan rantai serap pangan Lampung.',
+  ub_jastasma: 'Tinjau UB & jastasma tiap transaksi sebelum masuk tahap pengadaan.',
+  pengadaan: 'Tinjau transaksi masuk dan terbitkan PO untuk melanjutkan proses serap.',
+  keuangan: 'Proses pembayaran PO tepat waktu agar rantai serap terus berjalan.',
+  operasi: 'Catat data operasi lapangan supaya progres tiap transaksi selalu terpantau.',
+  gudang: 'Konfirmasi penerimaan gabah di gudang sebagai penutup alur serap.',
+  admin: 'Pantau seluruh alur TJP dan MPP dari input awal sampai penerimaan gudang.',
+  makloon: 'Kelola bongkar dan proses gabah dari mitra dengan rapi dan tepat waktu.',
+}
+
+// Tombol aksi utama per role -- kondisi identik dengan versi lama, hanya dipindah ke hero.
+function buildActions(role: string): { to: string; label: string }[] {
+  const a: { to: string; label: string }[] = []
+  if (role === 'admin') a.push({ to: '/admin/users', label: 'Kelola User' }, { to: '/monitoring', label: 'Monitoring' })
+  if (role === 'jemput_pangan') a.push({ to: '/transaksi/baru', label: 'Buat Transaksi Jemput Pangan' })
+  if (role === 'makloon') a.push({ to: '/transaksi/baru-mpp', label: 'Buat Baru (MPP)' })
+  if (role === 'pengadaan' || role === 'admin') a.push({ to: '/pengadaan', label: 'Kelola Pengadaan' })
+  if (role === 'keuangan' || role === 'admin') a.push({ to: '/keuangan', label: 'Kelola Pembayaran PO' })
+  if (role === 'operasi' || role === 'admin') a.push({ to: '/operasi', label: 'Input Data Operasi' })
+  if (role === 'gudang' || role === 'admin') a.push({ to: '/gudang', label: 'Input Penerimaan Gudang' })
+  return a
+}
+
 type MakloonGroup = {
   nama: string
   lokasi: string
@@ -61,7 +97,7 @@ function StatusBadge({ status }: { status: string }) {
 }
 
 export default function DashboardPage() {
-  const { user, logout } = useAuth()
+  const { user } = useAuth()
   const [page, setPage] = useState(1)
   const { data: transaksiPage, isLoading } = useTransaksiList(page)
   const [skemaFilter, setSkemaFilter] = useState<SkemaFilter>('semua')
@@ -74,27 +110,81 @@ export default function DashboardPage() {
   const useGrouped = !!user && GROUPED_ROLES.has(user.role.nama_role)
   const makloonGroups = useMemo(() => groupByMakloon(filteredTransaksi), [filteredTransaksi])
 
-  return (
-    <div className="page-shell">
-      <div className="page-container">
-        <div className="page-header">
-          <div>
-            <h1 className="page-title">Dashboard Konekto</h1>
-            <p className="page-subtitle">Masuk sebagai <strong>{user?.username}</strong> ({user?.role.nama_role})</p>
-          </div>
-          <button onClick={() => logout()} className="btn btn-outline-danger">Keluar</button>
-        </div>
+  // Ringkasan dihitung dari data yang sudah di-fetch (tanpa endpoint baru).
+  const total = meta?.total ?? transaksi.length
+  const berjalan = useMemo(() => transaksi.filter((t) => t.status_keseluruhan === 'berjalan').length, [transaksi])
+  const selesai = useMemo(() => transaksi.filter((t) => t.status_keseluruhan === 'selesai').length, [transaksi])
+  const makloonTerhubung = useMemo(
+    () => new Set(transaksi.map((t) => t.nama_maklon ?? 'Tanpa makloon')).size,
+    [transaksi],
+  )
 
-        <div className="mb-5 flex flex-wrap gap-3">
-          {user?.role.nama_role === 'admin' && <Link to="/admin/users" className="btn btn-primary">Kelola User</Link>}
-          {user?.role.nama_role === 'admin' && <Link to="/monitoring" className="btn btn-primary">Monitoring</Link>}
-          {user?.role.nama_role === 'jemput_pangan' && <Link to="/transaksi/baru" className="btn btn-primary">Buat Transaksi Jemput Pangan</Link>}
-          {user?.role.nama_role === 'makloon' && <Link to="/transaksi/baru-mpp" className="btn btn-primary">Buat Baru (MPP)</Link>}
-          {(user?.role.nama_role === 'pengadaan' || user?.role.nama_role === 'admin') && <Link to="/pengadaan" className="btn btn-primary">Kelola Pengadaan</Link>}
-          {(user?.role.nama_role === 'keuangan' || user?.role.nama_role === 'admin') && <Link to="/keuangan" className="btn btn-primary">Kelola Pembayaran PO</Link>}
-          {(user?.role.nama_role === 'operasi' || user?.role.nama_role === 'admin') && <Link to="/operasi" className="btn btn-primary">Input Data Operasi</Link>}
-          {(user?.role.nama_role === 'gudang' || user?.role.nama_role === 'admin') && <Link to="/gudang" className="btn btn-primary">Input Penerimaan Gudang</Link>}
+  const now = new Date()
+  const jam = now.getHours()
+  const sapaan = jam < 11 ? 'Selamat pagi' : jam < 15 ? 'Selamat siang' : jam < 18 ? 'Selamat sore' : 'Selamat malam'
+  const tanggalPanjang = new Intl.DateTimeFormat('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }).format(now)
+
+  const role = user?.role.nama_role ?? ''
+  const roleLabel = ROLE_LABEL[role] ?? role.replaceAll('_', ' ')
+  const roleSubtitle = ROLE_SUBTITLE[role] ?? 'Pantau dan kelola transaksi serap gabah dari satu tempat.'
+  const actions = user ? buildActions(role) : []
+
+  return (
+    <div className="min-h-screen bg-surface">
+      {/* Hero sambutan -- navy dramatis, gaya landing page. */}
+      <section className="relative overflow-hidden bg-gradient-to-br from-[#14213f] via-primary-dark to-primary text-white">
+        <div
+          aria-hidden
+          className="absolute inset-0 opacity-50"
+          style={{ backgroundImage: 'radial-gradient(circle, rgba(255,255,255,0.10) 1px, transparent 1px)', backgroundSize: '22px 22px' }}
+        />
+        <div aria-hidden className="pointer-events-none absolute -right-24 -top-24 h-80 w-80 rounded-full bg-accent/15 blur-3xl" />
+        <div aria-hidden className="pointer-events-none absolute -left-28 bottom-0 h-72 w-72 rounded-full bg-primary/50 blur-3xl" />
+
+        <div className="relative mx-auto max-w-6xl px-6 pb-24 pt-9">
+          <span className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3.5 py-1.5 text-xs font-semibold text-white">
+            <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-accent" />
+            {sapaan} &middot; {tanggalPanjang}
+          </span>
+          <h1 className="mt-5 text-3xl font-bold tracking-tight md:text-4xl">
+            Halo, {user?.username}<span className="text-accent">.</span>
+          </h1>
+          <div className="mt-2 flex items-center gap-2 text-sm text-white/60">
+            <span className="rounded-md bg-white/10 px-2 py-0.5 text-xs font-semibold text-white">{roleLabel}</span>
+          </div>
+          <p className="mt-4 max-w-xl text-sm leading-6 text-white/70">{roleSubtitle}</p>
+
+          {actions.length > 0 && (
+            <div className="mt-6 flex flex-wrap gap-2.5">
+              {actions.map((a, i) => (
+                <Link
+                  key={a.to}
+                  to={a.to}
+                  className={
+                    i === 0
+                      ? 'rounded-lg bg-accent px-5 py-2.5 text-sm font-bold text-primary-dark shadow-sm transition-all hover:bg-white hover:shadow-md'
+                      : 'rounded-lg border border-white/15 bg-white/10 px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-white/20'
+                  }
+                >
+                  {a.label}
+                </Link>
+              ))}
+            </div>
+          )}
         </div>
+      </section>
+
+      {/* Kartu statistik ditarik naik menimpa hero. */}
+      <div className="relative mx-auto -mt-16 max-w-6xl px-6">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <StatCard label="Total transaksi" value={total} sub="keseluruhan" tone="primary" />
+          <StatCard label="Sedang berjalan" value={berjalan} sub="menunggu tindakan" tone="warning" />
+          <StatCard label="Selesai" value={selesai} sub="sudah rampung" tone="success" />
+          <StatCard label="Makloon terhubung" value={makloonTerhubung} sub="mitra pada daftar" tone="accent" />
+        </div>
+      </div>
+
+      <div className="mx-auto max-w-6xl px-6 py-8">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2 className="section-title">Transaksi menunggu tindakan</h2>
@@ -117,10 +207,10 @@ export default function DashboardPage() {
         {!isLoading && filteredTransaksi.length > 0 && (
           useGrouped ? (
             <div className="space-y-3">
-              {makloonGroups.map((group, index) => (
-                <details key={group.nama} open={index === 0} className="group panel overflow-hidden">
+              {makloonGroups.map((group) => (
+                <details key={group.nama} className="group panel overflow-hidden">
                   <summary className="flex cursor-pointer list-none items-center gap-3 px-4 py-3 [&::-webkit-details-marker]:hidden">
-                    <span className={`grid h-[34px] w-[34px] shrink-0 place-items-center rounded-lg text-xs font-bold ${index === 0 ? 'bg-primary text-white' : 'bg-primary-tint text-primary'}`}>{inisialMakloon(group.nama)}</span>
+                    <span className="grid h-[34px] w-[34px] shrink-0 place-items-center rounded-lg bg-primary-tint text-xs font-bold text-primary transition-colors group-open:bg-primary group-open:text-white">{inisialMakloon(group.nama)}</span>
                     <div className="min-w-0 flex-1">
                       <div className="truncate text-sm font-semibold text-primary-dark">{group.nama}</div>
                       {group.lokasi && <div className="truncate text-xs text-gray-400">{group.lokasi}</div>}
@@ -181,6 +271,31 @@ export default function DashboardPage() {
           </div>
         )}
       </div>
+    </div>
+  )
+}
+
+// Kartu ringkasan angka di atas daftar transaksi.
+function StatCard({
+  label,
+  value,
+  sub,
+  tone,
+}: {
+  label: string
+  value: number
+  sub: string
+  tone: 'primary' | 'warning' | 'success' | 'accent'
+}) {
+  const dot = { primary: 'bg-primary', warning: 'bg-warning', success: 'bg-success', accent: 'bg-accent' }[tone]
+  return (
+    <div className="panel px-5 py-4 transition-shadow hover:shadow-md">
+      <div className="flex items-center gap-2">
+        <span aria-hidden className={`h-2 w-2 rounded-full ${dot}`} />
+        <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">{label}</p>
+      </div>
+      <p className="mt-2 text-3xl font-bold text-primary-dark">{value}</p>
+      <p className="mt-0.5 text-xs text-slate-500">{sub}</p>
     </div>
   )
 }

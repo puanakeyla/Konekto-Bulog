@@ -1,5 +1,4 @@
 import { useMemo, useState, type Dispatch, type SetStateAction } from 'react'
-import { Link } from 'react-router-dom'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import api from '../lib/api'
@@ -8,6 +7,7 @@ import { useTransaksiList, type TransaksiListItem } from '../hooks/useTransaksiL
 import { usePoList, type PoItem } from '../hooks/usePoList'
 import ConfirmDialog from '../components/ConfirmDialog'
 import { SkeletonPoCards, SkeletonTable } from '../components/Skeleton'
+import FormHero from '../components/FormHero'
 
 function groupKeyOf(t: TransaksiListItem) {
   if (t.data_makloon_mpp) {
@@ -102,17 +102,14 @@ export default function PengadaanPage() {
   }
 
   return (
-    <div className="page-shell">
-      <div className="page-container">
-        <div className="page-header">
-          <div>
-            <h1 className="page-title">Pengadaan</h1>
-            <p className="page-subtitle">Gabungkan transaksi Makloon menjadi PO, lalu isi nomor IN per transaksi asal.</p>
-          </div>
-          <Link to="/dashboard" className="btn btn-ghost">Dashboard</Link>
-        </div>
+    <div className="min-h-screen bg-surface">
+      <FormHero
+        title="Pengadaan"
+        subtitle="Gabungkan transaksi Makloon menjadi PO, lalu isi nomor IN per transaksi asal."
+        badge="Role Pengadaan"
+      />
 
-        <div className="work-layout">
+      <div className="relative mx-auto -mt-16 max-w-6xl space-y-6 px-6 pb-16">
           <div className="stats-grid">
             <div className="stat-card"><div className="stat-label">Transaksi siap PO</div><div className="stat-value">{transaksiMeta?.total ?? transaksiList.length}</div></div>
             <div className="stat-card"><div className="stat-label">Dipilih</div><div className="stat-value">{selected.size}</div></div>
@@ -120,7 +117,7 @@ export default function PengadaanPage() {
             <div className="stat-card"><div className="stat-label">Nomor IN kosong</div><div className="stat-value">{detailBelumIn}</div></div>
           </div>
 
-          <section className="panel panel-pad">
+          <section className="panel panel-pad @container">
             <div className="toolbar-card mb-4">
               <div>
                 <h2 className="section-title">Gabungkan Transaksi Menjadi PO</h2>
@@ -161,10 +158,10 @@ export default function PengadaanPage() {
                   </table>
                 </div>
 
-                <form className="form-grid" onSubmit={(e) => { e.preventDefault(); setConfirmGabung(true) }}>
+                <form className="grid gap-4 @md:grid-cols-2" onSubmit={(e) => { e.preventDefault(); setConfirmGabung(true) }}>
                   <label className="block"><span className="label">No. PO</span><input required className="input" value={noPo} onChange={(e) => setNoPo(e.target.value)} placeholder="Contoh: PO-0001/VII/2026" /></label>
                   <label className="block"><span className="label">Harga per kg</span><input type="number" step="0.01" min="0" className="input" value={harga} onChange={(e) => setHarga(e.target.value)} placeholder="Default 6500" /></label>
-                  <div className="form-grid-full flex flex-wrap items-center justify-between gap-3">
+                  <div className="@md:col-span-2 flexflex-wrap items-center justify-between gap-3">
                     <p className="text-xs text-muted">Tersambung ke POST /api/pengadaan/gabungkan-po</p>
                     <button type="submit" disabled={selected.size === 0 || !noPo || gabungMutation.isPending} className="btn btn-primary">
                       {gabungMutation.isPending ? 'Menggabungkan...' : `Buat PO dari ${selected.size} transaksi`}
@@ -195,7 +192,7 @@ export default function PengadaanPage() {
             )}
           </section>
 
-          <section className="panel panel-pad">
+          <section className="panel panel-pad @container">
             <div className="toolbar-card mb-4">
               <div><h2 className="section-title">PO Proses - Isi Nomor IN</h2><p className="page-subtitle">Setelah seluruh nomor IN terisi, PO masuk ke antrean Keuangan.</p></div>
               <span className="badge badge-warning">{poBelumLengkap.length} PO proses</span>
@@ -209,7 +206,6 @@ export default function PengadaanPage() {
             <div className="space-y-4">{poBelumLengkap.map((po) => <PoInForm key={po.id} po={po} />)}</div>
             {poMeta && poMeta.last_page > 1 && <PaginationBar className="mt-4" meta={poMeta} page={poPage} setPage={setPoPage} label="PO" />}
           </section>
-        </div>
       </div>
     </div>
   )
@@ -279,7 +275,7 @@ function PoInForm({ po }: { po: PoItem }) {
   const lengkapCount = po.po_detail.filter((d) => d.no_in).length
 
   return (
-    <form className="po-card" onSubmit={(e) => { e.preventDefault(); setConfirmIn(true) }}>
+    <form className="po-card @container" onSubmit={(e) => { e.preventDefault(); setConfirmIn(true) }}>
       <div className="po-card-header">
         <div><div className="po-title">{po.no_po}</div><div className="po-meta">Pemasok {po.id_pemasok} - {formatNumber(po.total_kuantum)} kg - {formatMoney(po.total_harga)}</div></div>
         <span className="badge badge-warning">{lengkapCount}/{po.po_detail.length} IN terisi</span>
@@ -287,10 +283,10 @@ function PoInForm({ po }: { po: PoItem }) {
       {errorMessage && <div className="alert-danger mb-3">{errorMessage}</div>}
       <div className="mb-4 rounded-lg border border-border bg-surface p-3">
         <div className="section-title mb-3">Harga dan Status PO</div>
-        <div className="form-grid">
+        <div className="grid gap-4 @md:grid-cols-2">
           <label className="block"><span className="label">Harga per kg</span><input className="input" type="number" step="0.01" min="0" value={hargaPo} onChange={(e) => setHargaPo(e.target.value)} /></label>
           <label className="block"><span className="label">Status</span><select className="input" value={statusPo} onChange={(e) => setStatusPo(e.target.value as PoItem['status'])}><option value="proses">Proses</option><option value="lengkap">Lengkap</option><option value="dibatalkan">Dibatalkan</option></select></label>
-          <div className="form-grid-full flex justify-end"><button type="button" disabled={!hargaPo || updatePo.isPending} onClick={submitUpdatePo} className="btn btn-primary">{updatePo.isPending ? 'Menyimpan...' : 'Update PO'}</button></div>
+          <div className="@md:col-span-2 flexjustify-end"><button type="button" disabled={!hargaPo || updatePo.isPending} onClick={submitUpdatePo} className="btn btn-primary">{updatePo.isPending ? 'Menyimpan...' : 'Update PO'}</button></div>
         </div>
       </div>
       <div className="data-table-wrap mb-3">

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { useMutation } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import api from '../lib/api'
@@ -88,152 +88,227 @@ export default function TransaksiJemputPanganPage() {
       ?.message
 
   return (
-    <div className="page-shell">
-      <div className="page-container-narrow">
-        <header className="page-header">
-          <div>
-            <h1 className="page-title">Buat Transaksi Jemput Pangan</h1>
-            <p className="page-subtitle">Isi data pemasok, tujuan makloon, kuantum, dan dokumen.</p>
-          </div>
-          <span className="badge">Skema TJP</span>
-        </header>
+    <div className="min-h-screen bg-surface">
+      {/* Hero band navy -- menyatu dengan AppNav di atasnya, gaya landing page. */}
+      <section className="relative overflow-hidden bg-gradient-to-br from-[#14213f] via-primary-dark to-primary text-white">
+        <div
+          aria-hidden
+          className="absolute inset-0 opacity-50"
+          style={{ backgroundImage: 'radial-gradient(circle, rgba(255,255,255,0.10) 1px, transparent 1px)', backgroundSize: '22px 22px' }}
+        />
+        <div aria-hidden className="pointer-events-none absolute -right-24 -top-24 h-72 w-72 rounded-full bg-accent/15 blur-3xl" />
+        <div aria-hidden className="pointer-events-none absolute -left-28 bottom-0 h-64 w-64 rounded-full bg-primary/50 blur-3xl" />
 
+        <div className="relative mx-auto max-w-4xl px-6 pb-24 pt-7">
+          <Link
+            to="/dashboard"
+            className="flex w-fit items-center gap-1.5 text-xs font-semibold text-white/70 transition-colors hover:text-white"
+          >
+            <span aria-hidden className="text-base leading-none">&larr;</span>
+            Kembali ke dashboard
+          </Link>
+
+          <span className="mt-6 inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3.5 py-1.5 text-xs font-semibold text-white">
+            <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-accent" />
+            Skema TJP &middot; Jemput Pangan
+          </span>
+          <h1 className="mt-4 text-3xl font-bold tracking-tight md:text-4xl">
+            Buat Transaksi Jemput Pangan<span className="text-accent">.</span>
+          </h1>
+          <p className="mt-3 max-w-lg text-sm leading-6 text-white/70">
+            Isi data pemasok, lokasi asal, tujuan makloon, dan dokumen. Transaksi langsung dikirim ke
+            Makloon setelah disimpan.
+          </p>
+        </div>
+      </section>
+
+      {/* Kartu form ditarik naik menimpa hero. */}
+      <div className="relative mx-auto -mt-16 max-w-4xl px-6 pb-16">
         <form
-          className="panel panel-pad space-y-4"
+          className="panel @container overflow-hidden"
           onSubmit={(e) => {
             e.preventDefault()
             mutation.mutate(form)
           }}
         >
-          {errorMessage && (
-            <div className="alert-danger">{errorMessage}</div>
-          )}
-
-          {mutation.isSuccess && fotoGagal.length > 0 && (
-            <div className="alert-warning">
-              Data tersimpan, tapi {fotoGagal.length} foto gagal terupload. Buka transaksi ini lagi
-              untuk mengulang foto yang gagal.
+          {(errorMessage || (mutation.isSuccess && fotoGagal.length > 0)) && (
+            <div className="space-y-3 px-5 pt-5">
+              {errorMessage && <div className="alert-danger">{errorMessage}</div>}
+              {mutation.isSuccess && fotoGagal.length > 0 && (
+                <div className="alert-warning">
+                  Data tersimpan, tapi {fotoGagal.length} foto gagal terupload. Buka transaksi ini lagi
+                  untuk mengulang foto yang gagal.
+                </div>
+              )}
             </div>
           )}
 
-          <div className="form-grid">
-          <Field label="ID Pemasok">
-            <input
-              required
-              className="input"
-              value={form.id_pemasok}
-              onChange={(e) => setField('id_pemasok', e.target.value)}
-            />
-          </Field>
-          <Field label="Supir">
-            <input
-              required
-              className="input"
-              value={form.supir}
-              onChange={(e) => setField('supir', e.target.value)}
-            />
-          </Field>
-          <Field label="Plat Mobil">
-            <input
-              required
-              className="input"
-              value={form.plat_mobil}
-              onChange={(e) => setField('plat_mobil', e.target.value)}
-            />
-          </Field>
-          <Field label="Nama Poktan/Gapoktan">
-            <input
-              required
-              className="input"
-              value={form.nama_poktan_gapoktan}
-              onChange={(e) => setField('nama_poktan_gapoktan', e.target.value)}
-            />
-          </Field>
-          <Field label="Desa">
-            <input
-              required
-              className="input"
-              value={form.desa}
-              onChange={(e) => setField('desa', e.target.value)}
-            />
-          </Field>
-          <Field label="Kecamatan">
-            <input
-              required
-              className="input"
-              value={form.kecamatan}
-              onChange={(e) => setField('kecamatan', e.target.value)}
-            />
-          </Field>
-          <Field label="Kabupaten">
-            <input
-              required
-              className="input"
-              value={form.kabupaten}
-              onChange={(e) => setField('kabupaten', e.target.value)}
-            />
-          </Field>
-          <Field label="Makloon Tujuan">
-            <MakloonCombobox
-              value={form.makloon_user_id}
-              onChange={(id) => setField('makloon_user_id', id)}
-            />
-          </Field>
-          <Field label="Tanggal Kirim">
-            <input
-              required
-              type="date"
-              className="input"
-              value={form.tanggal_kirim}
-              onChange={(e) => setField('tanggal_kirim', e.target.value)}
-            />
-          </Field>
-          <Field label="Kuantum (kg)">
-            <input
-              required
-              type="number"
-              step="0.01"
-              className="input"
-              value={form.kuantum}
-              onChange={(e) => setField('kuantum', e.target.value)}
-            />
-          </Field>
-          <Field label="Jarak ke Makloon (km)">
-            <input
-              required
-              type="number"
-              step="0.01"
-              className="input"
-              value={form.jarak_ke_makloon_km}
-              onChange={(e) => setField('jarak_ke_makloon_km', e.target.value)}
-            />
-          </Field>
-          </div>
+          <Section step={1} title="Pemasok & kendaraan" desc="Identitas pemasok dan armada pengangkut.">
+            <div className="grid gap-4 @md:grid-cols-2">
+              <Field label="ID Pemasok">
+                <input
+                  required
+                  className="input"
+                  value={form.id_pemasok}
+                  onChange={(e) => setField('id_pemasok', e.target.value)}
+                />
+              </Field>
+              <Field label="Nama Poktan/Gapoktan">
+                <input
+                  required
+                  className="input"
+                  value={form.nama_poktan_gapoktan}
+                  onChange={(e) => setField('nama_poktan_gapoktan', e.target.value)}
+                />
+              </Field>
+              <Field label="Supir">
+                <input
+                  required
+                  className="input"
+                  value={form.supir}
+                  onChange={(e) => setField('supir', e.target.value)}
+                />
+              </Field>
+              <Field label="Plat Mobil">
+                <input
+                  required
+                  className="input"
+                  value={form.plat_mobil}
+                  onChange={(e) => setField('plat_mobil', e.target.value)}
+                />
+              </Field>
+            </div>
+          </Section>
 
-          <div className="border-t border-border pt-4 space-y-3">
-            <div className="section-title">Dokumen</div>
-            {FOTO_FIELDS.map(({ key, label }) => (
-              <FotoPicker
-                key={key}
-                label={label}
-                file={fotos[key] ?? null}
-                onChange={(file) => setFotos((prev) => ({ ...prev, [key]: file }))}
-                progress={progress[key]}
-                error={fotoGagal.includes(key) ? 'Gagal terupload' : undefined}
-              />
-            ))}
-          </div>
+          <Section step={2} title="Lokasi asal" desc="Tempat gabah dijemput.">
+            <div className="grid gap-4 @md:grid-cols-2">
+              <Field label="Desa">
+                <input
+                  required
+                  className="input"
+                  value={form.desa}
+                  onChange={(e) => setField('desa', e.target.value)}
+                />
+              </Field>
+              <Field label="Kecamatan">
+                <input
+                  required
+                  className="input"
+                  value={form.kecamatan}
+                  onChange={(e) => setField('kecamatan', e.target.value)}
+                />
+              </Field>
+              <Field label="Kabupaten">
+                <input
+                  required
+                  className="input"
+                  value={form.kabupaten}
+                  onChange={(e) => setField('kabupaten', e.target.value)}
+                />
+              </Field>
+            </div>
+          </Section>
 
-          <button
-            type="submit"
-            disabled={mutation.isPending || !form.makloon_user_id}
-            className="btn btn-primary w-full"
-          >
-            {mutation.isPending ? 'Mengirim...' : 'Simpan & Kirim'}
-          </button>
+          <Section step={3} title="Tujuan & pengiriman" desc="Makloon tujuan, jadwal, dan kuantum.">
+            <div className="grid gap-4 @md:grid-cols-2">
+              <Field label="Makloon Tujuan">
+                <MakloonCombobox
+                  value={form.makloon_user_id}
+                  onChange={(id) => setField('makloon_user_id', id)}
+                />
+              </Field>
+              <Field label="Tanggal Kirim">
+                <input
+                  required
+                  type="date"
+                  className="input"
+                  value={form.tanggal_kirim}
+                  onChange={(e) => setField('tanggal_kirim', e.target.value)}
+                />
+              </Field>
+              <Field label="Kuantum (kg)">
+                <input
+                  required
+                  type="number"
+                  step="0.01"
+                  className="input"
+                  value={form.kuantum}
+                  onChange={(e) => setField('kuantum', e.target.value)}
+                />
+              </Field>
+              <Field label="Jarak ke Makloon (km)">
+                <input
+                  required
+                  type="number"
+                  step="0.01"
+                  className="input"
+                  value={form.jarak_ke_makloon_km}
+                  onChange={(e) => setField('jarak_ke_makloon_km', e.target.value)}
+                />
+              </Field>
+            </div>
+          </Section>
+
+          <Section step={4} title="Dokumen" desc="Unggah foto pendukung transaksi.">
+            <div className="grid gap-4 @md:grid-cols-2">
+              {FOTO_FIELDS.map(({ key, label }) => (
+                <FotoPicker
+                  key={key}
+                  label={label}
+                  file={fotos[key] ?? null}
+                  onChange={(file) => setFotos((prev) => ({ ...prev, [key]: file }))}
+                  progress={progress[key]}
+                  error={fotoGagal.includes(key) ? 'Gagal terupload' : undefined}
+                />
+              ))}
+            </div>
+          </Section>
+
+          <div className="flex flex-col gap-3 bg-primary-tint/40 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-xs text-slate-500">
+              {form.makloon_user_id
+                ? 'Transaksi akan dikirim ke Makloon setelah disimpan.'
+                : 'Pilih Makloon tujuan untuk mengaktifkan tombol simpan.'}
+            </p>
+            <button
+              type="submit"
+              disabled={mutation.isPending || !form.makloon_user_id}
+              className="rounded-lg bg-accent px-6 py-2.5 text-sm font-bold text-primary-dark shadow-sm transition-all hover:bg-primary hover:text-white hover:shadow-md disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {mutation.isPending ? 'Mengirim...' : 'Simpan & Kirim'}
+            </button>
+          </div>
         </form>
       </div>
     </div>
+  )
+}
+
+// Satu bagian form: nomor langkah + judul + isi. Menyeragamkan tampilan tiap kelompok field.
+function Section({
+  step,
+  title,
+  desc,
+  children,
+}: {
+  step: number
+  title: string
+  desc?: string
+  children: React.ReactNode
+}) {
+  return (
+    <section className="border-b border-border px-5 py-6">
+      <div className="mb-4 flex items-center gap-3">
+        <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-primary-tint text-sm font-bold text-primary">
+          {step}
+        </span>
+        <div>
+          <h2 className="section-title">{title}</h2>
+          {desc && <p className="mt-0.5 text-xs text-slate-500">{desc}</p>}
+        </div>
+      </div>
+      {children}
+    </section>
   )
 }
 

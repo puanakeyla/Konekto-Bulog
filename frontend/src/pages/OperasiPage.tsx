@@ -1,5 +1,4 @@
 import { useState, type Dispatch, type SetStateAction } from 'react'
-import { Link } from 'react-router-dom'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import api from '../lib/api'
 import { usePoList, type PoItem } from '../hooks/usePoList'
@@ -7,6 +6,7 @@ import ConfirmDialog from '../components/ConfirmDialog'
 import { toast } from 'sonner'
 import { apiErrorMessage } from '../lib/apiError'
 import { SkeletonPoCards } from '../components/Skeleton'
+import FormHero from '../components/FormHero'
 
 type FormState = {
   no_mo: string
@@ -42,17 +42,14 @@ export default function OperasiPage() {
   const totalKuantum = menungguOperasi.reduce((sum, po) => sum + Number(po.total_kuantum || 0), 0)
 
   return (
-    <div className="page-shell">
-      <div className="page-container">
-        <div className="page-header">
-          <div>
-            <h1 className="page-title">Operasi - Input MO/TM</h1>
-            <p className="page-subtitle">Lengkapi data produksi setelah pembayaran PO dikonfirmasi Keuangan.</p>
-          </div>
-          <Link to="/dashboard" className="btn btn-ghost">Dashboard</Link>
-        </div>
+    <div className="min-h-screen bg-surface">
+      <FormHero
+        title="Operasi — Input MO/TM"
+        subtitle="Lengkapi data produksi setelah pembayaran PO dikonfirmasi Keuangan."
+        badge="Role Operasi"
+      />
 
-        <div className="work-layout">
+      <div className="relative mx-auto -mt-16 max-w-6xl space-y-6 px-6 pb-16">
           <div className="stats-grid">
             <div className="stat-card"><div className="stat-label">Menunggu operasi</div><div className="stat-value">{menungguOperasi.length}</div></div>
             <div className="stat-card"><div className="stat-label">Sudah operasi</div><div className="stat-value">{sudahOperasi}</div></div>
@@ -74,7 +71,6 @@ export default function OperasiPage() {
             <div className="space-y-4">{menungguOperasi.map((po) => <OperasiForm key={po.id} po={po} />)}</div>
             {meta && meta.last_page > 1 && <PaginationBar meta={meta} page={page} setPage={setPage} />}
           </section>
-        </div>
       </div>
     </div>
   )
@@ -121,13 +117,13 @@ function OperasiForm({ po }: { po: PoItem }) {
   const errorMessage = (mutation.error as { response?: { data?: { message?: string } } } | null)?.response?.data?.message
 
   return (
-    <form className="po-card" onSubmit={(e) => { e.preventDefault(); setConfirmOperasi(true) }}>
+    <form className="po-card @container" onSubmit={(e) => { e.preventDefault(); setConfirmOperasi(true) }}>
       <div className="po-card-header">
         <div><div className="po-title">{po.no_po}</div><div className="po-meta">Pemasok {po.id_pemasok} - {formatNumber(po.total_kuantum)} kg - No. SPP {po.no_spp ?? '-'}</div></div>
         <span className="badge badge-success">Sudah dibayar</span>
       </div>
       {errorMessage && <div className="alert-danger mb-3">{errorMessage}</div>}
-      <div className="form-grid">
+      <div className="grid gap-4 @md:grid-cols-2">
         <Field label="No. MO"><input required className="input" value={form.no_mo} onChange={(e) => setField('no_mo', e.target.value)} /></Field>
         <Field label="No. TM"><input required className="input" value={form.no_tm} onChange={(e) => setField('no_tm', e.target.value)} /></Field>
         <Field label="HGL (%)"><input type="number" step="0.01" min="0" max="100" className="input" value={form.hgl_persen} onChange={(e) => setField('hgl_persen', e.target.value)} /></Field>

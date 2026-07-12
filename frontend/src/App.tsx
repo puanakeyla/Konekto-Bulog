@@ -4,6 +4,7 @@ import { Toaster } from 'sonner'
 import { AuthProvider, useAuth } from './hooks/useAuth'
 import LoginPage from './pages/LoginPage'
 import LandingPage from './pages/LandingPage'
+import AppLayout from './components/AppLayout'
 import DashboardPage from './pages/DashboardPage'
 import TransaksiJemputPanganPage from './pages/TransaksiJemputPanganPage'
 import TransaksiDetailPage from './pages/TransaksiDetailPage'
@@ -37,101 +38,25 @@ function AppRoutes() {
       <Route path="/login" element={<LoginPage />} />
       <Route path="/" element={<LandingPage />} />
       <Route
-        path="/dashboard"
         element={
           <ProtectedRoute>
-            <DashboardPage />
+            <AppLayout />
           </ProtectedRoute>
         }
-      />
-      <Route
-        path="/transaksi/baru"
-        element={
-          <ProtectedRoute>
-            <TransaksiJemputPanganPage />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/transaksi/:id"
-        element={
-          <ProtectedRoute>
-            <TransaksiDetailPage />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/transaksi/:id/ub-jastasma"
-        element={
-          <ProtectedRoute>
-            <RedirectToTransaksiDetail />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/transaksi/:id/makloon"
-        element={
-          <ProtectedRoute>
-            <RedirectToTransaksiDetail />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/transaksi/baru-mpp"
-        element={
-          <ProtectedRoute>
-            <TransaksiMakloonBaruPage />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/pengadaan"
-        element={
-          <ProtectedRoute>
-            <PengadaanPage />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/keuangan"
-        element={
-          <ProtectedRoute>
-            <KeuanganPage />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/operasi"
-        element={
-          <ProtectedRoute>
-            <OperasiPage />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/gudang"
-        element={
-          <ProtectedRoute>
-            <GudangPage />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/admin/users"
-        element={
-          <ProtectedRoute>
-            <AdminUsersPage />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/monitoring"
-        element={
-          <ProtectedRoute>
-            <MonitoringPage />
-          </ProtectedRoute>
-        }
-      />
+      >
+        <Route path="/dashboard" element={<DashboardPage />} />
+        <Route path="/transaksi/baru" element={<TransaksiJemputPanganPage />} />
+        <Route path="/transaksi/:id" element={<TransaksiDetailPage />} />
+        <Route path="/transaksi/:id/ub-jastasma" element={<RedirectToTransaksiDetail />} />
+        <Route path="/transaksi/:id/makloon" element={<RedirectToTransaksiDetail />} />
+        <Route path="/transaksi/baru-mpp" element={<TransaksiMakloonBaruPage />} />
+        <Route path="/pengadaan" element={<PengadaanPage />} />
+        <Route path="/keuangan" element={<KeuanganPage />} />
+        <Route path="/operasi" element={<OperasiPage />} />
+        <Route path="/gudang" element={<GudangPage />} />
+        <Route path="/admin/users" element={<AdminUsersPage />} />
+        <Route path="/monitoring" element={<MonitoringPage />} />
+      </Route>
     </Routes>
   )
 }

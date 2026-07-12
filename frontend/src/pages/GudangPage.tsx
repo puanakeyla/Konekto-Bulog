@@ -1,5 +1,4 @@
 import { useState, type Dispatch, type SetStateAction } from 'react'
-import { Link } from 'react-router-dom'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import api from '../lib/api'
 import { usePoList, type PoItem } from '../hooks/usePoList'
@@ -7,6 +6,7 @@ import ConfirmDialog from '../components/ConfirmDialog'
 import { toast } from 'sonner'
 import { apiErrorMessage } from '../lib/apiError'
 import { SkeletonPoCards } from '../components/Skeleton'
+import FormHero from '../components/FormHero'
 
 type FormState = {
   tanggal_masuk: string
@@ -36,17 +36,14 @@ export default function GudangPage() {
   const totalKuantum = menungguGudang.reduce((sum, po) => sum + Number(po.total_kuantum || 0), 0)
 
   return (
-    <div className="page-shell">
-      <div className="page-container">
-        <div className="page-header">
-          <div>
-            <h1 className="page-title">Gudang - Penerimaan</h1>
-            <p className="page-subtitle">Catat penerimaan hasil operasi ke gudang sampai alur PO selesai.</p>
-          </div>
-          <Link to="/dashboard" className="btn btn-ghost">Dashboard</Link>
-        </div>
+    <div className="min-h-screen bg-surface">
+      <FormHero
+        title="Gudang — Penerimaan"
+        subtitle="Catat penerimaan hasil operasi ke gudang sampai alur PO selesai."
+        badge="Role Gudang"
+      />
 
-        <div className="work-layout">
+      <div className="relative mx-auto -mt-16 max-w-6xl space-y-6 px-6 pb-16">
           <div className="stats-grid">
             <div className="stat-card"><div className="stat-label">Menunggu gudang</div><div className="stat-value">{menungguGudang.length}</div></div>
             <div className="stat-card"><div className="stat-label">Sudah diterima</div><div className="stat-value">{sudahGudang}</div></div>
@@ -68,7 +65,6 @@ export default function GudangPage() {
             <div className="space-y-4">{menungguGudang.map((po) => <GudangForm key={po.id} po={po} />)}</div>
             {meta && meta.last_page > 1 && <PaginationBar meta={meta} page={page} setPage={setPage} />}
           </section>
-        </div>
       </div>
     </div>
   )
@@ -112,13 +108,13 @@ function GudangForm({ po }: { po: PoItem }) {
   const errorMessage = (mutation.error as { response?: { data?: { message?: string } } } | null)?.response?.data?.message
 
   return (
-    <form className="po-card" onSubmit={(e) => { e.preventDefault(); setConfirmGudang(true) }}>
+    <form className="po-card @container" onSubmit={(e) => { e.preventDefault(); setConfirmGudang(true) }}>
       <div className="po-card-header">
         <div><div className="po-title">{po.no_po}</div><div className="po-meta">Pemasok {po.id_pemasok} - MO {po.data_operasi?.no_mo} - TM {po.data_operasi?.no_tm}</div></div>
         <span className="badge badge-success">Operasi selesai</span>
       </div>
       {errorMessage && <div className="alert-danger mb-3">{errorMessage}</div>}
-      <div className="form-grid">
+      <div className="grid gap-4 @md:grid-cols-2">
         <label className="block"><span className="label">Tanggal Masuk</span><input required type="date" className="input" value={form.tanggal_masuk} onChange={(e) => setField('tanggal_masuk', e.target.value)} /></label>
         <label className="block"><span className="label">Nama Gudang</span><input required className="input" value={form.nama_gudang} onChange={(e) => setField('nama_gudang', e.target.value)} placeholder="Contoh: Gudang Bulog Lampung" /></label>
         <label className="block"><span className="label">Realisasi HGL (%)</span><input type="number" step="0.01" min="0" className="input" value={form.realisasi_hgl} onChange={(e) => setField('realisasi_hgl', e.target.value)} /></label>

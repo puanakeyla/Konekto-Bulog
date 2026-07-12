@@ -405,10 +405,10 @@ function StageReadOnly({ data, collapsed }: { data: StageData; collapsed: boolea
 
 function MakloonTjpForm({ form, setForm, mutation, error, fotos, setFotos, progress, fotoGagal }: any) {
   return (
-    <form className="mt-4 space-y-4" onSubmit={(e) => { e.preventDefault(); mutation.mutate() }}>
+    <form className="mt-4 @container space-y-4" onSubmit={(e) => { e.preventDefault(); mutation.mutate() }}>
       {error && <div className="alert-danger">{error}</div>}
       {mutation.isSuccess && fotoGagal.length > 0 && <div className="alert-warning">Data tersimpan, tapi {fotoGagal.length} foto gagal terupload.</div>}
-      <div className="form-grid">
+      <div className="grid gap-4 @md:grid-cols-2">
         <Field label="Tanggal bongkar"><input required type="date" className="input" value={form.tanggal_bongkar} onChange={(e) => setForm((prev: any) => ({ ...prev, tanggal_bongkar: e.target.value }))} /></Field>
         <Field label="Kuantum bongkar (kg)"><input required type="number" step="0.01" min="0" className="input" placeholder="0" value={form.kuantum_bongkar} onChange={(e) => setForm((prev: any) => ({ ...prev, kuantum_bongkar: e.target.value }))} /></Field>
       </div>
@@ -421,10 +421,10 @@ function MakloonTjpForm({ form, setForm, mutation, error, fotos, setFotos, progr
 function UbForm({ form, setForm, mutation, error, fotos, setFotos, progress, fotoGagal }: any) {
   const ready = form.ka1 && form.ka2 && form.ka3 && form.hampa && form.butir_hijau
   return (
-    <form className="mt-4 space-y-4" onSubmit={(e) => { e.preventDefault(); mutation.mutate() }}>
+    <form className="mt-4 @container space-y-4" onSubmit={(e) => { e.preventDefault(); mutation.mutate() }}>
       {error && <div className="alert-danger">{error}</div>}
       {mutation.isSuccess && fotoGagal.length > 0 && <div className="alert-warning">Data tersimpan, tapi {fotoGagal.length} foto gagal terupload.</div>}
-      <div className="form-grid">
+      <div className="grid gap-4 @md:grid-cols-2">
         {(['ka1', 'ka2', 'ka3', 'hampa', 'butir_hijau'] as const).map((key) => <Field key={key} label={`${labelOf(key)} (%)`}><input required type="number" step="0.01" min="0" max="100" className="input" value={form[key]} onChange={(e) => setForm((prev: any) => ({ ...prev, [key]: e.target.value }))} /></Field>)}
       </div>
       <DokumenGrid fields={UB_FOTO_FIELDS} fotos={fotos} setFotos={setFotos} progress={progress} fotoGagal={fotoGagal} />
@@ -435,9 +435,9 @@ function UbForm({ form, setForm, mutation, error, fotos, setFotos, progress, fot
 
 function DokumenGrid({ fields, fotos, setFotos, progress, fotoGagal }: any) {
   return (
-    <div>
+    <div className="@container">
       <div className="section-title mb-2">Dokumen</div>
-      <div className="grid gap-3 sm:grid-cols-2">
+      <div className="grid gap-4 @md:grid-cols-2">
         {fields.map(({ key, label }: { key: string; label: string }) => <FotoPicker key={key} label={label} file={fotos[key] ?? null} onChange={(file) => setFotos((prev: Record<string, File | null>) => ({ ...prev, [key]: file }))} progress={progress[key]} error={fotoGagal.includes(key) ? 'Gagal terupload' : undefined} />)}
       </div>
     </div>

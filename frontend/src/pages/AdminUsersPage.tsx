@@ -1,11 +1,12 @@
 import { useMemo, useState } from 'react'
-import { Link, Navigate } from 'react-router-dom'
+import { Navigate } from 'react-router-dom'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import api from '../lib/api'
 import { useAuth } from '../hooks/useAuth'
 import { useAdminRoles, useAdminUsers, type AdminUser } from '../hooks/useAdminUsers'
 import { Skeleton } from '../components/Skeleton'
+import FormHero from '../components/FormHero'
 
 type UserForm = {
   username: string
@@ -136,20 +137,16 @@ export default function AdminUsersPage() {
   }
 
   return (
-    <div className="page-shell">
-      <div className="page-container">
-      <div className="page-header">
-        <div>
-          <h1 className="page-title">Admin User</h1>
-          <p className="page-subtitle">Kelola akun, role, dan status akses.</p>
-        </div>
-        <Link to="/" className="btn btn-ghost">
-          Dashboard
-        </Link>
-      </div>
+    <div className="min-h-screen bg-surface">
+      <FormHero
+        title="Admin User"
+        subtitle="Kelola akun, role, dan status akses."
+        badge="Administrator"
+      />
 
+      <div className="relative mx-auto -mt-16 max-w-6xl px-6 pb-16">
       <div className="grid gap-6">
-        <section className="panel panel-pad">
+        <section className="panel panel-pad @container">
           <h2 className="section-title mb-4">
             {editing ? `Edit User ${editing.username}` : 'Tambah User'}
           </h2>
@@ -161,7 +158,7 @@ export default function AdminUsersPage() {
           )}
 
           <form
-            className="form-grid"
+            className="grid gap-4 @md:grid-cols-2"
             onSubmit={(event) => {
               event.preventDefault()
               saveMutation.mutate()
@@ -195,7 +192,7 @@ export default function AdminUsersPage() {
             </label>
 
             {isMakloon && (
-              <label className="block form-grid-full">
+              <label className="block @md:col-span-2">
                 <span className="label">Nama Makloon</span>
                 <input
                   required
@@ -261,7 +258,7 @@ export default function AdminUsersPage() {
               Aktif
             </label>
 
-            <div className="flex items-center gap-3 form-grid-full">
+            <div className="flex items-center gap-3 @md:col-span-2">
               <button
                 type="submit"
                 disabled={saveMutation.isPending || loadingRoles}
