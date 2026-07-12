@@ -6,11 +6,16 @@ use App\Http\Controllers\Controller;
 use App\Http\Resources\AdminUserResource;
 use App\Models\Role;
 use App\Models\User;
+use App\Services\AuditLogService;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 
 class AdminUserController extends Controller
 {
+    public function __construct(private AuditLogService $auditLog)
+    {
+    }
+
     public function index(Request $request)
     {
         $users = User::with('role')
@@ -34,6 +39,12 @@ class AdminUserController extends Controller
 
         $user = User::create($validated)->load('role');
 
+        $this->auditLog->log($request->user(), 'admin_user_create', null, [
+            'target_user_id' => $user->id,
+            'username' => $user->username,
+            'role' => $user->role->nama_role,
+        ]);
+
         return response()->json(['data' => new AdminUserResource($user)], 201);
     }
 
@@ -51,7 +62,16 @@ class AdminUserController extends Controller
             unset($validated['password']);
         }
 
+        $before = $user->only(['username', 'role_id', 'nama_maklon', 'kecamatan', 'kabupaten', 'is_active']);
+
         $user->update($validated);
+
+        $this->auditLog->log($request->user(), 'admin_user_update', null, [
+            'target_user_id' => $user->id,
+            'before' => $before,
+            'after' => $user->fresh()->only(['username', 'role_id', 'nama_maklon', 'kecamatan', 'kabupaten', 'is_active']),
+            'password_changed' => array_key_exists('password', $validated),
+        ]);
 
         return response()->json(['data' => new AdminUserResource($user->fresh('role'))]);
     }
@@ -64,18 +84,36 @@ class AdminUserController extends Controller
 
         $user->update(['password' => $validated['password']]);
 
+        $this->auditLog->log($request->user(), 'admin_user_reset_password', null, [
+            'target_user_id' => $user->id,
+            'username' => $user->username,
+        ]);
+
         return response()->noContent();
     }
 
-    public function deactivate(User $user)
+    public function deactivate(Request $request, User $user)
     {
         $user->update(['is_active' => false]);
+
+        $this->auditLog->log($request->user(), 'admin_user_deactivate', null, [
+            'target_user_id' => $user->id,
+            'username' => $user->username,
+        ]);
 
         return response()->json(['data' => new AdminUserResource($user->fresh('role'))]);
     }
 
-    public function destroy(User $user)
+    public function destroy(Request $request, User $user)
     {
+        $detail = [
+            'target_user_id' => $user->id,
+            'username' => $user->username,
+            'role_id' => $user->role_id,
+        ];
+
+        $this->auditLog->log($request->user(), 'admin_user_delete', null, $detail);
+
         $user->delete();
 
         return response()->noContent();

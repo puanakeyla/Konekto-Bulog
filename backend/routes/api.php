@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\AdminUserController;
+use App\Http\Controllers\Api\AuditLogController;
 use App\Http\Controllers\Api\FotoController;
 use App\Http\Controllers\Api\FotoStreamController;
 use App\Http\Controllers\Api\MakloonOptionController;
@@ -31,6 +32,7 @@ Route::middleware('auth:sanctum')->group(function () {
     });
 
     Route::middleware('role:admin')->prefix('admin')->group(function () {
+        Route::get('/audit-logs', [AuditLogController::class, 'index']);
         Route::get('/roles', [AdminUserController::class, 'roles']);
         Route::patch('/users/{user}/reset-password', [AdminUserController::class, 'resetPassword']);
         Route::patch('/users/{user}/deactivate', [AdminUserController::class, 'deactivate']);

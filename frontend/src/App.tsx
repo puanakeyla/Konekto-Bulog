@@ -15,6 +15,7 @@ import OperasiPage from './pages/OperasiPage'
 import GudangPage from './pages/GudangPage'
 import AdminUsersPage from './pages/AdminUsersPage'
 import MonitoringPage from './pages/MonitoringPage'
+import AdminAuditLogPage from './pages/AdminAuditLogPage'
 
 const queryClient = new QueryClient()
 
@@ -55,6 +56,7 @@ function AppRoutes() {
         <Route path="/operasi" element={<OperasiPage />} />
         <Route path="/gudang" element={<GudangPage />} />
         <Route path="/admin/users" element={<AdminUsersPage />} />
+        <Route path="/admin/audit-logs" element={<AdminAuditLogPage />} />
         <Route path="/monitoring" element={<MonitoringPage />} />
       </Route>
     </Routes>

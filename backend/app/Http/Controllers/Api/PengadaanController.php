@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\DataPengadaanResource;
 use App\Models\DataPengadaan;
+use App\Services\AuditLogService;
 use App\Services\Pengadaan\PoGroupingService;
 use App\Services\Pengadaan\PoLifecycleService;
 use Illuminate\Http\Request;
@@ -15,6 +16,7 @@ class PengadaanController extends Controller
     public function __construct(
         private PoGroupingService $service,
         private PoLifecycleService $lifecycleService,
+        private AuditLogService $auditLog,
     ) {
     }
 
@@ -50,6 +52,12 @@ class PengadaanController extends Controller
             $validated['harga'] ?? null
         );
 
+        $this->auditLog->logMany($request->user(), 'gabungkan_po', $validated['transaksi_ids'], [
+            'data_pengadaan_id' => $dataPengadaan->id,
+            'no_po' => $dataPengadaan->no_po,
+            'harga' => $dataPengadaan->harga,
+        ]);
+
         return response()->json(['data' => $dataPengadaan], 201);
     }
 
@@ -59,6 +67,8 @@ class PengadaanController extends Controller
             'harga' => ['sometimes', 'numeric', 'min:0'],
             'status' => ['sometimes', Rule::in(['proses', 'lengkap', 'dibatalkan'])],
         ]);
+
+        $before = $dataPengadaan->only(['harga', 'total_harga', 'status']);
 
         if (array_key_exists('harga', $validated)) {
             $dataPengadaan->harga = number_format($validated['harga'], 2, '.', '');
@@ -76,6 +86,13 @@ class PengadaanController extends Controller
 
         $dataPengadaan->save();
 
+        $this->auditLog->logMany($request->user(), 'update_po', $dataPengadaan->poDetail()->pluck('transaksi_id'), [
+            'data_pengadaan_id' => $dataPengadaan->id,
+            'no_po' => $dataPengadaan->no_po,
+            'before' => $before,
+            'after' => $dataPengadaan->only(['harga', 'total_harga', 'status']),
+        ]);
+
         return response()->json(['data' => $dataPengadaan]);
     }
 
@@ -88,6 +105,12 @@ class PengadaanController extends Controller
         ]);
 
         $dataPengadaan = $this->service->isiNomorIn($dataPengadaan, $validated['items']);
+
+        $this->auditLog->logMany($request->user(), 'isi_nomor_in', $dataPengadaan->poDetail->pluck('transaksi_id'), [
+            'data_pengadaan_id' => $dataPengadaan->id,
+            'items' => $validated['items'],
+            'status' => $dataPengadaan->status,
+        ]);
 
         return response()->json(['data' => $dataPengadaan]);
     }
@@ -107,6 +130,13 @@ class PengadaanController extends Controller
             $validated['no_spp'] ?? null
         );
 
+        $this->auditLog->logMany($request->user(), 'update_pembayaran', $dataPengadaan->poDetail()->pluck('transaksi_id'), [
+            'data_pengadaan_id' => $dataPengadaan->id,
+            'status_bayar' => $dataKeuangan->status_bayar,
+            'tanggal_bayar' => $dataKeuangan->tanggal_bayar,
+            'no_spp' => $dataPengadaan->fresh()->no_spp,
+        ]);
+
         return response()->json(['data' => $dataKeuangan]);
     }
 
@@ -123,6 +153,13 @@ class PengadaanController extends Controller
         ]);
 
         $dataOperasi = $this->lifecycleService->inputOperasi($dataPengadaan, $validated);
+
+        $this->auditLog->logMany($request->user(), 'input_operasi', $dataPengadaan->poDetail()->pluck('transaksi_id'), [
+            'data_pengadaan_id' => $dataPengadaan->id,
+            'data_operasi_id' => $dataOperasi->id,
+            'no_mo' => $dataOperasi->no_mo,
+            'no_tm' => $dataOperasi->no_tm,
+        ]);
 
         return response()->json(['data' => $dataOperasi], 201);
     }

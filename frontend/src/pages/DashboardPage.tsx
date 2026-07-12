@@ -36,7 +36,7 @@ const ROLE_SUBTITLE: Record<string, string> = {
 // Tombol aksi utama per role -- kondisi identik dengan versi lama, hanya dipindah ke hero.
 function buildActions(role: string): { to: string; label: string }[] {
   const a: { to: string; label: string }[] = []
-  if (role === 'admin') a.push({ to: '/admin/users', label: 'Kelola User' }, { to: '/monitoring', label: 'Monitoring' })
+  if (role === 'admin') a.push({ to: '/admin/users', label: 'Kelola User' }, { to: '/admin/audit-logs', label: 'Audit Log' }, { to: '/monitoring', label: 'Monitoring' })
   if (role === 'jemput_pangan') a.push({ to: '/transaksi/baru', label: 'Buat Transaksi Jemput Pangan' })
   if (role === 'makloon') a.push({ to: '/transaksi/baru-mpp', label: 'Buat Baru (MPP)' })
   if (role === 'pengadaan' || role === 'admin') a.push({ to: '/pengadaan', label: 'Kelola Pengadaan' })
