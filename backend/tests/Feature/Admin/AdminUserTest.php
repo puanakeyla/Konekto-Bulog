@@ -6,6 +6,7 @@ use App\Models\Role;
 use App\Models\User;
 use Database\Seeders\RoleSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Hash;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
@@ -109,6 +110,62 @@ class AdminUserTest extends TestCase
 
         $response->assertNoContent();
         $this->assertTrue(Hash::check('password-baru', $user->fresh()->password));
+    }
+
+    public function test_admin_dapat_import_makloon_dari_csv(): void
+    {
+        Sanctum::actingAs($this->admin);
+
+        $file = UploadedFile::fake()->createWithContent('makloon.csv', implode("\n", [
+            'nama_maklon,kecamatan,kabupaten',
+            'Mekar Jaya,Ambarawa,Pringsewu',
+            'Sumber Tani,Gadingrejo,Pringsewu',
+        ]));
+
+        $response = $this->post('/api/admin/users/import-makloon', [
+            'file' => $file,
+        ]);
+
+        $response->assertOk();
+        $response->assertJsonPath('data.created', 2);
+        $response->assertJsonPath('data.updated', 0);
+        $response->assertJsonPath('data.default_password', 'password123');
+
+        $this->assertDatabaseHas('users', [
+            'username' => 'makloon_mekar_jaya',
+            'role_id' => Role::where('nama_role', 'makloon')->value('id'),
+            'nama_maklon' => 'Mekar Jaya',
+            'kecamatan' => 'Ambarawa',
+            'kabupaten' => 'Pringsewu',
+            'is_active' => true,
+        ]);
+    }
+
+    public function test_import_makloon_memperbarui_nama_yang_sudah_ada(): void
+    {
+        Sanctum::actingAs($this->admin);
+        $existing = $this->buatUser('makloon', [
+            'username' => 'makloon_mekar_jaya',
+            'nama_maklon' => 'Mekar Jaya',
+            'kecamatan' => 'Lama',
+            'kabupaten' => 'Lama',
+        ]);
+
+        $file = UploadedFile::fake()->createWithContent('makloon.csv', implode("\n", [
+            'nama_maklon;kecamatan;kabupaten',
+            'Mekar Jaya;Ambarawa;Pringsewu',
+        ]));
+
+        $response = $this->post('/api/admin/users/import-makloon', [
+            'file' => $file,
+        ]);
+
+        $response->assertOk();
+        $response->assertJsonPath('data.created', 0);
+        $response->assertJsonPath('data.updated', 1);
+
+        $this->assertSame('Ambarawa', $existing->fresh()->kecamatan);
+        $this->assertSame(1, User::where('nama_maklon', 'Mekar Jaya')->count());
     }
 
     public function test_admin_dapat_nonaktifkan_dan_hapus_user(): void

@@ -34,6 +34,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::middleware('role:admin')->prefix('admin')->group(function () {
         Route::get('/audit-logs', [AuditLogController::class, 'index']);
         Route::get('/roles', [AdminUserController::class, 'roles']);
+        Route::post('/users/import-makloon', [AdminUserController::class, 'importMakloon']);
         Route::patch('/users/{user}/reset-password', [AdminUserController::class, 'resetPassword']);
         Route::patch('/users/{user}/deactivate', [AdminUserController::class, 'deactivate']);
         Route::apiResource('users', AdminUserController::class);
