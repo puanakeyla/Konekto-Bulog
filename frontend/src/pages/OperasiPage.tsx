@@ -8,28 +8,24 @@ import { apiErrorMessage } from '../lib/apiError'
 import { SkeletonPoCards } from '../components/Skeleton'
 import FormHero from '../components/FormHero'
 
-type FormState = {
+type RowState = {
   no_mo: string
   no_tm: string
-  hgl_persen: string
-  broken_persen: string
-  menir_persen: string
-  katul_persen: string
+  hgl_kg: string
+  broken_kg: string
+  menir_kg: string
+  katul_kg: string
   rendemen_persen: string
 }
 
-const initialState: FormState = {
-  no_mo: '',
-  no_tm: '',
-  hgl_persen: '',
-  broken_persen: '',
-  menir_persen: '',
-  katul_persen: '',
-  rendemen_persen: '',
-}
+const emptyRow: RowState = { no_mo: '', no_tm: '', hgl_kg: '', broken_kg: '', menir_kg: '', katul_kg: '', rendemen_persen: '' }
 
 function formatNumber(value: string | number) {
   return Number(value).toLocaleString('id-ID', { maximumFractionDigits: 2 })
+}
+
+function belumSemuaOperasi(po: PoItem) {
+  return po.po_detail.some((d) => !d.data_operasi)
 }
 
 export default function OperasiPage() {
@@ -37,15 +33,15 @@ export default function OperasiPage() {
   const { data: poResult, isLoading } = usePoList(page)
   const poList = poResult?.items ?? []
   const meta = poResult?.meta
-  const menungguOperasi = poList.filter((po) => po.data_keuangan?.status_bayar === 'dibayarkan' && !po.data_operasi)
-  const sudahOperasi = poList.filter((po) => !!po.data_operasi).length
+  const menungguOperasi = poList.filter((po) => po.data_keuangan?.status_bayar === 'dibayarkan' && belumSemuaOperasi(po))
+  const sudahOperasi = poList.filter((po) => po.po_detail.length > 0 && !belumSemuaOperasi(po)).length
   const totalKuantum = menungguOperasi.reduce((sum, po) => sum + Number(po.total_kuantum || 0), 0)
 
   return (
     <div className="min-h-screen bg-surface">
       <FormHero
-        title="Operasi — Input MO/TM"
-        subtitle="Lengkapi data produksi setelah pembayaran PO dikonfirmasi Keuangan."
+        title="Operasi — Input MO/TM per IN"
+        subtitle="Lengkapi data produksi tiap nomor IN setelah pembayaran PO dikonfirmasi Keuangan."
         badge="Role Operasi"
       />
 
@@ -59,7 +55,7 @@ export default function OperasiPage() {
 
           <section className="panel panel-pad">
             <div className="toolbar-card mb-4">
-              <div><h2 className="section-title">PO Siap Operasi</h2><p className="page-subtitle">Data ini tersambung ke POST /api/po/:id/operasi.</p></div>
+              <div><h2 className="section-title">PO Siap Operasi</h2><p className="page-subtitle">Isi data Operasi per nomor IN. Tersambung ke POST /api/po/:id/operasi.</p></div>
               <span className="badge badge-warning">{menungguOperasi.length} antrean</span>
             </div>
 
@@ -91,19 +87,31 @@ function PaginationBar({ meta, page, setPage }: { meta: { current_page: number; 
 
 function OperasiForm({ po }: { po: PoItem }) {
   const queryClient = useQueryClient()
-  const [form, setForm] = useState<FormState>(initialState)
+  const [rows, setRows] = useState<Record<number, RowState>>(() =>
+    Object.fromEntries(po.po_detail.map((d) => [d.id, { ...emptyRow }])),
+  )
   const [confirmOperasi, setConfirmOperasi] = useState(false)
+
+  const setRowField = (id: number, key: keyof RowState, value: string) =>
+    setRows((prev) => ({ ...prev, [id]: { ...prev[id], [key]: value } }))
+
+  const allValid = po.po_detail.every((d) => rows[d.id]?.no_mo.trim() && rows[d.id]?.no_tm.trim())
+
+  const num = (v: string) => (v.trim() !== '' ? Number(v) : undefined)
 
   const mutation = useMutation({
     mutationFn: () =>
       api.post(`/api/po/${po.id}/operasi`, {
-        no_mo: form.no_mo,
-        no_tm: form.no_tm,
-        hgl_persen: form.hgl_persen ? Number(form.hgl_persen) : undefined,
-        broken_persen: form.broken_persen ? Number(form.broken_persen) : undefined,
-        menir_persen: form.menir_persen ? Number(form.menir_persen) : undefined,
-        katul_persen: form.katul_persen ? Number(form.katul_persen) : undefined,
-        rendemen_persen: form.rendemen_persen ? Number(form.rendemen_persen) : undefined,
+        items: po.po_detail.map((d) => ({
+          po_detail_id: d.id,
+          no_mo: rows[d.id].no_mo,
+          no_tm: rows[d.id].no_tm,
+          hgl_kg: num(rows[d.id].hgl_kg),
+          broken_kg: num(rows[d.id].broken_kg),
+          menir_kg: num(rows[d.id].menir_kg),
+          katul_kg: num(rows[d.id].katul_kg),
+          rendemen_persen: num(rows[d.id].rendemen_persen),
+        })),
       }),
     onSuccess: () => {
       setConfirmOperasi(false)
@@ -113,7 +121,6 @@ function OperasiForm({ po }: { po: PoItem }) {
     onError: (err) => toast.error(apiErrorMessage(err, 'Gagal menyimpan data Operasi.')),
   })
 
-  const setField = <K extends keyof FormState>(key: K, value: FormState[K]) => setForm((prev) => ({ ...prev, [key]: value }))
   const errorMessage = (mutation.error as { response?: { data?: { message?: string } } } | null)?.response?.data?.message
 
   return (
@@ -123,21 +130,28 @@ function OperasiForm({ po }: { po: PoItem }) {
         <span className="badge badge-success">Sudah dibayar</span>
       </div>
       {errorMessage && <div className="alert-danger mb-3">{errorMessage}</div>}
-      <div className="grid gap-4 @md:grid-cols-2">
-        <Field label="No. MO"><input required className="input" value={form.no_mo} onChange={(e) => setField('no_mo', e.target.value)} /></Field>
-        <Field label="No. TM"><input required className="input" value={form.no_tm} onChange={(e) => setField('no_tm', e.target.value)} /></Field>
-        <Field label="HGL (%)"><input type="number" step="0.01" min="0" max="100" className="input" value={form.hgl_persen} onChange={(e) => setField('hgl_persen', e.target.value)} /></Field>
-        <Field label="Broken (%)"><input type="number" step="0.01" min="0" max="100" className="input" value={form.broken_persen} onChange={(e) => setField('broken_persen', e.target.value)} /></Field>
-        <Field label="Menir (%)"><input type="number" step="0.01" min="0" max="100" className="input" value={form.menir_persen} onChange={(e) => setField('menir_persen', e.target.value)} /></Field>
-        <Field label="Katul (%)"><input type="number" step="0.01" min="0" max="100" className="input" value={form.katul_persen} onChange={(e) => setField('katul_persen', e.target.value)} /></Field>
-        <Field label="Rendemen (%)"><input type="number" step="0.01" min="0" max="100" className="input" value={form.rendemen_persen} onChange={(e) => setField('rendemen_persen', e.target.value)} /></Field>
-      </div>
-      <div className="mt-4 flex justify-end"><button type="submit" disabled={!form.no_mo || !form.no_tm || mutation.isPending} className="btn btn-primary">{mutation.isPending ? 'Menyimpan...' : 'Simpan Data Operasi'}</button></div>
+
+      {po.po_detail.map((d) => (
+        <div key={d.id} className="mb-4 rounded-lg border border-border bg-surface p-3">
+          <div className="section-title mb-3">IN {d.transaksi_id} — {formatNumber(d.kuantum_kontribusi)} kg{d.no_in ? ` — No. IN ${d.no_in}` : ''}</div>
+          <div className="grid gap-4 @md:grid-cols-2">
+            <Field label="No. MO"><input required className="input" value={rows[d.id].no_mo} onChange={(e) => setRowField(d.id, 'no_mo', e.target.value)} /></Field>
+            <Field label="No. TM"><input required className="input" value={rows[d.id].no_tm} onChange={(e) => setRowField(d.id, 'no_tm', e.target.value)} /></Field>
+            <Field label="HGL (kg)"><input type="number" step="0.01" min="0" className="input" value={rows[d.id].hgl_kg} onChange={(e) => setRowField(d.id, 'hgl_kg', e.target.value)} /></Field>
+            <Field label="Broken (kg)"><input type="number" step="0.01" min="0" className="input" value={rows[d.id].broken_kg} onChange={(e) => setRowField(d.id, 'broken_kg', e.target.value)} /></Field>
+            <Field label="Menir (kg)"><input type="number" step="0.01" min="0" className="input" value={rows[d.id].menir_kg} onChange={(e) => setRowField(d.id, 'menir_kg', e.target.value)} /></Field>
+            <Field label="Katul (kg)"><input type="number" step="0.01" min="0" className="input" value={rows[d.id].katul_kg} onChange={(e) => setRowField(d.id, 'katul_kg', e.target.value)} /></Field>
+            <Field label="Rendemen (%)"><input type="number" step="0.01" min="0" max="100" className="input" value={rows[d.id].rendemen_persen} onChange={(e) => setRowField(d.id, 'rendemen_persen', e.target.value)} /></Field>
+          </div>
+        </div>
+      ))}
+
+      <div className="mt-4 flex justify-end"><button type="submit" disabled={!allValid || mutation.isPending} className="btn btn-primary">{mutation.isPending ? 'Menyimpan...' : 'Simpan Data Operasi'}</button></div>
 
       <ConfirmDialog
         open={confirmOperasi}
         title="Simpan data Operasi?"
-        description={<>Data Operasi PO <strong>{po.no_po}</strong> akan disimpan dan PO diteruskan ke tahap <strong>Gudang</strong>. Data tidak dapat diubah lagi setelah disimpan. Lanjutkan?</>}
+        description={<>Data Operasi untuk <strong>{po.po_detail.length} IN</strong> pada PO <strong>{po.no_po}</strong> akan disimpan dan PO diteruskan ke tahap <strong>Gudang</strong>. Data tidak dapat diubah lagi setelah disimpan. Lanjutkan?</>}
         confirmLabel="Simpan Data Operasi"
         loading={mutation.isPending}
         error={errorMessage}

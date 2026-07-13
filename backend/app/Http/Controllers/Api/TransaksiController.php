@@ -22,10 +22,17 @@ class TransaksiController extends Controller
 
     public function index(Request $request)
     {
-        $transaksi = Transaksi::where('current_stage', $request->user()->role->nama_role)
+        $query = Transaksi::where('current_stage', $request->user()->role->nama_role)
             ->with(['dataJemputPangan.makloon', 'dataMakloonMpp', 'dataMakloonTjp', 'dataUbJastasma', 'creator'])
-            ->orderBy('created_at')
-            ->paginate($request->integer('per_page', 20));
+            ->orderBy('created_at');
+
+        // Khusus daftar "siap PO" di Pengadaan: hanya transaksi yang UB Jastasma-nya
+        // sudah diterima (menunggu_review = belum ditinjau Pengadaan, jangan dimunculkan).
+        if ($request->boolean('siap_po')) {
+            $query->whereHas('dataUbJastasma', fn ($q) => $q->where('status', 'diterima'));
+        }
+
+        $transaksi = $query->paginate($request->integer('per_page', 20));
 
         return TransaksiResource::collection($transaksi);
     }

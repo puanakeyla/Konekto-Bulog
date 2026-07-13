@@ -46,14 +46,16 @@ function formatDate(value: string) {
 export default function PengadaanPage() {
   const [transaksiPage, setTransaksiPage] = useState(1)
   const [poPage, setPoPage] = useState(1)
-  const { data: transaksiResult, isLoading: loadingTransaksi } = useTransaksiList(transaksiPage)
+  const { data: transaksiResult, isLoading: loadingTransaksi } = useTransaksiList(transaksiPage, 20, true)
   const { data: poResult, isLoading: loadingPo } = usePoList(poPage)
   const queryClient = useQueryClient()
 
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [noPo, setNoPo] = useState('')
-  const [harga, setHarga] = useState('')
+  const [harga, setHarga] = useState('6500')
   const [confirmGabung, setConfirmGabung] = useState(false)
+  const [filterPemasok, setFilterPemasok] = useState('')
+  const [filterTanggal, setFilterTanggal] = useState('')
 
   const transaksiList = transaksiResult?.items ?? []
   const transaksiMeta = transaksiResult?.meta
@@ -62,6 +64,22 @@ export default function PengadaanPage() {
   const selectedRows = useMemo(
     () => transaksiList.filter((item) => selected.has(item.id_transaksi)),
     [selected, transaksiList],
+  )
+  const opsiPemasok = useMemo(
+    () => Array.from(new Set(transaksiList.map((t) => groupKeyOf(t).id_pemasok))).filter((v) => v !== '-'),
+    [transaksiList],
+  )
+  const opsiTanggal = useMemo(
+    () => Array.from(new Set(transaksiList.map((t) => groupKeyOf(t).tanggal_bongkar))).filter((v) => v !== '-'),
+    [transaksiList],
+  )
+  const filteredTransaksi = useMemo(
+    () =>
+      transaksiList.filter((t) => {
+        const k = groupKeyOf(t)
+        return (!filterPemasok || k.id_pemasok === filterPemasok) && (!filterTanggal || k.tanggal_bongkar === filterTanggal)
+      }),
+    [transaksiList, filterPemasok, filterTanggal],
   )
   const poBelumLengkap = poList.filter((po) => po.status === 'proses')
   const totalSelectedKuantum = selectedRows.reduce((sum, item) => sum + Number(groupKeyOf(item).kuantum || 0), 0)
@@ -82,7 +100,7 @@ export default function PengadaanPage() {
       setConfirmGabung(false)
       setSelected(new Set())
       setNoPo('')
-      setHarga('')
+      setHarga('6500')
       queryClient.invalidateQueries({ queryKey: ['transaksi-list'] })
       queryClient.invalidateQueries({ queryKey: ['po-list'] })
     },
@@ -137,11 +155,26 @@ export default function PengadaanPage() {
 
             {transaksiList.length > 0 && (
               <>
+                <div className="grid gap-4 @md:grid-cols-2 mb-4">
+                  <label className="block"><span className="label">Filter ID Pemasok</span>
+                    <select className="input" value={filterPemasok} onChange={(e) => setFilterPemasok(e.target.value)}>
+                      <option value="">Semua pemasok</option>
+                      {opsiPemasok.map((v) => <option key={v} value={v}>{v}</option>)}
+                    </select>
+                  </label>
+                  <label className="block"><span className="label">Filter Tanggal Bongkar</span>
+                    <select className="input" value={filterTanggal} onChange={(e) => setFilterTanggal(e.target.value)}>
+                      <option value="">Semua tanggal</option>
+                      {opsiTanggal.map((v) => <option key={v} value={v}>{formatDate(v)}</option>)}
+                    </select>
+                  </label>
+                </div>
+
                 <div className="data-table-wrap mb-4">
                   <table className="data-table">
                     <thead><tr><th className="w-10"></th><th>ID Transaksi</th><th>Skema</th><th>ID Pemasok</th><th>Tanggal Bongkar</th><th className="text-right">Kuantum</th></tr></thead>
                     <tbody>
-                      {transaksiList.map((t) => {
+                      {filteredTransaksi.map((t) => {
                         const key = groupKeyOf(t)
                         return (
                           <tr key={t.id_transaksi}>
@@ -154,15 +187,19 @@ export default function PengadaanPage() {
                           </tr>
                         )
                       })}
+                      {filteredTransaksi.length === 0 && (
+                        <tr><td colSpan={6} className="text-center text-muted py-4">Tidak ada transaksi yang cocok dengan filter.</td></tr>
+                      )}
                     </tbody>
                   </table>
                 </div>
 
                 <form className="grid gap-4 @md:grid-cols-2" onSubmit={(e) => { e.preventDefault(); setConfirmGabung(true) }}>
                   <label className="block"><span className="label">No. PO</span><input required className="input" value={noPo} onChange={(e) => setNoPo(e.target.value)} placeholder="Contoh: PO-0001/VII/2026" /></label>
-                  <label className="block"><span className="label">Harga per kg</span><input type="number" step="0.01" min="0" className="input" value={harga} onChange={(e) => setHarga(e.target.value)} placeholder="Default 6500" /></label>
+                  <label className="block"><span className="label">Harga per kg</span><input required type="number" step="0.01" min="0" className="input" value={harga} onChange={(e) => setHarga(e.target.value)} /></label>
+                  <label className="block"><span className="label">Total Kuantum</span><input className="input" readOnly value={`${formatNumber(totalSelectedKuantum)} kg`} /></label>
+                  <label className="block"><span className="label">Total harga</span><input className="input" readOnly value={formatMoney(totalSelectedKuantum * Number(harga || 0))} /></label>
                   <div className="@md:col-span-2 flexflex-wrap items-center justify-between gap-3">
-                    <p className="text-xs text-muted">Tersambung ke POST /api/pengadaan/gabungkan-po</p>
                     <button type="submit" disabled={selected.size === 0 || !noPo || gabungMutation.isPending} className="btn btn-primary">
                       {gabungMutation.isPending ? 'Menggabungkan...' : `Buat PO dari ${selected.size} transaksi`}
                     </button>
@@ -227,7 +264,6 @@ function PaginationBar({ meta, page, setPage, label, className = '' }: { meta: {
 function PoInForm({ po }: { po: PoItem }) {
   const queryClient = useQueryClient()
   const [values, setValues] = useState<Record<number, string>>({})
-  const [hargaPo, setHargaPo] = useState(String(Number(po.harga)))
   const [statusPo, setStatusPo] = useState(po.status)
   const [confirmIn, setConfirmIn] = useState(false)
   const [confirmBatal, setConfirmBatal] = useState(false)
@@ -250,7 +286,7 @@ function PoInForm({ po }: { po: PoItem }) {
   })
 
   const updatePo = useMutation({
-    mutationFn: () => api.patch(`/api/po/${po.id}`, { harga: Number(hargaPo), status: statusPo }),
+    mutationFn: () => api.patch(`/api/po/${po.id}`, { status: statusPo }),
     onSuccess: () => {
       setConfirmBatal(false)
       queryClient.invalidateQueries({ queryKey: ['po-list'] })
@@ -282,11 +318,11 @@ function PoInForm({ po }: { po: PoItem }) {
       </div>
       {errorMessage && <div className="alert-danger mb-3">{errorMessage}</div>}
       <div className="mb-4 rounded-lg border border-border bg-surface p-3">
-        <div className="section-title mb-3">Harga dan Status PO</div>
+        <div className="section-title mb-3">Status PO</div>
+        <p className="page-subtitle mb-3">Harga per kg hanya diatur saat menggabungkan transaksi menjadi PO.</p>
         <div className="grid gap-4 @md:grid-cols-2">
-          <label className="block"><span className="label">Harga per kg</span><input className="input" type="number" step="0.01" min="0" value={hargaPo} onChange={(e) => setHargaPo(e.target.value)} /></label>
           <label className="block"><span className="label">Status</span><select className="input" value={statusPo} onChange={(e) => setStatusPo(e.target.value as PoItem['status'])}><option value="proses">Proses</option><option value="lengkap">Lengkap</option><option value="dibatalkan">Dibatalkan</option></select></label>
-          <div className="@md:col-span-2 flexjustify-end"><button type="button" disabled={!hargaPo || updatePo.isPending} onClick={submitUpdatePo} className="btn btn-primary">{updatePo.isPending ? 'Menyimpan...' : 'Update PO'}</button></div>
+          <div className="@md:col-span-2 flex justify-end"><button type="button" disabled={updatePo.isPending} onClick={submitUpdatePo} className="btn btn-primary">{updatePo.isPending ? 'Menyimpan...' : 'Update Status'}</button></div>
         </div>
       </div>
       <div className="data-table-wrap mb-3">

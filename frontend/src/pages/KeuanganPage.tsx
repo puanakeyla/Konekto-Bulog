@@ -98,9 +98,23 @@ function PembayaranForm({ po }: { po: PoItem }) {
         <span className="badge badge-warning">Belum dibayar</span>
       </div>
       {errorMessage && <div className="alert-danger mb-3">{errorMessage}</div>}
+      <div className="data-table-wrap mb-4">
+        <table className="data-table">
+          <thead><tr><th>ID Transaksi</th><th className="text-right">Kuantum</th><th>Nomor IN</th></tr></thead>
+          <tbody>
+            {po.po_detail.map((d) => (
+              <tr key={d.id}>
+                <td className="font-semibold text-primary-dark">{d.transaksi_id}</td>
+                <td className="text-right">{formatNumber(d.kuantum_kontribusi)} kg</td>
+                <td>{d.no_in ?? '-'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
       <div className="grid gap-4 @md:grid-cols-2">
-        <label className="block"><span className="label">No. SPP</span><input className="input" value={noSpp} onChange={(e) => setNoSpp(e.target.value)} placeholder="Nomor SPP" /></label>
-        <label className="block"><span className="label">Tanggal Bayar</span><input required type="date" className="input" value={tanggalBayar} onChange={(e) => setTanggalBayar(e.target.value)} /></label>
+        <label className="block"><span className="label">No. SPP (berlaku untuk seluruh PO)</span><input className="input" value={noSpp} onChange={(e) => setNoSpp(e.target.value)} placeholder="Nomor SPP" /></label>
+        <label className="block"><span className="label">Tanggal Bayar (berlaku untuk seluruh PO)</span><input required type="date" className="input" value={tanggalBayar} onChange={(e) => setTanggalBayar(e.target.value)} /></label>
       </div>
       <div className="mt-4 flex justify-end"><button type="submit" disabled={!tanggalBayar || mutation.isPending} className="btn btn-primary">{mutation.isPending ? 'Menyimpan...' : 'Tandai Dibayarkan'}</button></div>
 

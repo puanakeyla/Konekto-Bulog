@@ -1,13 +1,12 @@
 <?php
 
-use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\AdminUserController;
 use App\Http\Controllers\Api\AuditLogController;
+use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\FotoController;
 use App\Http\Controllers\Api\FotoStreamController;
 use App\Http\Controllers\Api\MakloonOptionController;
 use App\Http\Controllers\Api\MonitoringController;
-use App\Http\Controllers\Api\OperasiController;
 use App\Http\Controllers\Api\PengadaanController;
 use App\Http\Controllers\Api\TransaksiController;
 use Illuminate\Support\Facades\Route;
@@ -73,6 +72,6 @@ Route::middleware('auth:sanctum')->group(function () {
         ->middleware('role:keuangan|admin');
     Route::post('/po/{dataPengadaan}/operasi', [PengadaanController::class, 'operasi'])
         ->middleware('role:operasi|admin');
-    Route::post('/operasi/{dataOperasi}/gudang', [OperasiController::class, 'gudang'])
+    Route::post('/po/{dataPengadaan}/gudang', [PengadaanController::class, 'gudang'])
         ->middleware('role:gudang|admin');
 });

@@ -656,7 +656,7 @@ function UbForm({ form, setForm, mutation, error, fotos, setFotos, progress, fot
       {error && <div className="alert-danger">{error}</div>}
       {mutation.isSuccess && fotoGagal.length > 0 && <div className="alert-warning">Data tersimpan, tapi {fotoGagal.length} foto gagal terupload.</div>}
       <div className="grid gap-4 @md:grid-cols-2">
-        {(['ka1', 'ka2', 'ka3', 'hampa', 'butir_hijau'] as const).map((key) => <Field key={key} label={`${labelOf(key)} (%)`}><input required type="number" step="0.01" min="0" max="100" className="input" value={form[key]} onChange={(e) => setForm((prev: any) => ({ ...prev, [key]: e.target.value }))} /></Field>)}
+        {(['ka1', 'ka2', 'ka3', 'hampa', 'butir_hijau'] as const).map((key) => <Field key={key} label={labelOf(key)}><input required type="number" step="0.01" min="0" max="100" className="input" value={form[key]} onChange={(e) => setForm((prev: any) => ({ ...prev, [key]: e.target.value }))} /></Field>)}
       </div>
       <DokumenGrid fields={UB_FOTO_FIELDS} fotos={fotos} setFotos={setFotos} progress={progress} fotoGagal={fotoGagal} />
       <div className="flex justify-end border-t border-border pt-4"><button type="submit" disabled={mutation.isPending || !ready} className="btn btn-primary">{mutation.isPending ? 'Mengirim...' : 'Kirim ke Pengadaan'}</button></div>

@@ -75,7 +75,7 @@ export default function TransaksiMakloonBaruPage() {
       setFotoGagal(gagal)
       toast.success(`Transaksi ${idTransaksi} dibuat & dikirim ke UB Jastasma.`)
       gagal.forEach((f) => toast.error(`Foto "${fotoLabel(f)}" gagal diupload, coba ulangi.`))
-      if (gagal.length === 0) navigate('/')
+      if (gagal.length === 0) navigate('/dashboard')
     },
     onError: (err) => toast.error(apiErrorMessage(err, 'Gagal membuat transaksi MPP.')),
   })

@@ -8,6 +8,7 @@ export type PoDetailItem = {
   transaksi_id: string
   kuantum_kontribusi: string
   no_in: string | null
+  data_operasi: DataOperasi | null
 }
 
 export type DataKeuangan = {
@@ -19,13 +20,13 @@ export type DataKeuangan = {
 
 export type DataOperasi = {
   id: number
-  data_pengadaan_id: number
+  po_detail_id: number
   no_mo: string
   no_tm: string
-  hgl_persen: string | null
-  broken_persen: string | null
-  menir_persen: string | null
-  katul_persen: string | null
+  hgl_kg: string | null
+  broken_kg: string | null
+  menir_kg: string | null
+  katul_kg: string | null
   rendemen_persen: string | null
   data_gudang: DataGudang | null
 }
@@ -52,7 +53,6 @@ export type PoItem = {
   status: 'proses' | 'lengkap' | 'dibatalkan'
   po_detail: PoDetailItem[]
   data_keuangan: DataKeuangan | null
-  data_operasi: DataOperasi | null
 }
 
 export function usePoList(page = 1, perPage = 20) {

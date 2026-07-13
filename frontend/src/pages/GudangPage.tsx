@@ -8,22 +8,23 @@ import { apiErrorMessage } from '../lib/apiError'
 import { SkeletonPoCards } from '../components/Skeleton'
 import FormHero from '../components/FormHero'
 
-type FormState = {
+type RowState = {
   tanggal_masuk: string
   nama_gudang: string
   realisasi_hgl: string
   no_tm: string
 }
 
-const initialState: FormState = {
-  tanggal_masuk: '',
-  nama_gudang: '',
-  realisasi_hgl: '',
-  no_tm: '',
-}
-
 function formatNumber(value: string | number) {
   return Number(value).toLocaleString('id-ID', { maximumFractionDigits: 2 })
+}
+
+function semuaOperasi(po: PoItem) {
+  return po.po_detail.length > 0 && po.po_detail.every((d) => !!d.data_operasi)
+}
+
+function belumSemuaGudang(po: PoItem) {
+  return po.po_detail.some((d) => d.data_operasi && !d.data_operasi.data_gudang)
 }
 
 export default function GudangPage() {
@@ -31,15 +32,15 @@ export default function GudangPage() {
   const { data: poResult, isLoading } = usePoList(page)
   const poList = poResult?.items ?? []
   const meta = poResult?.meta
-  const menungguGudang = poList.filter((po) => po.data_operasi && !po.data_operasi.data_gudang)
-  const sudahGudang = poList.filter((po) => !!po.data_operasi?.data_gudang).length
+  const menungguGudang = poList.filter((po) => semuaOperasi(po) && belumSemuaGudang(po))
+  const sudahGudang = poList.filter((po) => semuaOperasi(po) && !belumSemuaGudang(po)).length
   const totalKuantum = menungguGudang.reduce((sum, po) => sum + Number(po.total_kuantum || 0), 0)
 
   return (
     <div className="min-h-screen bg-surface">
       <FormHero
-        title="Gudang — Penerimaan"
-        subtitle="Catat penerimaan hasil operasi ke gudang sampai alur PO selesai."
+        title="Gudang — Penerimaan per IN"
+        subtitle="Catat penerimaan hasil operasi ke gudang tiap nomor IN sampai alur PO selesai."
         badge="Role Gudang"
       />
 
@@ -53,13 +54,13 @@ export default function GudangPage() {
 
           <section className="panel panel-pad">
             <div className="toolbar-card mb-4">
-              <div><h2 className="section-title">PO Siap Diterima Gudang</h2><p className="page-subtitle">Data ini tersambung ke POST /api/operasi/:id/gudang.</p></div>
+              <div><h2 className="section-title">PO Siap Diterima Gudang</h2><p className="page-subtitle">Isi penerimaan per nomor IN. Tersambung ke POST /api/po/:id/gudang.</p></div>
               <span className="badge badge-warning">{menungguGudang.length} antrean</span>
             </div>
 
             {isLoading && <SkeletonPoCards />}
             {!isLoading && menungguGudang.length === 0 && (
-              <div className="empty-state"><div className="empty-title">Tidak ada PO yang menunggu penerimaan Gudang</div><p className="empty-copy">PO baru muncul setelah Operasi menyimpan data MO/TM.</p></div>
+              <div className="empty-state"><div className="empty-title">Tidak ada PO yang menunggu penerimaan Gudang</div><p className="empty-copy">PO baru muncul setelah Operasi menyimpan data MO/TM seluruh IN.</p></div>
             )}
 
             <div className="space-y-4">{menungguGudang.map((po) => <GudangForm key={po.id} po={po} />)}</div>
@@ -85,16 +86,28 @@ function PaginationBar({ meta, page, setPage }: { meta: { current_page: number; 
 
 function GudangForm({ po }: { po: PoItem }) {
   const queryClient = useQueryClient()
-  const [form, setForm] = useState<FormState>({ ...initialState, no_tm: po.data_operasi?.no_tm ?? '' })
+  const [rows, setRows] = useState<Record<number, RowState>>(() =>
+    Object.fromEntries(
+      po.po_detail.map((d) => [d.id, { tanggal_masuk: '', nama_gudang: '', realisasi_hgl: '', no_tm: d.data_operasi?.no_tm ?? '' }]),
+    ),
+  )
   const [confirmGudang, setConfirmGudang] = useState(false)
+
+  const setRowField = (id: number, key: keyof RowState, value: string) =>
+    setRows((prev) => ({ ...prev, [id]: { ...prev[id], [key]: value } }))
+
+  const allValid = po.po_detail.every((d) => rows[d.id]?.tanggal_masuk && rows[d.id]?.nama_gudang.trim() && rows[d.id]?.no_tm.trim())
 
   const mutation = useMutation({
     mutationFn: () =>
-      api.post(`/api/operasi/${po.data_operasi!.id}/gudang`, {
-        tanggal_masuk: form.tanggal_masuk,
-        nama_gudang: form.nama_gudang,
-        realisasi_hgl: form.realisasi_hgl ? Number(form.realisasi_hgl) : undefined,
-        no_tm: form.no_tm,
+      api.post(`/api/po/${po.id}/gudang`, {
+        items: po.po_detail.map((d) => ({
+          po_detail_id: d.id,
+          tanggal_masuk: rows[d.id].tanggal_masuk,
+          nama_gudang: rows[d.id].nama_gudang,
+          realisasi_hgl: rows[d.id].realisasi_hgl.trim() !== '' ? Number(rows[d.id].realisasi_hgl) : undefined,
+          no_tm: rows[d.id].no_tm,
+        })),
       }),
     onSuccess: () => {
       setConfirmGudang(false)
@@ -104,28 +117,34 @@ function GudangForm({ po }: { po: PoItem }) {
     onError: (err) => toast.error(apiErrorMessage(err, 'Gagal menyimpan penerimaan Gudang.')),
   })
 
-  const setField = <K extends keyof FormState>(key: K, value: FormState[K]) => setForm((prev) => ({ ...prev, [key]: value }))
   const errorMessage = (mutation.error as { response?: { data?: { message?: string } } } | null)?.response?.data?.message
 
   return (
     <form className="po-card @container" onSubmit={(e) => { e.preventDefault(); setConfirmGudang(true) }}>
       <div className="po-card-header">
-        <div><div className="po-title">{po.no_po}</div><div className="po-meta">Pemasok {po.id_pemasok} - MO {po.data_operasi?.no_mo} - TM {po.data_operasi?.no_tm}</div></div>
+        <div><div className="po-title">{po.no_po}</div><div className="po-meta">Pemasok {po.id_pemasok} - {formatNumber(po.total_kuantum)} kg - {po.po_detail.length} IN</div></div>
         <span className="badge badge-success">Operasi selesai</span>
       </div>
       {errorMessage && <div className="alert-danger mb-3">{errorMessage}</div>}
-      <div className="grid gap-4 @md:grid-cols-2">
-        <label className="block"><span className="label">Tanggal Masuk</span><input required type="date" className="input" value={form.tanggal_masuk} onChange={(e) => setField('tanggal_masuk', e.target.value)} /></label>
-        <label className="block"><span className="label">Nama Gudang</span><input required className="input" value={form.nama_gudang} onChange={(e) => setField('nama_gudang', e.target.value)} placeholder="Contoh: Gudang Bulog Lampung" /></label>
-        <label className="block"><span className="label">Realisasi HGL (%)</span><input type="number" step="0.01" min="0" className="input" value={form.realisasi_hgl} onChange={(e) => setField('realisasi_hgl', e.target.value)} /></label>
-        <label className="block"><span className="label">No. TM</span><input required className="input" value={form.no_tm} onChange={(e) => setField('no_tm', e.target.value)} /></label>
-      </div>
-      <div className="mt-4 flex justify-end"><button type="submit" disabled={!form.tanggal_masuk || !form.nama_gudang || !form.no_tm || mutation.isPending} className="btn btn-primary">{mutation.isPending ? 'Menyimpan...' : 'Simpan Penerimaan'}</button></div>
+
+      {po.po_detail.map((d) => (
+        <div key={d.id} className="mb-4 rounded-lg border border-border bg-surface p-3">
+          <div className="section-title mb-3">IN {d.transaksi_id} — {formatNumber(d.kuantum_kontribusi)} kg — MO {d.data_operasi?.no_mo ?? '-'}</div>
+          <div className="grid gap-4 @md:grid-cols-2">
+            <label className="block"><span className="label">Tanggal Masuk</span><input required type="date" className="input" value={rows[d.id].tanggal_masuk} onChange={(e) => setRowField(d.id, 'tanggal_masuk', e.target.value)} /></label>
+            <label className="block"><span className="label">Nama Gudang</span><input required className="input" value={rows[d.id].nama_gudang} onChange={(e) => setRowField(d.id, 'nama_gudang', e.target.value)} placeholder="Contoh: Gudang Bulog Lampung" /></label>
+            <label className="block"><span className="label">Realisasi HGL (kg)</span><input type="number" step="0.01" min="0" className="input" value={rows[d.id].realisasi_hgl} onChange={(e) => setRowField(d.id, 'realisasi_hgl', e.target.value)} /></label>
+            <label className="block"><span className="label">No. TM</span><input required className="input" value={rows[d.id].no_tm} onChange={(e) => setRowField(d.id, 'no_tm', e.target.value)} /></label>
+          </div>
+        </div>
+      ))}
+
+      <div className="mt-4 flex justify-end"><button type="submit" disabled={!allValid || mutation.isPending} className="btn btn-primary">{mutation.isPending ? 'Menyimpan...' : 'Simpan Penerimaan'}</button></div>
 
       <ConfirmDialog
         open={confirmGudang}
         title="Simpan penerimaan gudang?"
-        description={<>Penerimaan PO <strong>{po.no_po}</strong> akan dicatat dan alur transaksi ditandai <strong>selesai</strong>. Data tidak dapat diubah lagi setelah disimpan. Lanjutkan?</>}
+        description={<>Penerimaan <strong>{po.po_detail.length} IN</strong> pada PO <strong>{po.no_po}</strong> akan dicatat dan alur transaksi ditandai <strong>selesai</strong>. Data tidak dapat diubah lagi setelah disimpan. Lanjutkan?</>}
         confirmLabel="Simpan Penerimaan"
         loading={mutation.isPending}
         error={errorMessage}

@@ -3,7 +3,6 @@
 namespace Tests\Feature\Pengadaan;
 
 use App\Models\DataMakloonMpp;
-use App\Models\DataOperasi;
 use App\Models\DataPengadaan;
 use App\Models\DataUbJastasma;
 use App\Models\Role;
@@ -135,7 +134,7 @@ class PoLifecycleTest extends TestCase
 
         $this->expectException(HttpException::class);
 
-        $this->lifecycleService->inputOperasi($po, $this->dataOperasi());
+        $this->lifecycleService->inputOperasi($po, $this->operasiItems($po));
     }
 
     public function test_operasi_sukses_dan_memajukan_current_stage_ke_gudang(): void
@@ -143,23 +142,24 @@ class PoLifecycleTest extends TestCase
         [$po, $transaksiIds] = $this->buatPoLengkap(2);
         $this->lifecycleService->updatePembayaran($po, 'dibayarkan', '2026-07-12', 'SPP-003');
 
-        $dataOperasi = $this->lifecycleService->inputOperasi($po->fresh(), $this->dataOperasi());
+        $created = $this->lifecycleService->inputOperasi($po->fresh(), $this->operasiItems($po));
 
-        $this->assertSame('MO-001', $dataOperasi->no_mo);
+        $this->assertCount(2, $created);
+        $this->assertSame('MO-001', $created->first()->no_mo);
         foreach ($transaksiIds as $id) {
             $this->assertSame('gudang', Transaksi::find($id)->current_stage);
         }
     }
 
-    public function test_operasi_menolak_duplikat_untuk_po_yang_sama(): void
+    public function test_operasi_menolak_duplikat_untuk_in_yang_sama(): void
     {
         [$po] = $this->buatPoLengkap(1);
         $this->lifecycleService->updatePembayaran($po, 'dibayarkan', '2026-07-12', 'SPP-004');
-        $this->lifecycleService->inputOperasi($po->fresh(), $this->dataOperasi());
+        $this->lifecycleService->inputOperasi($po->fresh(), $this->operasiItems($po));
 
         $this->expectException(HttpException::class);
 
-        $this->lifecycleService->inputOperasi($po->fresh(), $this->dataOperasi());
+        $this->lifecycleService->inputOperasi($po->fresh(), $this->operasiItems($po));
     }
 
     public function test_post_operasi_via_http_ditolak_untuk_role_selain_operasi(): void
@@ -169,7 +169,7 @@ class PoLifecycleTest extends TestCase
 
         Sanctum::actingAs($this->keuangan);
 
-        $response = $this->postJson("/api/po/{$po->id}/operasi", $this->dataOperasi());
+        $response = $this->postJson("/api/po/{$po->id}/operasi", ['items' => $this->operasiItems($po)]);
 
         $response->assertForbidden();
     }
@@ -180,37 +180,38 @@ class PoLifecycleTest extends TestCase
     {
         [$po, $transaksiIds] = $this->buatPoLengkap(2);
         $this->lifecycleService->updatePembayaran($po, 'dibayarkan', '2026-07-12', 'SPP-006');
-        $dataOperasi = $this->lifecycleService->inputOperasi($po->fresh(), $this->dataOperasi());
+        $this->lifecycleService->inputOperasi($po->fresh(), $this->operasiItems($po));
 
-        $dataGudang = $this->lifecycleService->inputGudang($dataOperasi, $this->dataGudang());
+        $created = $this->lifecycleService->inputGudang($po->fresh(), $this->gudangItems($po));
 
-        $this->assertSame('Gudang A', $dataGudang->nama_gudang);
+        $this->assertCount(2, $created);
+        $this->assertSame('Gudang A', $created->first()->nama_gudang);
         foreach ($transaksiIds as $id) {
             $this->assertSame('selesai', Transaksi::find($id)->status_keseluruhan);
         }
     }
 
-    public function test_gudang_menolak_duplikat_untuk_operasi_yang_sama(): void
+    public function test_gudang_menolak_duplikat_untuk_in_yang_sama(): void
     {
         [$po] = $this->buatPoLengkap(1);
         $this->lifecycleService->updatePembayaran($po, 'dibayarkan', '2026-07-12', 'SPP-007');
-        $dataOperasi = $this->lifecycleService->inputOperasi($po->fresh(), $this->dataOperasi());
-        $this->lifecycleService->inputGudang($dataOperasi, $this->dataGudang());
+        $this->lifecycleService->inputOperasi($po->fresh(), $this->operasiItems($po));
+        $this->lifecycleService->inputGudang($po->fresh(), $this->gudangItems($po));
 
         $this->expectException(HttpException::class);
 
-        $this->lifecycleService->inputGudang($dataOperasi->fresh(), $this->dataGudang());
+        $this->lifecycleService->inputGudang($po->fresh(), $this->gudangItems($po));
     }
 
     public function test_post_gudang_via_http_ditolak_untuk_role_selain_gudang(): void
     {
         [$po] = $this->buatPoLengkap(1);
         $this->lifecycleService->updatePembayaran($po, 'dibayarkan', '2026-07-12', 'SPP-008');
-        $dataOperasi = $this->lifecycleService->inputOperasi($po->fresh(), $this->dataOperasi());
+        $this->lifecycleService->inputOperasi($po->fresh(), $this->operasiItems($po));
 
         Sanctum::actingAs($this->operasi);
 
-        $response = $this->postJson("/api/operasi/{$dataOperasi->id}/gudang", $this->dataGudang());
+        $response = $this->postJson("/api/po/{$po->id}/gudang", ['items' => $this->gudangItems($po)]);
 
         $response->assertForbidden();
     }
@@ -219,14 +220,14 @@ class PoLifecycleTest extends TestCase
     {
         [$po] = $this->buatPoLengkap(1);
         $this->lifecycleService->updatePembayaran($po, 'dibayarkan', '2026-07-12', 'SPP-009');
-        $dataOperasi = $this->lifecycleService->inputOperasi($po->fresh(), $this->dataOperasi());
+        $this->lifecycleService->inputOperasi($po->fresh(), $this->operasiItems($po));
 
         Sanctum::actingAs($this->gudang);
 
-        $response = $this->postJson("/api/operasi/{$dataOperasi->id}/gudang", $this->dataGudang());
+        $response = $this->postJson("/api/po/{$po->id}/gudang", ['items' => $this->gudangItems($po)]);
 
         $response->assertCreated();
-        $response->assertJsonPath('data.nama_gudang', 'Gudang A');
+        $response->assertJsonPath('data.0.nama_gudang', 'Gudang A');
     }
 
     // ---------- helpers ----------
@@ -240,27 +241,29 @@ class PoLifecycleTest extends TestCase
         ]);
     }
 
-    private function dataOperasi(): array
+    private function operasiItems(DataPengadaan $po): array
     {
-        return [
+        return $po->poDetail()->pluck('id')->map(fn ($id) => [
+            'po_detail_id' => $id,
             'no_mo' => 'MO-001',
             'no_tm' => 'TM-001',
-            'hgl_persen' => 60.5,
-            'broken_persen' => 5.2,
-            'menir_persen' => 2.1,
-            'katul_persen' => 3.3,
+            'hgl_kg' => 60.5,
+            'broken_kg' => 5.2,
+            'menir_kg' => 2.1,
+            'katul_kg' => 3.3,
             'rendemen_persen' => 62.0,
-        ];
+        ])->all();
     }
 
-    private function dataGudang(): array
+    private function gudangItems(DataPengadaan $po): array
     {
-        return [
+        return $po->poDetail()->pluck('id')->map(fn ($id) => [
+            'po_detail_id' => $id,
             'tanggal_masuk' => '2026-07-15',
             'nama_gudang' => 'Gudang A',
             'realisasi_hgl' => 61.0,
             'no_tm' => 'TM-001',
-        ];
+        ])->all();
     }
 
     private function transaksiSampaiPengadaan(string $idPemasok, string $tanggalBongkar, float $kuantum): Transaksi

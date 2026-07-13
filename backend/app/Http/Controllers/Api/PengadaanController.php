@@ -17,12 +17,11 @@ class PengadaanController extends Controller
         private PoGroupingService $service,
         private PoLifecycleService $lifecycleService,
         private AuditLogService $auditLog,
-    ) {
-    }
+    ) {}
 
     public function index(Request $request)
     {
-        $dataPengadaan = DataPengadaan::with(['poDetail', 'dataKeuangan', 'dataOperasi.dataGudang'])
+        $dataPengadaan = DataPengadaan::with(['poDetail.dataOperasi.dataGudang', 'dataKeuangan'])
             ->orderByDesc('created_at')
             ->paginate($request->integer('per_page', 20));
 
@@ -31,7 +30,7 @@ class PengadaanController extends Controller
 
     public function show(Request $request, DataPengadaan $dataPengadaan)
     {
-        $dataPengadaan->load(['poDetail', 'dataKeuangan', 'dataOperasi.dataGudang', 'makloon']);
+        $dataPengadaan->load(['poDetail.dataOperasi.dataGudang', 'dataKeuangan', 'makloon']);
 
         return response()->json(['data' => new DataPengadaanResource($dataPengadaan)]);
     }
@@ -43,13 +42,15 @@ class PengadaanController extends Controller
             'transaksi_ids.*' => ['required', 'string', Rule::exists('transaksi', 'id_transaksi')],
             'no_po' => ['required', 'string', 'max:255', 'unique:data_pengadaan,no_po'],
             'harga' => ['nullable', 'numeric', 'min:0'],
+            'status' => ['sometimes', Rule::in(['proses', 'lengkap', 'dibatalkan'])],
         ]);
 
         $dataPengadaan = $this->service->gabungkanPo(
             $validated['transaksi_ids'],
             $validated['no_po'],
             $request->user(),
-            $validated['harga'] ?? null
+            $validated['harga'] ?? null,
+            $validated['status'] ?? 'proses'
         );
 
         $this->auditLog->logMany($request->user(), 'gabungkan_po', $validated['transaksi_ids'], [
@@ -143,24 +144,45 @@ class PengadaanController extends Controller
     public function operasi(Request $request, DataPengadaan $dataPengadaan)
     {
         $validated = $request->validate([
-            'no_mo' => ['required', 'string', 'max:255'],
-            'no_tm' => ['required', 'string', 'max:255'],
-            'hgl_persen' => ['nullable', 'numeric', 'min:0', 'max:100'],
-            'broken_persen' => ['nullable', 'numeric', 'min:0', 'max:100'],
-            'menir_persen' => ['nullable', 'numeric', 'min:0', 'max:100'],
-            'katul_persen' => ['nullable', 'numeric', 'min:0', 'max:100'],
-            'rendemen_persen' => ['nullable', 'numeric', 'min:0', 'max:100'],
+            'items' => ['required', 'array', 'min:1'],
+            'items.*.po_detail_id' => ['required', 'integer'],
+            'items.*.no_mo' => ['required', 'string', 'max:255'],
+            'items.*.no_tm' => ['required', 'string', 'max:255'],
+            'items.*.hgl_kg' => ['nullable', 'numeric', 'min:0'],
+            'items.*.broken_kg' => ['nullable', 'numeric', 'min:0'],
+            'items.*.menir_kg' => ['nullable', 'numeric', 'min:0'],
+            'items.*.katul_kg' => ['nullable', 'numeric', 'min:0'],
+            'items.*.rendemen_persen' => ['nullable', 'numeric', 'min:0', 'max:100'],
         ]);
 
-        $dataOperasi = $this->lifecycleService->inputOperasi($dataPengadaan, $validated);
+        $created = $this->lifecycleService->inputOperasi($dataPengadaan, $validated['items']);
 
         $this->auditLog->logMany($request->user(), 'input_operasi', $dataPengadaan->poDetail()->pluck('transaksi_id'), [
             'data_pengadaan_id' => $dataPengadaan->id,
-            'data_operasi_id' => $dataOperasi->id,
-            'no_mo' => $dataOperasi->no_mo,
-            'no_tm' => $dataOperasi->no_tm,
+            'jumlah_in' => $created->count(),
         ]);
 
-        return response()->json(['data' => $dataOperasi], 201);
+        return response()->json(['data' => $created], 201);
+    }
+
+    public function gudang(Request $request, DataPengadaan $dataPengadaan)
+    {
+        $validated = $request->validate([
+            'items' => ['required', 'array', 'min:1'],
+            'items.*.po_detail_id' => ['required', 'integer'],
+            'items.*.tanggal_masuk' => ['required', 'date'],
+            'items.*.nama_gudang' => ['required', 'string', 'max:255'],
+            'items.*.realisasi_hgl' => ['nullable', 'numeric', 'min:0'],
+            'items.*.no_tm' => ['required', 'string', 'max:255'],
+        ]);
+
+        $created = $this->lifecycleService->inputGudang($dataPengadaan, $validated['items']);
+
+        $this->auditLog->logMany($request->user(), 'input_gudang', $dataPengadaan->poDetail()->pluck('transaksi_id'), [
+            'data_pengadaan_id' => $dataPengadaan->id,
+            'jumlah_in' => $created->count(),
+        ]);
+
+        return response()->json(['data' => $created], 201);
     }
 }

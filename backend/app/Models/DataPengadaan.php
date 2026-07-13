@@ -38,11 +38,6 @@ class DataPengadaan extends Model
         return $this->hasOne(DataKeuangan::class);
     }
 
-    public function dataOperasi(): HasOne
-    {
-        return $this->hasOne(DataOperasi::class);
-    }
-
     protected function casts(): array
     {
         return [

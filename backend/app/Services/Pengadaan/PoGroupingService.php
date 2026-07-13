@@ -16,13 +16,13 @@ class PoGroupingService
      * dikelompokkan berdasarkan (tanggal_bongkar, id_pemasok, makloon_user_id), kuantum dijumlahkan,
      * dan tiap transaksi asal dicatat di po_detail untuk pemecahan saat proses IN nanti.
      */
-    public function gabungkanPo(array $transaksiIds, string $noPo, User $actor, ?float $harga = null): DataPengadaan
+    public function gabungkanPo(array $transaksiIds, string $noPo, User $actor, ?float $harga = null, string $status = 'proses'): DataPengadaan
     {
         if (count($transaksiIds) < 1) {
             abort(422, 'Pilih minimal satu transaksi untuk digabungkan.');
         }
 
-        return DB::transaction(function () use ($transaksiIds, $noPo, $harga) {
+        return DB::transaction(function () use ($transaksiIds, $noPo, $harga, $status) {
             $transaksiList = Transaksi::whereIn('id_transaksi', $transaksiIds)
                 ->lockForUpdate()
                 ->get()
@@ -79,7 +79,7 @@ class PoGroupingService
                 'harga' => number_format($hargaValue, 2, '.', ''),
                 'total_harga' => number_format($totalHarga, 2, '.', ''),
                 'no_po' => $noPo,
-                'status' => 'proses',
+                'status' => $status,
             ]);
 
             foreach ($rows as $id => $row) {
@@ -89,8 +89,12 @@ class PoGroupingService
                     'kuantum_kontribusi' => number_format((float) $row['kuantum'], 2, '.', ''),
                 ]);
 
-                $row['transaksi']->current_stage = 'keuangan';
-                $row['transaksi']->save();
+                // PO yang langsung dibatalkan tidak memajukan transaksi asalnya;
+                // transaksi tetap di tahap Pengadaan agar bisa digabung ulang.
+                if ($status !== 'dibatalkan') {
+                    $row['transaksi']->current_stage = 'keuangan';
+                    $row['transaksi']->save();
+                }
             }
 
             return $dataPengadaan->load('poDetail');

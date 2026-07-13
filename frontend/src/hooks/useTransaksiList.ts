@@ -24,12 +24,12 @@ export type TransaksiListItem = {
   data_jemput_pangan?: { id_pemasok: string; makloon_user_id: number } | null
 }
 
-export function useTransaksiList(page = 1, perPage = 20) {
+export function useTransaksiList(page = 1, perPage = 20, siapPo = false) {
   return useQuery({
-    queryKey: ['transaksi-list', page, perPage],
+    queryKey: ['transaksi-list', page, perPage, siapPo],
     queryFn: async () => {
       const { data } = await api.get<{ data: TransaksiListItem[]; meta: PaginationMeta }>('/api/transaksi', {
-        params: { page, per_page: perPage },
+        params: { page, per_page: perPage, ...(siapPo ? { siap_po: 1 } : {}) },
       })
       return { items: data.data, meta: data.meta }
     },

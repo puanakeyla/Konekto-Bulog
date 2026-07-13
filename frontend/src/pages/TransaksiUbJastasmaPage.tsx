@@ -71,11 +71,11 @@ export default function TransaksiUbJastasmaPage() {
           )}
 
           <div className="form-grid">
-            <Field label="KA1 (%)"><input required type="number" step="0.01" min="0" max="100" className="input" value={form.ka1} onChange={(e) => setField('ka1', e.target.value)} /></Field>
-            <Field label="KA2 (%)"><input required type="number" step="0.01" min="0" max="100" className="input" value={form.ka2} onChange={(e) => setField('ka2', e.target.value)} /></Field>
-            <Field label="KA3 (%)"><input required type="number" step="0.01" min="0" max="100" className="input" value={form.ka3} onChange={(e) => setField('ka3', e.target.value)} /></Field>
-            <Field label="Hampa (%)"><input required type="number" step="0.01" min="0" max="100" className="input" value={form.hampa} onChange={(e) => setField('hampa', e.target.value)} /></Field>
-            <Field label="Butir Hijau (%)"><input required type="number" step="0.01" min="0" max="100" className="input" value={form.butir_hijau} onChange={(e) => setField('butir_hijau', e.target.value)} /></Field>
+            <Field label="KA1"><input required type="number" step="0.01" min="0" max="100" className="input" value={form.ka1} onChange={(e) => setField('ka1', e.target.value)} /></Field>
+            <Field label="KA2"><input required type="number" step="0.01" min="0" max="100" className="input" value={form.ka2} onChange={(e) => setField('ka2', e.target.value)} /></Field>
+            <Field label="KA3"><input required type="number" step="0.01" min="0" max="100" className="input" value={form.ka3} onChange={(e) => setField('ka3', e.target.value)} /></Field>
+            <Field label="Hampa"><input required type="number" step="0.01" min="0" max="100" className="input" value={form.hampa} onChange={(e) => setField('hampa', e.target.value)} /></Field>
+            <Field label="Butir Hijau"><input required type="number" step="0.01" min="0" max="100" className="input" value={form.butir_hijau} onChange={(e) => setField('butir_hijau', e.target.value)} /></Field>
           </div>
 
           <button
