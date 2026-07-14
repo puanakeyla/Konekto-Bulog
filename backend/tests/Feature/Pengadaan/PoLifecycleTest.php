@@ -10,6 +10,7 @@ use App\Models\Transaksi;
 use App\Models\User;
 use App\Services\Pengadaan\PoGroupingService;
 use App\Services\Pengadaan\PoLifecycleService;
+use App\Services\Pengadaan\PoReviewService;
 use App\Services\Transaksi\TransaksiStageService;
 use Database\Seeders\RoleSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -26,6 +27,8 @@ class PoLifecycleTest extends TestCase
     private PoGroupingService $poService;
 
     private PoLifecycleService $lifecycleService;
+
+    private PoReviewService $reviewService;
 
     private User $makloon;
 
@@ -48,6 +51,7 @@ class PoLifecycleTest extends TestCase
         $this->stageService = app(TransaksiStageService::class);
         $this->poService = app(PoGroupingService::class);
         $this->lifecycleService = app(PoLifecycleService::class);
+        $this->reviewService = app(PoReviewService::class);
 
         $this->makloon = $this->buatUser('makloon');
         $this->ubJastasma = $this->buatUser('ub_jastasma');
@@ -72,7 +76,7 @@ class PoLifecycleTest extends TestCase
     {
         [$po, $transaksiIds] = $this->buatPoLengkap(2);
 
-        $dataKeuangan = $this->lifecycleService->updatePembayaran($po, 'dibayarkan', '2026-07-12', 'SPP-001');
+        $dataKeuangan = $this->bayarPo($po, '2026-07-12', 'SPP-001');
 
         $this->assertSame('dibayarkan', $dataKeuangan->status_bayar);
         $this->assertSame('2026-07-12', $dataKeuangan->tanggal_bayar->format('Y-m-d'));
@@ -87,7 +91,7 @@ class PoLifecycleTest extends TestCase
     {
         [$po, $transaksiIds] = $this->buatPoLengkap(1);
 
-        $this->lifecycleService->updatePembayaran($po, 'dibayarkan', '2026-07-12', 'SPP-002');
+        $this->bayarPo($po, '2026-07-12', 'SPP-002');
         Transaksi::whereIn('id_transaksi', $transaksiIds)->update(['current_stage' => 'gudang']);
 
         // panggil ulang dengan status yang sama - tidak boleh menimpa current_stage yang sudah maju lebih jauh
@@ -113,6 +117,7 @@ class PoLifecycleTest extends TestCase
     public function test_patch_pembayaran_via_http_sukses(): void
     {
         [$po] = $this->buatPoLengkap(1);
+        $this->reviewService->terima($po->fresh(), $this->keuangan);
 
         Sanctum::actingAs($this->keuangan);
 
@@ -126,6 +131,24 @@ class PoLifecycleTest extends TestCase
         $response->assertJsonPath('data.status_bayar', 'dibayarkan');
     }
 
+    public function test_keuangan_tolak_po_lalu_pengadaan_revisi_mengirim_lagi_ke_keuangan(): void
+    {
+        [$po, $transaksiIds] = $this->buatPoLengkap(1);
+
+        $this->reviewService->tolak($po->fresh(), $this->keuangan, 'Nomor IN salah.');
+
+        $this->assertSame('ditolak', $po->fresh()->review_status);
+        $this->assertSame('pengadaan', Transaksi::find($transaksiIds[0])->current_stage);
+
+        $detail = $po->poDetail()->first();
+        $this->poService->isiNomorIn($po->fresh(), [
+            ['po_detail_id' => $detail->id, 'no_in' => 'IN-REVISI-001'],
+        ]);
+
+        $this->assertSame('menunggu_review', $po->fresh()->review_status);
+        $this->assertSame('keuangan', Transaksi::find($transaksiIds[0])->current_stage);
+    }
+
     // ---------- Operasi ----------
 
     public function test_operasi_ditolak_jika_belum_dibayarkan(): void
@@ -137,33 +160,50 @@ class PoLifecycleTest extends TestCase
         $this->lifecycleService->inputOperasi($po, $this->operasiItems($po));
     }
 
-    public function test_operasi_sukses_membuat_permintaan_out_tanpa_memajukan_stage(): void
+    public function test_operasi_sukses_membuat_permintaan_out_dan_memajukan_stage_ke_pengadaan(): void
     {
         [$po, $transaksiIds] = $this->buatPoLengkap(2);
-        $this->lifecycleService->updatePembayaran($po, 'dibayarkan', '2026-07-12', 'SPP-003');
+        $this->bayarPo($po, '2026-07-12', 'SPP-003');
 
-        $created = $this->lifecycleService->inputOperasi($po->fresh(), $this->operasiItems($po));
+        $created = $this->inputOperasiPo($po->fresh());
 
         $this->assertCount(2, $created);
         $this->assertSame('MO-001', $created->first()->no_mo);
         $this->assertSame('menunggu_pengadaan', $created->first()->status_out);
         $this->assertNull($created->first()->no_out);
         foreach ($transaksiIds as $id) {
-            $this->assertSame('operasi', Transaksi::find($id)->current_stage);
+            $this->assertSame('pengadaan', Transaksi::find($id)->current_stage);
         }
     }
 
-    public function test_approve_out_sukses_dan_memajukan_current_stage_ke_gudang(): void
+    public function test_approve_out_sukses_dan_mengembalikan_current_stage_ke_operasi(): void
     {
         [$po, $transaksiIds] = $this->buatPoLengkap(2);
-        $this->lifecycleService->updatePembayaran($po, 'dibayarkan', '2026-07-12', 'SPP-OUT-001');
-        $this->lifecycleService->inputOperasi($po->fresh(), $this->operasiItems($po));
+        $this->bayarPo($po, '2026-07-12', 'SPP-OUT-001');
+        $this->inputOperasiPo($po->fresh());
 
         $approved = $this->lifecycleService->approveNomorOut($po->fresh(), $this->outItems($po));
 
         $this->assertCount(2, $approved);
         $this->assertSame('OUT-001', $approved->first()->no_out);
+        $this->assertSame('100.00', $approved->first()->kuantum_out);
         $this->assertSame('disetujui', $approved->first()->status_out);
+        $this->assertSame('diterima', $approved->first()->review_status);
+        foreach ($transaksiIds as $id) {
+            $this->assertSame('operasi', Transaksi::find($id)->current_stage);
+        }
+    }
+
+    public function test_operasi_terima_nomor_out_lalu_memajukan_current_stage_ke_gudang(): void
+    {
+        [$po, $transaksiIds] = $this->buatPoLengkap(1);
+        $this->bayarPo($po, '2026-07-12', 'SPP-OUT-002');
+        $this->inputOperasiPo($po->fresh());
+        $this->lifecycleService->approveNomorOut($po->fresh(), $this->outItems($po), $this->pengadaan);
+
+        $result = $this->reviewService->terima($po->fresh(), $this->operasi);
+
+        $this->assertSame('pengadaan', $result['stage']);
         foreach ($transaksiIds as $id) {
             $this->assertSame('gudang', Transaksi::find($id)->current_stage);
         }
@@ -172,8 +212,8 @@ class PoLifecycleTest extends TestCase
     public function test_operasi_menolak_duplikat_untuk_in_yang_sama(): void
     {
         [$po] = $this->buatPoLengkap(1);
-        $this->lifecycleService->updatePembayaran($po, 'dibayarkan', '2026-07-12', 'SPP-004');
-        $this->lifecycleService->inputOperasi($po->fresh(), $this->operasiItems($po));
+        $this->bayarPo($po, '2026-07-12', 'SPP-004');
+        $this->inputOperasiPo($po->fresh());
 
         $this->expectException(HttpException::class);
 
@@ -183,7 +223,7 @@ class PoLifecycleTest extends TestCase
     public function test_post_operasi_via_http_ditolak_untuk_role_selain_operasi(): void
     {
         [$po] = $this->buatPoLengkap(1);
-        $this->lifecycleService->updatePembayaran($po, 'dibayarkan', '2026-07-12', 'SPP-005');
+        $this->bayarPo($po, '2026-07-12', 'SPP-005');
 
         Sanctum::actingAs($this->keuangan);
 
@@ -192,14 +232,50 @@ class PoLifecycleTest extends TestCase
         $response->assertForbidden();
     }
 
+    public function test_operasi_tolak_keuangan_lalu_keuangan_revisi_mengirim_lagi_ke_operasi(): void
+    {
+        [$po, $transaksiIds] = $this->buatPoLengkap(1);
+        $this->bayarPo($po, '2026-07-12', 'SPP-REVISI-001');
+
+        $this->reviewService->tolak($po->fresh(), $this->operasi, 'Tanggal bayar salah.');
+
+        $this->assertSame('ditolak', $po->fresh('dataKeuangan')->dataKeuangan->review_status);
+        $this->assertSame('keuangan', Transaksi::find($transaksiIds[0])->current_stage);
+
+        $this->lifecycleService->updatePembayaran($po->fresh(), 'dibayarkan', '2026-07-13', 'SPP-REVISI-002');
+
+        $this->assertSame('menunggu_review', $po->fresh('dataKeuangan')->dataKeuangan->review_status);
+        $this->assertSame('operasi', Transaksi::find($transaksiIds[0])->current_stage);
+    }
+
+    public function test_pengadaan_tolak_operasi_lalu_operasi_revisi_mengirim_lagi_ke_pengadaan(): void
+    {
+        [$po, $transaksiIds] = $this->buatPoLengkap(1);
+        $this->bayarPo($po, '2026-07-12', 'SPP-REVISI-003');
+        $this->inputOperasiPo($po->fresh());
+
+        $this->reviewService->tolak($po->fresh(), $this->pengadaan, 'Nomor MO salah.');
+
+        $this->assertSame('ditolak', $po->fresh('poDetail.dataOperasi')->poDetail->first()->dataOperasi->review_status);
+        $this->assertSame('operasi', Transaksi::find($transaksiIds[0])->current_stage);
+
+        $items = $this->operasiItems($po);
+        $items[0]['no_mo'] = 'MO-REVISI-001';
+        $this->lifecycleService->inputOperasi($po->fresh(), $items);
+
+        $this->assertSame('menunggu_review', $po->fresh('poDetail.dataOperasi')->poDetail->first()->dataOperasi->review_status);
+        $this->assertSame('pengadaan', Transaksi::find($transaksiIds[0])->current_stage);
+    }
+
     // ---------- Gudang ----------
 
     public function test_gudang_sukses_menyelesaikan_transaksi_terkait(): void
     {
         [$po, $transaksiIds] = $this->buatPoLengkap(2);
-        $this->lifecycleService->updatePembayaran($po, 'dibayarkan', '2026-07-12', 'SPP-006');
-        $this->lifecycleService->inputOperasi($po->fresh(), $this->operasiItems($po));
+        $this->bayarPo($po, '2026-07-12', 'SPP-006');
+        $this->inputOperasiPo($po->fresh());
         $this->lifecycleService->approveNomorOut($po->fresh(), $this->outItems($po));
+        $this->reviewService->terima($po->fresh(), $this->operasi);
 
         $created = $this->lifecycleService->inputGudang($po->fresh(), $this->gudangItems($po));
 
@@ -213,9 +289,10 @@ class PoLifecycleTest extends TestCase
     public function test_gudang_menolak_duplikat_untuk_in_yang_sama(): void
     {
         [$po] = $this->buatPoLengkap(1);
-        $this->lifecycleService->updatePembayaran($po, 'dibayarkan', '2026-07-12', 'SPP-007');
-        $this->lifecycleService->inputOperasi($po->fresh(), $this->operasiItems($po));
+        $this->bayarPo($po, '2026-07-12', 'SPP-007');
+        $this->inputOperasiPo($po->fresh());
         $this->lifecycleService->approveNomorOut($po->fresh(), $this->outItems($po));
+        $this->reviewService->terima($po->fresh(), $this->operasi);
         $this->lifecycleService->inputGudang($po->fresh(), $this->gudangItems($po));
 
         $this->expectException(HttpException::class);
@@ -226,9 +303,10 @@ class PoLifecycleTest extends TestCase
     public function test_post_gudang_via_http_ditolak_untuk_role_selain_gudang(): void
     {
         [$po] = $this->buatPoLengkap(1);
-        $this->lifecycleService->updatePembayaran($po, 'dibayarkan', '2026-07-12', 'SPP-008');
-        $this->lifecycleService->inputOperasi($po->fresh(), $this->operasiItems($po));
+        $this->bayarPo($po, '2026-07-12', 'SPP-008');
+        $this->inputOperasiPo($po->fresh());
         $this->lifecycleService->approveNomorOut($po->fresh(), $this->outItems($po));
+        $this->reviewService->terima($po->fresh(), $this->operasi);
 
         Sanctum::actingAs($this->operasi);
 
@@ -240,9 +318,10 @@ class PoLifecycleTest extends TestCase
     public function test_post_gudang_via_http_sukses(): void
     {
         [$po] = $this->buatPoLengkap(1);
-        $this->lifecycleService->updatePembayaran($po, 'dibayarkan', '2026-07-12', 'SPP-009');
-        $this->lifecycleService->inputOperasi($po->fresh(), $this->operasiItems($po));
+        $this->bayarPo($po, '2026-07-12', 'SPP-009');
+        $this->inputOperasiPo($po->fresh());
         $this->lifecycleService->approveNomorOut($po->fresh(), $this->outItems($po));
+        $this->reviewService->terima($po->fresh(), $this->operasi);
 
         Sanctum::actingAs($this->gudang);
 
@@ -250,6 +329,26 @@ class PoLifecycleTest extends TestCase
 
         $response->assertCreated();
         $response->assertJsonPath('data.0.nama_gudang', 'Gudang A');
+    }
+
+    public function test_operasi_tolak_out_lalu_pengadaan_revisi_kembali_ke_operasi(): void
+    {
+        [$po, $transaksiIds] = $this->buatPoLengkap(1);
+        $this->bayarPo($po, '2026-07-12', 'SPP-REVISI-004');
+        $this->inputOperasiPo($po->fresh());
+        $this->lifecycleService->approveNomorOut($po->fresh(), $this->outItems($po), $this->pengadaan);
+
+        $this->reviewService->tolak($po->fresh(), $this->operasi, 'OUT belum sesuai realisasi.');
+
+        $this->assertSame('ditolak', $po->fresh('poDetail.dataOperasi')->poDetail->first()->dataOperasi->review_status);
+        $this->assertSame('pengadaan', Transaksi::find($transaksiIds[0])->current_stage);
+
+        $items = $this->outItems($po);
+        $items[0]['no_out'] = 'OUT-REVISI-001';
+        $this->lifecycleService->approveNomorOut($po->fresh(), $items, $this->pengadaan);
+
+        $this->assertSame('diterima', $po->fresh('poDetail.dataOperasi')->poDetail->first()->dataOperasi->review_status);
+        $this->assertSame('operasi', Transaksi::find($transaksiIds[0])->current_stage);
     }
 
     // ---------- helpers ----------
@@ -261,6 +360,24 @@ class PoLifecycleTest extends TestCase
             'password' => bcrypt('secret'),
             'role_id' => Role::where('nama_role', $role)->value('id'),
         ]);
+    }
+
+    private function bayarPo(DataPengadaan $po, string $tanggalBayar, string $noSpp)
+    {
+        if ($po->fresh()->review_status !== 'diterima') {
+            $this->reviewService->terima($po->fresh(), $this->keuangan);
+        }
+
+        return $this->lifecycleService->updatePembayaran($po->fresh(), 'dibayarkan', $tanggalBayar, $noSpp);
+    }
+
+    private function inputOperasiPo(DataPengadaan $po, ?array $items = null)
+    {
+        if ($po->fresh('dataKeuangan')->dataKeuangan?->review_status !== 'diterima') {
+            $this->reviewService->terima($po->fresh(), $this->operasi);
+        }
+
+        return $this->lifecycleService->inputOperasi($po->fresh(), $items ?? $this->operasiItems($po));
     }
 
     private function operasiItems(DataPengadaan $po): array
@@ -293,6 +410,7 @@ class PoLifecycleTest extends TestCase
         return $po->poDetail()->pluck('id')->values()->map(fn ($id, $index) => [
             'po_detail_id' => $id,
             'no_out' => 'OUT-'.str_pad((string) ($index + 1), 3, '0', STR_PAD_LEFT),
+            'kuantum_out' => 100,
         ])->all();
     }
 
