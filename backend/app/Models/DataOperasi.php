@@ -15,6 +15,7 @@ class DataOperasi extends Model
         'no_mo',
         'no_tm',
         'no_out',
+        'kuantum_out',
         'status_out',
         'hgl_kg',
         'broken_kg',
@@ -41,6 +42,7 @@ class DataOperasi extends Model
     {
         return [
             'hgl_kg' => 'decimal:2',
+            'kuantum_out' => 'decimal:2',
             'broken_kg' => 'decimal:2',
             'menir_kg' => 'decimal:2',
             'katul_kg' => 'decimal:2',

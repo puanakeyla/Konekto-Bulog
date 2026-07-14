@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\DataPengadaanResource;
 use App\Models\DataPengadaan;
+use App\Models\Transaksi;
 use App\Services\AuditLogService;
 use App\Services\Pengadaan\PoGroupingService;
 use App\Services\Pengadaan\PoLifecycleService;
@@ -73,6 +74,10 @@ class PengadaanController extends Controller
             'status' => ['sometimes', Rule::in(['proses', 'lengkap', 'dibatalkan'])],
         ]);
 
+        if ($dataPengadaan->review_status === 'diterima') {
+            abort(422, 'Data Pengadaan sudah diterima dan tidak dapat diubah.');
+        }
+
         $before = $dataPengadaan->only(['harga', 'total_harga', 'status']);
 
         if (array_key_exists('harga', $validated)) {
@@ -89,7 +94,19 @@ class PengadaanController extends Controller
             $dataPengadaan->status = $validated['status'];
         }
 
+        if ($dataPengadaan->status === 'lengkap') {
+            $dataPengadaan->review_status = 'menunggu_review';
+            $dataPengadaan->catatan_penolakan = null;
+            $dataPengadaan->reviewed_by = null;
+            $dataPengadaan->reviewed_at = null;
+        }
+
         $dataPengadaan->save();
+
+        if ($dataPengadaan->status === 'lengkap') {
+            Transaksi::whereIn('id_transaksi', $dataPengadaan->poDetail()->pluck('transaksi_id'))
+                ->update(['current_stage' => 'keuangan']);
+        }
 
         $this->auditLog->logMany($request->user(), 'update_po', $dataPengadaan->poDetail()->pluck('transaksi_id'), [
             'data_pengadaan_id' => $dataPengadaan->id,
@@ -175,9 +192,10 @@ class PengadaanController extends Controller
             'items' => ['required', 'array', 'min:1'],
             'items.*.po_detail_id' => ['required', 'integer'],
             'items.*.no_out' => ['required', 'string', 'max:255'],
+            'items.*.kuantum_out' => ['nullable', 'numeric', 'min:0'],
         ]);
 
-        $approved = $this->lifecycleService->approveNomorOut($dataPengadaan, $validated['items']);
+        $approved = $this->lifecycleService->approveNomorOut($dataPengadaan, $validated['items'], $request->user());
 
         $this->auditLog->logMany($request->user(), 'approve_nomor_out', $dataPengadaan->poDetail()->pluck('transaksi_id'), [
             'data_pengadaan_id' => $dataPengadaan->id,
