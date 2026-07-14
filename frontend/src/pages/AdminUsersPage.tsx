@@ -126,7 +126,7 @@ export default function AdminUsersPage() {
 
   const importMutation = useMutation({
     mutationFn: async () => {
-      if (!importFile) throw new Error('Pilih file CSV terlebih dahulu.')
+      if (!importFile) throw new Error('Pilih file CSV atau Excel terlebih dahulu.')
 
       const body = new FormData()
       body.append('file', importFile)
@@ -313,7 +313,7 @@ export default function AdminUsersPage() {
           <div className="mb-4 flex flex-col gap-1">
             <h2 className="section-title">Import Makloon</h2>
             <p className="text-xs text-slate-500">
-              Upload CSV dengan kolom nama_maklon, kecamatan, kabupaten. Kolom username dan password boleh dikosongkan.
+              Upload CSV atau Excel dengan kolom nama_maklon, kecamatan, kabupaten. Kolom username dan password boleh dikosongkan.
             </p>
           </div>
 
@@ -344,11 +344,11 @@ export default function AdminUsersPage() {
             }}
           >
             <label className="block">
-              <span className="label">File CSV Makloon</span>
+              <span className="label">File CSV/Excel Makloon</span>
               <input
                 required
                 type="file"
-                accept=".csv,text/csv,text/plain"
+                accept=".csv,.xlsx,text/csv,text/plain,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                 className="input"
                 onChange={(event) => setImportFile(event.target.files?.[0] ?? null)}
               />
@@ -358,7 +358,7 @@ export default function AdminUsersPage() {
               disabled={importMutation.isPending || !importFile}
               className="btn btn-primary"
             >
-              {importMutation.isPending ? 'Mengimport...' : 'Import CSV'}
+              {importMutation.isPending ? 'Mengimport...' : 'Import File'}
             </button>
           </form>
 

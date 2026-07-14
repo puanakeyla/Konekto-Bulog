@@ -141,6 +141,33 @@ class AdminUserTest extends TestCase
         ]);
     }
 
+    public function test_admin_dapat_import_makloon_dari_excel(): void
+    {
+        Sanctum::actingAs($this->admin);
+
+        $file = UploadedFile::fake()->createWithContent('makloon.xlsx', $this->xlsxContent([
+            ['nama_maklon', 'kecamatan', 'kabupaten'],
+            ['Mekar Jaya', 'Ambarawa', 'Pringsewu'],
+            ['Sumber Tani', 'Gadingrejo', 'Pringsewu'],
+        ]));
+
+        $response = $this->post('/api/admin/users/import-makloon', [
+            'file' => $file,
+        ]);
+
+        $response->assertOk();
+        $response->assertJsonPath('data.created', 2);
+        $response->assertJsonPath('data.updated', 0);
+
+        $this->assertDatabaseHas('users', [
+            'username' => 'makloon_mekar_jaya',
+            'nama_maklon' => 'Mekar Jaya',
+            'kecamatan' => 'Ambarawa',
+            'kabupaten' => 'Pringsewu',
+            'is_active' => true,
+        ]);
+    }
+
     public function test_import_makloon_memperbarui_nama_yang_sudah_ada(): void
     {
         Sanctum::actingAs($this->admin);
@@ -195,5 +222,80 @@ class AdminUserTest extends TestCase
             'password' => bcrypt('secret123'),
             'role_id' => Role::where('nama_role', $role)->value('id'),
         ], $attributes));
+    }
+
+    private function xlsxContent(array $rows): string
+    {
+        return $this->zipContent([
+            '[Content_Types].xml' => <<<'XML'
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+  <Default Extension="xml" ContentType="application/xml"/>
+  <Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
+  <Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+</Types>
+XML,
+            '_rels/.rels' => <<<'XML'
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>
+</Relationships>
+XML,
+            'xl/workbook.xml' => <<<'XML'
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <sheets><sheet name="Makloon" sheetId="1" r:id="rId1"/></sheets>
+</workbook>
+XML,
+            'xl/_rels/workbook.xml.rels' => <<<'XML'
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
+</Relationships>
+XML,
+            'xl/worksheets/sheet1.xml' => $this->worksheetXml($rows),
+        ]);
+    }
+
+    private function zipContent(array $entries): string
+    {
+        $fileData = '';
+        $centralDirectory = '';
+
+        foreach ($entries as $name => $content) {
+            $localOffset = strlen($fileData);
+            $crc = crc32($content);
+            $size = strlen($content);
+            $nameLength = strlen($name);
+
+            $fileData .= pack('VvvvvvVVVvv', 0x04034b50, 20, 0, 0, 0, 0, $crc, $size, $size, $nameLength, 0);
+            $fileData .= $name.$content;
+
+            $centralDirectory .= pack('VvvvvvvVVVvvvvvVV', 0x02014b50, 20, 20, 0, 0, 0, 0, $crc, $size, $size, $nameLength, 0, 0, 0, 0, 0, $localOffset);
+            $centralDirectory .= $name;
+        }
+
+        return $fileData
+            .$centralDirectory
+            .pack('VvvvvVVv', 0x06054b50, 0, 0, count($entries), count($entries), strlen($centralDirectory), strlen($fileData), 0);
+    }
+
+    private function worksheetXml(array $rows): string
+    {
+        $xml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+        $xml .= '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>';
+
+        foreach ($rows as $rowIndex => $row) {
+            $line = $rowIndex + 1;
+            $xml .= '<row r="'.$line.'">';
+            foreach ($row as $columnIndex => $value) {
+                $cell = chr(65 + $columnIndex).$line;
+                $xml .= '<c r="'.$cell.'" t="inlineStr"><is><t>'.htmlspecialchars($value, ENT_XML1).'</t></is></c>';
+            }
+            $xml .= '</row>';
+        }
+
+        return $xml.'</sheetData></worksheet>';
     }
 }

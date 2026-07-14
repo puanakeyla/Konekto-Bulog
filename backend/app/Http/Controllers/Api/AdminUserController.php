@@ -10,6 +10,7 @@ use App\Services\AuditLogService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
+use SimpleXMLElement;
 
 class AdminUserController extends Controller
 {
@@ -36,10 +37,10 @@ class AdminUserController extends Controller
     public function importMakloon(Request $request)
     {
         $validated = $request->validate([
-            'file' => ['required', 'file', 'mimes:csv,txt', 'max:2048'],
+            'file' => ['required', 'file', 'mimes:csv,txt,xlsx', 'max:2048'],
         ]);
 
-        $rows = $this->readCsvRows($validated['file']->getRealPath());
+        $rows = $this->readImportRows($validated['file']->getRealPath(), $validated['file']->getClientOriginalExtension());
         $makloonRoleId = Role::where('nama_role', 'makloon')->value('id');
         $created = 0;
         $updated = 0;
@@ -47,11 +48,11 @@ class AdminUserController extends Controller
         $defaultPassword = 'password123';
 
         foreach ($rows as $row) {
-            $namaMaklon = $this->csvValue($row['data'], ['nama_maklon', 'nama_makloon', 'nama maklon', 'nama makloon', 'nama']);
-            $kecamatan = $this->csvValue($row['data'], ['kecamatan']);
-            $kabupaten = $this->csvValue($row['data'], ['kabupaten']);
-            $username = $this->csvValue($row['data'], ['username', 'user']);
-            $password = $this->csvValue($row['data'], ['password', 'kata_sandi', 'kata sandi']) ?: $defaultPassword;
+            $namaMaklon = $this->importValue($row['data'], ['nama_maklon', 'nama_makloon', 'nama maklon', 'nama makloon', 'nama']);
+            $kecamatan = $this->importValue($row['data'], ['kecamatan']);
+            $kabupaten = $this->importValue($row['data'], ['kabupaten']);
+            $username = $this->importValue($row['data'], ['username', 'user']);
+            $password = $this->importValue($row['data'], ['password', 'kata_sandi', 'kata sandi']) ?: $defaultPassword;
 
             if ($namaMaklon === '') {
                 $errors[] = ['baris' => $row['line'], 'pesan' => 'Nama makloon wajib diisi.'];
@@ -236,6 +237,13 @@ class AdminUserController extends Controller
         return $validated;
     }
 
+    private function readImportRows(string $path, string $extension): array
+    {
+        return Str::lower($extension) === 'xlsx'
+            ? $this->readXlsxRows($path)
+            : $this->readCsvRows($path);
+    }
+
     private function readCsvRows(string $path): array
     {
         $handle = fopen($path, 'r');
@@ -258,7 +266,7 @@ class AdminUserController extends Controller
             abort(422, 'Header CSV tidak valid.');
         }
 
-        $headers = array_map(fn ($header) => $this->normalizeCsvHeader((string) $header), $headers);
+        $headers = array_map(fn ($header) => $this->normalizeImportHeader((string) $header), $headers);
         $rows = [];
         $line = 1;
 
@@ -288,10 +296,247 @@ class AdminUserController extends Controller
         return $rows;
     }
 
-    private function csvValue(array $row, array $keys): string
+    private function readXlsxRows(string $path): array
+    {
+        $entries = $this->readZipEntries($path);
+        $sheetPath = $this->firstWorksheetPath($entries);
+        $sheetXml = $entries[$sheetPath] ?? null;
+        if ($sheetXml === null) {
+            abort(422, 'Sheet Excel tidak ditemukan.');
+        }
+
+        $sharedStrings = $this->readSharedStrings($entries);
+
+        $sheet = simplexml_load_string($sheetXml);
+        if (! $sheet instanceof SimpleXMLElement) {
+            abort(422, 'Sheet Excel tidak valid.');
+        }
+
+        $matrix = [];
+        foreach ($sheet->sheetData->row as $row) {
+            $rowNumber = (int) ($row['r'] ?? 0);
+            $cells = [];
+
+            foreach ($row->c as $cell) {
+                $reference = (string) ($cell['r'] ?? '');
+                $column = $reference !== '' ? $this->excelColumnIndex($reference) : count($cells);
+                $cells[$column] = $this->excelCellValue($cell, $sharedStrings);
+            }
+
+            if (count(array_filter($cells, fn ($value) => trim((string) $value) !== '')) === 0) {
+                continue;
+            }
+
+            ksort($cells);
+            $matrix[$rowNumber ?: count($matrix) + 1] = $cells;
+        }
+
+        if ($matrix === []) {
+            abort(422, 'File Excel kosong.');
+        }
+
+        $headerLine = array_key_first($matrix);
+        $headers = array_map(fn ($header) => $this->normalizeImportHeader((string) $header), $matrix[$headerLine]);
+        if (count(array_filter($headers, fn ($header) => $header !== '')) === 0) {
+            abort(422, 'Header Excel tidak valid.');
+        }
+
+        $rows = [];
+        foreach ($matrix as $line => $values) {
+            if ($line === $headerLine) {
+                continue;
+            }
+
+            $data = [];
+            foreach ($headers as $index => $header) {
+                if ($header === '') {
+                    continue;
+                }
+                $data[$header] = trim((string) ($values[$index] ?? ''));
+            }
+
+            $rows[] = ['line' => $line, 'data' => $data];
+        }
+
+        if ($rows === []) {
+            abort(422, 'Excel tidak berisi data makloon.');
+        }
+
+        return $rows;
+    }
+
+    /**
+     * @param  array<string, string>  $entries
+     */
+    private function firstWorksheetPath(array $entries): string
+    {
+        $workbookXml = $entries['xl/workbook.xml'] ?? null;
+        $relsXml = $entries['xl/_rels/workbook.xml.rels'] ?? null;
+        if ($workbookXml === null || $relsXml === null) {
+            abort(422, 'Workbook Excel tidak valid.');
+        }
+
+        $workbook = simplexml_load_string($workbookXml);
+        $rels = simplexml_load_string($relsXml);
+        if (! $workbook instanceof SimpleXMLElement || ! $rels instanceof SimpleXMLElement) {
+            abort(422, 'Workbook Excel tidak valid.');
+        }
+
+        $namespaces = $workbook->getNamespaces(true);
+        $relationshipNamespace = $namespaces['r'] ?? 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
+        $firstSheet = $workbook->sheets->sheet[0] ?? null;
+        $relationshipId = $firstSheet?->attributes($relationshipNamespace)['id'] ?? null;
+        if ($relationshipId === null) {
+            abort(422, 'Sheet Excel tidak ditemukan.');
+        }
+
+        foreach ($rels->Relationship as $relationship) {
+            if ((string) $relationship['Id'] === (string) $relationshipId) {
+                $target = ltrim((string) $relationship['Target'], '/');
+
+                return Str::startsWith($target, 'xl/') ? $target : 'xl/'.$target;
+            }
+        }
+
+        abort(422, 'Sheet Excel tidak ditemukan.');
+    }
+
+    /**
+     * @param  array<string, string>  $entries
+     * @return array<int, string>
+     */
+    private function readSharedStrings(array $entries): array
+    {
+        $xml = $entries['xl/sharedStrings.xml'] ?? null;
+        if ($xml === null) {
+            return [];
+        }
+
+        $sharedStrings = simplexml_load_string($xml);
+        if (! $sharedStrings instanceof SimpleXMLElement) {
+            return [];
+        }
+
+        $values = [];
+        foreach ($sharedStrings->si as $stringItem) {
+            $parts = [];
+            if (isset($stringItem->t)) {
+                $parts[] = (string) $stringItem->t;
+            }
+            foreach ($stringItem->r as $richText) {
+                $parts[] = (string) $richText->t;
+            }
+            $values[] = implode('', $parts);
+        }
+
+        return $values;
+    }
+
+    /**
+     * Minimal ZIP reader for XLSX files. Supports stored and deflated entries.
+     *
+     * @return array<string, string>
+     */
+    private function readZipEntries(string $path): array
+    {
+        $contents = file_get_contents($path);
+        if ($contents === false) {
+            abort(422, 'File Excel tidak dapat dibaca.');
+        }
+
+        $eocdOffset = strrpos($contents, "PK\x05\x06");
+        if ($eocdOffset === false) {
+            abort(422, 'File Excel tidak valid.');
+        }
+
+        $eocd = unpack('vdisk/vcentralDisk/ventriesDisk/ventries/VcentralSize/VcentralOffset/vcommentLength', substr($contents, $eocdOffset + 4, 18));
+        if (! $eocd) {
+            abort(422, 'File Excel tidak valid.');
+        }
+
+        $entries = [];
+        $offset = (int) $eocd['centralOffset'];
+        $end = $offset + (int) $eocd['centralSize'];
+
+        while ($offset < $end && substr($contents, $offset, 4) === "PK\x01\x02") {
+            $header = unpack(
+                'vversionMade/vversionNeeded/vflags/vmethod/vmodTime/vmodDate/Vcrc/VcompressedSize/VuncompressedSize/vnameLength/vextraLength/vcommentLength/vdiskStart/vinternalAttrs/VexternalAttrs/VlocalOffset',
+                substr($contents, $offset + 4, 42)
+            );
+            if (! $header) {
+                abort(422, 'File Excel tidak valid.');
+            }
+
+            $nameLength = (int) $header['nameLength'];
+            $extraLength = (int) $header['extraLength'];
+            $commentLength = (int) $header['commentLength'];
+            $name = substr($contents, $offset + 46, $nameLength);
+            $localOffset = (int) $header['localOffset'];
+
+            if (substr($contents, $localOffset, 4) !== "PK\x03\x04") {
+                abort(422, 'File Excel tidak valid.');
+            }
+
+            $local = unpack('vversion/vflags/vmethod/vmodTime/vmodDate/Vcrc/VcompressedSize/VuncompressedSize/vnameLength/vextraLength', substr($contents, $localOffset + 4, 26));
+            if (! $local) {
+                abort(422, 'File Excel tidak valid.');
+            }
+
+            $dataOffset = $localOffset + 30 + (int) $local['nameLength'] + (int) $local['extraLength'];
+            $data = substr($contents, $dataOffset, (int) $header['compressedSize']);
+            $method = (int) $header['method'];
+
+            if ($method === 8) {
+                $data = gzinflate($data);
+                if ($data === false) {
+                    abort(422, 'File Excel tidak dapat diekstrak.');
+                }
+            } elseif ($method !== 0) {
+                abort(422, 'Kompresi Excel tidak didukung.');
+            }
+
+            $entries[str_replace('\\', '/', $name)] = $data;
+            $offset += 46 + $nameLength + $extraLength + $commentLength;
+        }
+
+        return $entries;
+    }
+
+    /**
+     * @param  array<int, string>  $sharedStrings
+     */
+    private function excelCellValue(SimpleXMLElement $cell, array $sharedStrings): string
+    {
+        $type = (string) ($cell['t'] ?? '');
+
+        if ($type === 's') {
+            return $sharedStrings[(int) $cell->v] ?? '';
+        }
+
+        if ($type === 'inlineStr') {
+            return (string) ($cell->is->t ?? '');
+        }
+
+        return (string) ($cell->v ?? '');
+    }
+
+    private function excelColumnIndex(string $reference): int
+    {
+        preg_match('/^[A-Z]+/i', $reference, $matches);
+        $letters = Str::upper($matches[0] ?? 'A');
+        $index = 0;
+
+        foreach (str_split($letters) as $letter) {
+            $index = ($index * 26) + (ord($letter) - 64);
+        }
+
+        return $index - 1;
+    }
+
+    private function importValue(array $row, array $keys): string
     {
         foreach ($keys as $key) {
-            $normalized = $this->normalizeCsvHeader($key);
+            $normalized = $this->normalizeImportHeader($key);
             if (array_key_exists($normalized, $row)) {
                 return trim((string) $row[$normalized]);
             }
@@ -300,7 +545,7 @@ class AdminUserController extends Controller
         return '';
     }
 
-    private function normalizeCsvHeader(string $header): string
+    private function normalizeImportHeader(string $header): string
     {
         $header = preg_replace('/^\xEF\xBB\xBF/', '', $header) ?? $header;
         $header = Str::lower(trim($header));
