@@ -115,7 +115,7 @@ class PoGroupingService
         return DB::transaction(function () use ($dataPengadaan, $items) {
             $dataPengadaan = DataPengadaan::whereKey($dataPengadaan->id)->lockForUpdate()->firstOrFail();
 
-            if ($dataPengadaan->status !== 'proses') {
+            if ($dataPengadaan->status === 'dibatalkan' || ($dataPengadaan->status === 'lengkap' && $dataPengadaan->review_status !== 'ditolak')) {
                 abort(422, 'PO sudah lengkap atau dibatalkan, nomor IN tidak bisa diubah.');
             }
 
@@ -148,11 +148,29 @@ class PoGroupingService
 
             if (! $dataPengadaan->poDetail()->whereNull('no_in')->exists()) {
                 $dataPengadaan->status = 'lengkap';
+                $this->resetReview($dataPengadaan);
                 $dataPengadaan->save();
+
+                $this->majukanTahapTransaksi($dataPengadaan->id, 'keuangan');
             }
 
             return $dataPengadaan->fresh('poDetail');
         });
+    }
+
+    private function resetReview(DataPengadaan $dataPengadaan): void
+    {
+        $dataPengadaan->review_status = 'menunggu_review';
+        $dataPengadaan->catatan_penolakan = null;
+        $dataPengadaan->reviewed_by = null;
+        $dataPengadaan->reviewed_at = null;
+    }
+
+    private function majukanTahapTransaksi(int $dataPengadaanId, string $stageBerikutnya): void
+    {
+        $transaksiIds = PoDetail::where('data_pengadaan_id', $dataPengadaanId)->pluck('transaksi_id');
+
+        Transaksi::whereIn('id_transaksi', $transaksiIds)->update(['current_stage' => $stageBerikutnya]);
     }
 
     private function resolveMakloonData(Transaksi $transaksi): array

@@ -77,7 +77,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/po/{dataPengadaan}/gudang', [PengadaanController::class, 'gudang'])
         ->middleware('role:gudang|admin');
     Route::post('/po/{dataPengadaan}/terima', [PengadaanController::class, 'terimaPo'])
-        ->middleware('role:keuangan|operasi|gudang|admin');
+        ->middleware('role:pengadaan|keuangan|operasi|gudang|admin');
     Route::post('/po/{dataPengadaan}/tolak', [PengadaanController::class, 'tolakPo'])
-        ->middleware('role:keuangan|operasi|gudang|admin');
+        ->middleware('role:pengadaan|keuangan|operasi|gudang|admin');
 });
