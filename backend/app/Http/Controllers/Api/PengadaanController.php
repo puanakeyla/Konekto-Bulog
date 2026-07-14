@@ -8,6 +8,8 @@ use App\Models\DataPengadaan;
 use App\Services\AuditLogService;
 use App\Services\Pengadaan\PoGroupingService;
 use App\Services\Pengadaan\PoLifecycleService;
+use App\Services\Pengadaan\PoReviewService;
+
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 
@@ -16,12 +18,14 @@ class PengadaanController extends Controller
     public function __construct(
         private PoGroupingService $service,
         private PoLifecycleService $lifecycleService,
+        private PoReviewService $reviewService,
+
         private AuditLogService $auditLog,
     ) {}
 
     public function index(Request $request)
     {
-        $dataPengadaan = DataPengadaan::with(['poDetail.dataOperasi.dataGudang', 'dataKeuangan'])
+        $dataPengadaan = DataPengadaan::with(['poDetail.transaksi.riwayatPenolakan.penolak', 'poDetail.dataOperasi.dataGudang', 'dataKeuangan'])
             ->orderByDesc('created_at')
             ->paginate($request->integer('per_page', 20));
 
@@ -30,7 +34,7 @@ class PengadaanController extends Controller
 
     public function show(Request $request, DataPengadaan $dataPengadaan)
     {
-        $dataPengadaan->load(['poDetail.dataOperasi.dataGudang', 'dataKeuangan', 'makloon']);
+        $dataPengadaan->load(['poDetail.transaksi.riwayatPenolakan.penolak', 'poDetail.dataOperasi.dataGudang', 'dataKeuangan', 'makloon']);
 
         return response()->json(['data' => new DataPengadaanResource($dataPengadaan)]);
     }
@@ -204,4 +208,23 @@ class PengadaanController extends Controller
 
         return response()->json(['data' => $created], 201);
     }
+
+    public function terimaPo(Request $request, DataPengadaan $dataPengadaan)
+    {
+        $result = $this->reviewService->terima($dataPengadaan, $request->user());
+
+        return response()->json(['data' => $result['data_pengadaan'], 'stage' => $result['stage']]);
+    }
+
+    public function tolakPo(Request $request, DataPengadaan $dataPengadaan)
+    {
+        $validated = $request->validate([
+            'catatan' => ['required', 'string', 'max:2000'],
+        ]);
+
+        $result = $this->reviewService->tolak($dataPengadaan, $request->user(), $validated['catatan']);
+
+        return response()->json(['data' => $result['data_pengadaan'], 'stage' => $result['stage']]);
+    }
+
 }

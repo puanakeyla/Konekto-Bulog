@@ -13,6 +13,10 @@ class DataKeuangan extends Model
         'data_pengadaan_id',
         'status_bayar',
         'tanggal_bayar',
+        'review_status',
+        'catatan_penolakan',
+        'reviewed_by',
+        'reviewed_at',
     ];
 
     public function dataPengadaan(): BelongsTo

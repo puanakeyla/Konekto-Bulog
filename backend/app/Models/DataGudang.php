@@ -15,6 +15,10 @@ class DataGudang extends Model
         'nama_gudang',
         'realisasi_hgl',
         'no_tm',
+        'review_status',
+        'catatan_penolakan',
+        'reviewed_by',
+        'reviewed_at',
     ];
 
     public function dataOperasi(): BelongsTo

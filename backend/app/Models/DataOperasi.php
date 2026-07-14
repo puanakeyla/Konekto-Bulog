@@ -21,6 +21,10 @@ class DataOperasi extends Model
         'menir_kg',
         'katul_kg',
         'rendemen_persen',
+        'review_status',
+        'catatan_penolakan',
+        'reviewed_by',
+        'reviewed_at',
     ];
 
     public function poDetail(): BelongsTo

@@ -21,6 +21,10 @@ class DataPengadaan extends Model
         'no_po',
         'no_spp',
         'status',
+        'review_status',
+        'catatan_penolakan',
+        'reviewed_by',
+        'reviewed_at',
     ];
 
     public function makloon(): BelongsTo
