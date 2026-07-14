@@ -137,7 +137,7 @@ class PoLifecycleTest extends TestCase
         $this->lifecycleService->inputOperasi($po, $this->operasiItems($po));
     }
 
-    public function test_operasi_sukses_dan_memajukan_current_stage_ke_gudang(): void
+    public function test_operasi_sukses_membuat_permintaan_out_tanpa_memajukan_stage(): void
     {
         [$po, $transaksiIds] = $this->buatPoLengkap(2);
         $this->lifecycleService->updatePembayaran($po, 'dibayarkan', '2026-07-12', 'SPP-003');
@@ -146,6 +146,24 @@ class PoLifecycleTest extends TestCase
 
         $this->assertCount(2, $created);
         $this->assertSame('MO-001', $created->first()->no_mo);
+        $this->assertSame('menunggu_pengadaan', $created->first()->status_out);
+        $this->assertNull($created->first()->no_out);
+        foreach ($transaksiIds as $id) {
+            $this->assertSame('operasi', Transaksi::find($id)->current_stage);
+        }
+    }
+
+    public function test_approve_out_sukses_dan_memajukan_current_stage_ke_gudang(): void
+    {
+        [$po, $transaksiIds] = $this->buatPoLengkap(2);
+        $this->lifecycleService->updatePembayaran($po, 'dibayarkan', '2026-07-12', 'SPP-OUT-001');
+        $this->lifecycleService->inputOperasi($po->fresh(), $this->operasiItems($po));
+
+        $approved = $this->lifecycleService->approveNomorOut($po->fresh(), $this->outItems($po));
+
+        $this->assertCount(2, $approved);
+        $this->assertSame('OUT-001', $approved->first()->no_out);
+        $this->assertSame('disetujui', $approved->first()->status_out);
         foreach ($transaksiIds as $id) {
             $this->assertSame('gudang', Transaksi::find($id)->current_stage);
         }
@@ -181,6 +199,7 @@ class PoLifecycleTest extends TestCase
         [$po, $transaksiIds] = $this->buatPoLengkap(2);
         $this->lifecycleService->updatePembayaran($po, 'dibayarkan', '2026-07-12', 'SPP-006');
         $this->lifecycleService->inputOperasi($po->fresh(), $this->operasiItems($po));
+        $this->lifecycleService->approveNomorOut($po->fresh(), $this->outItems($po));
 
         $created = $this->lifecycleService->inputGudang($po->fresh(), $this->gudangItems($po));
 
@@ -196,6 +215,7 @@ class PoLifecycleTest extends TestCase
         [$po] = $this->buatPoLengkap(1);
         $this->lifecycleService->updatePembayaran($po, 'dibayarkan', '2026-07-12', 'SPP-007');
         $this->lifecycleService->inputOperasi($po->fresh(), $this->operasiItems($po));
+        $this->lifecycleService->approveNomorOut($po->fresh(), $this->outItems($po));
         $this->lifecycleService->inputGudang($po->fresh(), $this->gudangItems($po));
 
         $this->expectException(HttpException::class);
@@ -208,6 +228,7 @@ class PoLifecycleTest extends TestCase
         [$po] = $this->buatPoLengkap(1);
         $this->lifecycleService->updatePembayaran($po, 'dibayarkan', '2026-07-12', 'SPP-008');
         $this->lifecycleService->inputOperasi($po->fresh(), $this->operasiItems($po));
+        $this->lifecycleService->approveNomorOut($po->fresh(), $this->outItems($po));
 
         Sanctum::actingAs($this->operasi);
 
@@ -221,6 +242,7 @@ class PoLifecycleTest extends TestCase
         [$po] = $this->buatPoLengkap(1);
         $this->lifecycleService->updatePembayaran($po, 'dibayarkan', '2026-07-12', 'SPP-009');
         $this->lifecycleService->inputOperasi($po->fresh(), $this->operasiItems($po));
+        $this->lifecycleService->approveNomorOut($po->fresh(), $this->outItems($po));
 
         Sanctum::actingAs($this->gudang);
 
@@ -263,6 +285,14 @@ class PoLifecycleTest extends TestCase
             'nama_gudang' => 'Gudang A',
             'realisasi_hgl' => 61.0,
             'no_tm' => 'TM-001',
+        ])->all();
+    }
+
+    private function outItems(DataPengadaan $po): array
+    {
+        return $po->poDetail()->pluck('id')->values()->map(fn ($id, $index) => [
+            'po_detail_id' => $id,
+            'no_out' => 'OUT-'.str_pad((string) ($index + 1), 3, '0', STR_PAD_LEFT),
         ])->all();
     }
 

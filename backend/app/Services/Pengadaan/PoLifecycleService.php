@@ -14,7 +14,7 @@ use Illuminate\Support\Facades\DB;
 class PoLifecycleService
 {
     /**
-     * Keuangan -> Operasi -> Gudang. Pembayaran di level PO, sedangkan Operasi & Gudang
+     * Keuangan -> Operasi -> Pengadaan approve OUT -> Gudang. Pembayaran di level PO, sedangkan Operasi & Gudang
      * per IN (satu data_operasi per po_detail, satu data_gudang per data_operasi).
      * current_stage tiap transaksi terkait (lewat po_detail) baru dimajukan begitu SELURUH
      * IN pada PO tuntas di milestone tersebut, mirip pola isiNomorIn().
@@ -49,8 +49,8 @@ class PoLifecycleService
     }
 
     /**
-     * Input data Operasi PER IN (per po_detail) dalam satu batch. PO harus sudah dibayarkan.
-     * Begitu seluruh IN pada PO punya data Operasi, transaksi dimajukan ke tahap gudang.
+     * Operasi membuat permintaan pengeluaran stok PER IN (per po_detail). PO harus sudah dibayarkan.
+     * Data ini menunggu Pengadaan mengisi nomor OUT sebelum bisa masuk tahap Gudang.
      */
     public function inputOperasi(DataPengadaan $dataPengadaan, array $items): Collection
     {
@@ -82,6 +82,7 @@ class PoLifecycleService
                     'po_detail_id' => $poDetailId,
                     'no_mo' => $item['no_mo'],
                     'no_tm' => $item['no_tm'],
+                    'status_out' => 'menunggu_pengadaan',
                     'hgl_kg' => $item['hgl_kg'] ?? null,
                     'broken_kg' => $item['broken_kg'] ?? null,
                     'menir_kg' => $item['menir_kg'] ?? null,
@@ -90,12 +91,70 @@ class PoLifecycleService
                 ]));
             }
 
-            $sudahOperasi = DataOperasi::whereIn('po_detail_id', $poDetails->keys())->count();
-            if ($sudahOperasi === $poDetails->count()) {
+            return $created;
+        });
+    }
+
+    /**
+     * Pengadaan menyetujui permintaan pengeluaran stok dengan mengisi nomor OUT per IN.
+     * Begitu seluruh IN pada PO punya nomor OUT, transaksi dimajukan ke tahap Gudang.
+     */
+    public function approveNomorOut(DataPengadaan $dataPengadaan, array $items): Collection
+    {
+        if (count($items) < 1) {
+            abort(422, 'Isi minimal satu nomor OUT.');
+        }
+
+        return DB::transaction(function () use ($dataPengadaan, $items) {
+            $dataPengadaan = DataPengadaan::whereKey($dataPengadaan->id)->lockForUpdate()->firstOrFail();
+            $poDetails = $dataPengadaan->poDetail()->with('dataOperasi')->lockForUpdate()->get()->keyBy('id');
+
+            $noOutList = collect($items)->pluck('no_out')->map(fn ($value) => trim((string) $value));
+            if ($noOutList->count() !== $noOutList->unique()->count()) {
+                abort(422, 'Nomor OUT dalam satu request tidak boleh duplikat.');
+            }
+
+            $existing = DataOperasi::whereIn('no_out', $noOutList)
+                ->whereNotNull('no_out')
+                ->pluck('no_out');
+            if ($existing->isNotEmpty()) {
+                abort(422, 'Salah satu nomor OUT sudah dipakai.');
+            }
+
+            $approved = collect();
+            foreach ($items as $item) {
+                $poDetailId = $item['po_detail_id'];
+                if (! $poDetails->has($poDetailId)) {
+                    abort(422, "IN (po_detail {$poDetailId}) bukan bagian dari PO ini.");
+                }
+
+                $operasi = $poDetails[$poDetailId]->dataOperasi;
+                if (! $operasi) {
+                    abort(422, 'Permintaan OUT untuk salah satu IN belum dibuat Operasi.');
+                }
+                if ($operasi->status_out === 'disetujui' || $operasi->no_out !== null) {
+                    abort(422, 'Nomor OUT untuk salah satu IN sudah disetujui.');
+                }
+
+                $operasi->update([
+                    'no_out' => $item['no_out'],
+                    'status_out' => 'disetujui',
+                ]);
+
+                $approved->push($operasi->fresh());
+            }
+
+            $totalDetail = $poDetails->count();
+            $sudahOut = DataOperasi::whereIn('po_detail_id', $poDetails->keys())
+                ->where('status_out', 'disetujui')
+                ->whereNotNull('no_out')
+                ->count();
+
+            if ($sudahOut === $totalDetail) {
                 $this->majukanTahapTransaksi($dataPengadaan->id, 'gudang');
             }
 
-            return $created;
+            return $approved;
         });
     }
 
@@ -123,6 +182,9 @@ class PoLifecycleService
                 $operasi = $poDetails[$poDetailId]->dataOperasi;
                 if (! $operasi) {
                     abort(422, 'Data Operasi salah satu IN belum diisi.');
+                }
+                if ($operasi->status_out !== 'disetujui' || $operasi->no_out === null) {
+                    abort(422, 'Nomor OUT salah satu IN belum disetujui Pengadaan.');
                 }
                 if (DataGudang::where('data_operasi_id', $operasi->id)->exists()) {
                     abort(422, 'Data Gudang untuk salah satu IN sudah ada.');

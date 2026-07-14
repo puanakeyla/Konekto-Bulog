@@ -165,6 +165,25 @@ class PengadaanController extends Controller
         return response()->json(['data' => $created], 201);
     }
 
+    public function approveOut(Request $request, DataPengadaan $dataPengadaan)
+    {
+        $validated = $request->validate([
+            'items' => ['required', 'array', 'min:1'],
+            'items.*.po_detail_id' => ['required', 'integer'],
+            'items.*.no_out' => ['required', 'string', 'max:255'],
+        ]);
+
+        $approved = $this->lifecycleService->approveNomorOut($dataPengadaan, $validated['items']);
+
+        $this->auditLog->logMany($request->user(), 'approve_nomor_out', $dataPengadaan->poDetail()->pluck('transaksi_id'), [
+            'data_pengadaan_id' => $dataPengadaan->id,
+            'items' => $validated['items'],
+            'jumlah_out' => $approved->count(),
+        ]);
+
+        return response()->json(['data' => $approved]);
+    }
+
     public function gudang(Request $request, DataPengadaan $dataPengadaan)
     {
         $validated = $request->validate([

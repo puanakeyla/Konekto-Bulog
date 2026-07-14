@@ -43,6 +43,14 @@ function formatDate(value: string) {
   return new Date(value).toLocaleDateString('id-ID')
 }
 
+function semuaOperasiAda(po: PoItem) {
+  return po.po_detail.length > 0 && po.po_detail.every((detail) => !!detail.data_operasi)
+}
+
+function adaOutMenunggu(po: PoItem) {
+  return po.po_detail.some((detail) => detail.data_operasi?.status_out === 'menunggu_pengadaan')
+}
+
 export default function PengadaanPage() {
   const [transaksiPage, setTransaksiPage] = useState(1)
   const [poPage, setPoPage] = useState(1)
@@ -61,6 +69,7 @@ export default function PengadaanPage() {
   const transaksiMeta = transaksiResult?.meta
   const poList = poResult?.items ?? []
   const poMeta = poResult?.meta
+  const poMenungguOut = poList.filter((po) => semuaOperasiAda(po) && adaOutMenunggu(po))
   const selectedRows = useMemo(
     () => transaksiList.filter((item) => selected.has(item.id_transaksi)),
     [selected, transaksiList],
@@ -83,8 +92,8 @@ export default function PengadaanPage() {
   )
   const poBelumLengkap = poList.filter((po) => po.status === 'proses')
   const totalSelectedKuantum = selectedRows.reduce((sum, item) => sum + Number(groupKeyOf(item).kuantum || 0), 0)
-  const detailBelumIn = poBelumLengkap.reduce(
-    (sum, po) => sum + po.po_detail.filter((detail) => !detail.no_in).length,
+  const detailBelumOut = poMenungguOut.reduce(
+    (sum, po) => sum + po.po_detail.filter((detail) => detail.data_operasi?.status_out === 'menunggu_pengadaan').length,
     0,
   )
 
@@ -132,7 +141,7 @@ export default function PengadaanPage() {
             <div className="stat-card"><div className="stat-label">Transaksi siap PO</div><div className="stat-value">{transaksiMeta?.total ?? transaksiList.length}</div></div>
             <div className="stat-card"><div className="stat-label">Dipilih</div><div className="stat-value">{selected.size}</div></div>
             <div className="stat-card"><div className="stat-label">PO proses</div><div className="stat-value">{poBelumLengkap.length}</div></div>
-            <div className="stat-card"><div className="stat-label">Nomor IN kosong</div><div className="stat-value">{detailBelumIn}</div></div>
+            <div className="stat-card"><div className="stat-label">Nomor OUT kosong</div><div className="stat-value">{detailBelumOut}</div></div>
           </div>
 
           <section className="panel panel-pad @container">
@@ -243,6 +252,20 @@ export default function PengadaanPage() {
             <div className="space-y-4">{poBelumLengkap.map((po) => <PoInForm key={po.id} po={po} />)}</div>
             {poMeta && poMeta.last_page > 1 && <PaginationBar className="mt-4" meta={poMeta} page={poPage} setPage={setPoPage} label="PO" />}
           </section>
+
+          <section className="panel panel-pad @container">
+            <div className="toolbar-card mb-4">
+              <div><h2 className="section-title">Approval Nomor OUT</h2><p className="page-subtitle">Setujui permintaan pengeluaran stok dari Operasi dengan mengisi nomor OUT per IN.</p></div>
+              <span className="badge badge-warning">{poMenungguOut.length} PO menunggu</span>
+            </div>
+
+            {loadingPo && <SkeletonPoCards />}
+            {!loadingPo && poMenungguOut.length === 0 && (
+              <div className="empty-state"><div className="empty-title">Tidak ada permintaan OUT</div><p className="empty-copy">Permintaan muncul setelah Operasi mengirim data MO/TM dan hasil produksi.</p></div>
+            )}
+
+            <div className="space-y-4">{poMenungguOut.map((po) => <PoOutApprovalForm key={po.id} po={po} />)}</div>
+          </section>
       </div>
     </div>
   )
@@ -258,6 +281,73 @@ function PaginationBar({ meta, page, setPage, label, className = '' }: { meta: {
         <button className="btn btn-ghost" disabled={page >= meta.last_page} onClick={() => setPage((prev) => prev + 1)}>Berikutnya</button>
       </div>
     </div>
+  )
+}
+
+function PoOutApprovalForm({ po }: { po: PoItem }) {
+  const queryClient = useQueryClient()
+  const [values, setValues] = useState<Record<number, string>>({})
+  const [confirmOut, setConfirmOut] = useState(false)
+
+  const pendingDetails = po.po_detail.filter((detail) => detail.data_operasi?.status_out === 'menunggu_pengadaan')
+  const isiCount = Object.values(values).filter((value) => value.trim() !== '').length
+  const allValid = pendingDetails.length > 0 && pendingDetails.every((detail) => values[detail.id]?.trim())
+
+  const mutation = useMutation({
+    mutationFn: () =>
+      api.patch(`/api/po/${po.id}/out`, {
+        items: pendingDetails.map((detail) => ({
+          po_detail_id: detail.id,
+          no_out: values[detail.id],
+        })),
+      }),
+    onSuccess: () => {
+      setConfirmOut(false)
+      setValues({})
+      queryClient.invalidateQueries({ queryKey: ['po-list'] })
+      toast.success(`Nomor OUT PO ${po.no_po} disetujui dan dikirim ke Operasi.`)
+    },
+    onError: (err) => toast.error(apiErrorMessage(err, 'Gagal menyetujui nomor OUT.')),
+  })
+
+  const errorMessage = (mutation.error as { response?: { data?: { message?: string } } } | null)?.response?.data?.message
+
+  return (
+    <form className="po-card @container" onSubmit={(e) => { e.preventDefault(); setConfirmOut(true) }}>
+      <div className="po-card-header">
+        <div><div className="po-title">{po.no_po}</div><div className="po-meta">Pemasok {po.id_pemasok} - {formatNumber(po.total_kuantum)} kg - No. SPP {po.no_spp ?? '-'}</div></div>
+        <span className="badge badge-warning">{pendingDetails.length} OUT kosong</span>
+      </div>
+      {errorMessage && <div className="alert-danger mb-3">{errorMessage}</div>}
+      <div className="data-table-wrap mb-3">
+        <table className="data-table">
+          <thead><tr><th>ID Transaksi</th><th>No. IN</th><th>No. MO</th><th>No. TM</th><th>Nomor OUT</th></tr></thead>
+          <tbody>
+            {pendingDetails.map((detail) => (
+              <tr key={detail.id}>
+                <td className="font-semibold text-primary-dark">{detail.transaksi_id}</td>
+                <td>{detail.no_in ?? '-'}</td>
+                <td>{detail.data_operasi?.no_mo ?? '-'}</td>
+                <td>{detail.data_operasi?.no_tm ?? '-'}</td>
+                <td><input required className="input" placeholder="Masukkan nomor OUT" value={values[detail.id] ?? ''} onChange={(e) => setValues((prev) => ({ ...prev, [detail.id]: e.target.value }))} /></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div className="flex justify-end"><button type="submit" disabled={!allValid || mutation.isPending} className="btn btn-primary">{mutation.isPending ? 'Menyetujui...' : 'Approve Nomor OUT'}</button></div>
+
+      <ConfirmDialog
+        open={confirmOut}
+        title="Approve nomor OUT?"
+        description={<><strong>{isiCount} nomor OUT</strong> pada PO <strong>{po.no_po}</strong> akan disetujui dan dikirim kembali ke Operasi. Jika seluruh IN sudah punya nomor OUT, PO lanjut ke tahap <strong>Gudang</strong>. Lanjutkan?</>}
+        confirmLabel="Approve OUT"
+        loading={mutation.isPending}
+        error={errorMessage}
+        onCancel={() => setConfirmOut(false)}
+        onConfirm={() => mutation.mutate()}
+      />
+    </form>
   )
 }
 

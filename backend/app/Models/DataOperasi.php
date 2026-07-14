@@ -14,6 +14,8 @@ class DataOperasi extends Model
         'po_detail_id',
         'no_mo',
         'no_tm',
+        'no_out',
+        'status_out',
         'hgl_kg',
         'broken_kg',
         'menir_kg',

@@ -72,6 +72,8 @@ Route::middleware('auth:sanctum')->group(function () {
         ->middleware('role:keuangan|admin');
     Route::post('/po/{dataPengadaan}/operasi', [PengadaanController::class, 'operasi'])
         ->middleware('role:operasi|admin');
+    Route::patch('/po/{dataPengadaan}/out', [PengadaanController::class, 'approveOut'])
+        ->middleware('role:pengadaan|admin');
     Route::post('/po/{dataPengadaan}/gudang', [PengadaanController::class, 'gudang'])
         ->middleware('role:gudang|admin');
 });

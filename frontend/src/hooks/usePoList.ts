@@ -23,6 +23,8 @@ export type DataOperasi = {
   po_detail_id: number
   no_mo: string
   no_tm: string
+  no_out: string | null
+  status_out: 'menunggu_pengadaan' | 'disetujui'
   hgl_kg: string | null
   broken_kg: string | null
   menir_kg: string | null

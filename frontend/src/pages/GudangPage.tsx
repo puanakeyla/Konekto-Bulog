@@ -20,7 +20,7 @@ function formatNumber(value: string | number) {
 }
 
 function semuaOperasi(po: PoItem) {
-  return po.po_detail.length > 0 && po.po_detail.every((d) => !!d.data_operasi)
+  return po.po_detail.length > 0 && po.po_detail.every((d) => d.data_operasi?.status_out === 'disetujui' && d.data_operasi.no_out)
 }
 
 function belumSemuaGudang(po: PoItem) {
@@ -60,7 +60,7 @@ export default function GudangPage() {
 
             {isLoading && <SkeletonPoCards />}
             {!isLoading && menungguGudang.length === 0 && (
-              <div className="empty-state"><div className="empty-title">Tidak ada PO yang menunggu penerimaan Gudang</div><p className="empty-copy">PO baru muncul setelah Operasi menyimpan data MO/TM seluruh IN.</p></div>
+              <div className="empty-state"><div className="empty-title">Tidak ada PO yang menunggu penerimaan Gudang</div><p className="empty-copy">PO baru muncul setelah Pengadaan menyetujui nomor OUT seluruh IN.</p></div>
             )}
 
             <div className="space-y-4">{menungguGudang.map((po) => <GudangForm key={po.id} po={po} />)}</div>
@@ -130,6 +130,7 @@ function GudangForm({ po }: { po: PoItem }) {
       {po.po_detail.map((d) => (
         <div key={d.id} className="mb-4 rounded-lg border border-border bg-surface p-3">
           <div className="section-title mb-3">IN {d.transaksi_id} — {formatNumber(d.kuantum_kontribusi)} kg — MO {d.data_operasi?.no_mo ?? '-'}</div>
+          <div className="page-subtitle mb-3">No. OUT {d.data_operasi?.no_out ?? '-'}</div>
           <div className="grid gap-4 @md:grid-cols-2">
             <label className="block"><span className="label">Tanggal Masuk</span><input required type="date" className="input" value={rows[d.id].tanggal_masuk} onChange={(e) => setRowField(d.id, 'tanggal_masuk', e.target.value)} /></label>
             <label className="block"><span className="label">Nama Gudang</span><input required className="input" value={rows[d.id].nama_gudang} onChange={(e) => setRowField(d.id, 'nama_gudang', e.target.value)} placeholder="Contoh: Gudang Bulog Lampung" /></label>
