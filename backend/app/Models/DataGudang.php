@@ -10,20 +10,16 @@ class DataGudang extends Model
     protected $table = 'data_gudang';
 
     protected $fillable = [
-        'data_operasi_id',
+        'permintaan_operasi_id',
         'tanggal_masuk',
         'nama_gudang',
         'realisasi_hgl',
         'no_tm',
-        'review_status',
-        'catatan_penolakan',
-        'reviewed_by',
-        'reviewed_at',
     ];
 
-    public function dataOperasi(): BelongsTo
+    public function permintaanOperasi(): BelongsTo
     {
-        return $this->belongsTo(DataOperasi::class);
+        return $this->belongsTo(PermintaanOperasi::class);
     }
 
     protected function casts(): array

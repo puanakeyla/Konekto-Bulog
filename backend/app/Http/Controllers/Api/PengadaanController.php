@@ -12,6 +12,7 @@ use App\Services\Pengadaan\PoLifecycleService;
 use App\Services\Pengadaan\PoReviewService;
 
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 
 class PengadaanController extends Controller
@@ -26,7 +27,7 @@ class PengadaanController extends Controller
 
     public function index(Request $request)
     {
-        $dataPengadaan = DataPengadaan::with(['poDetail.transaksi.riwayatPenolakan.penolak', 'poDetail.dataOperasi.dataGudang', 'dataKeuangan'])
+        $dataPengadaan = DataPengadaan::with(['poDetail.transaksi.riwayatPenolakan.penolak', 'dataKeuangan'])
             ->orderByDesc('created_at')
             ->paginate($request->integer('per_page', 20));
 
@@ -35,7 +36,7 @@ class PengadaanController extends Controller
 
     public function show(Request $request, DataPengadaan $dataPengadaan)
     {
-        $dataPengadaan->load(['poDetail.transaksi.riwayatPenolakan.penolak', 'poDetail.dataOperasi.dataGudang', 'dataKeuangan', 'makloon']);
+        $dataPengadaan->load(['poDetail.transaksi.riwayatPenolakan.penolak', 'dataKeuangan', 'makloon']);
 
         return response()->json(['data' => new DataPengadaanResource($dataPengadaan)]);
     }
@@ -79,43 +80,56 @@ class PengadaanController extends Controller
         }
 
         $before = $dataPengadaan->only(['harga', 'total_harga', 'status']);
+        // Ditangkap lebih awal karena saat pembatalan po_detail dihapus (transaksi dilepas dari PO).
+        $transaksiIds = $dataPengadaan->poDetail()->pluck('transaksi_id');
 
-        if (array_key_exists('harga', $validated)) {
-            $dataPengadaan->harga = number_format($validated['harga'], 2, '.', '');
-            $dataPengadaan->total_harga = number_format(
-                (float) $dataPengadaan->total_kuantum * (float) $validated['harga'],
-                2,
-                '.',
-                ''
-            );
-        }
+        return DB::transaction(function () use ($request, $dataPengadaan, $validated, $before, $transaksiIds) {
+            if (array_key_exists('harga', $validated)) {
+                $dataPengadaan->harga = number_format($validated['harga'], 2, '.', '');
+                $dataPengadaan->total_harga = number_format(
+                    (float) $dataPengadaan->total_kuantum * (float) $validated['harga'],
+                    2,
+                    '.',
+                    ''
+                );
+            }
 
-        if (array_key_exists('status', $validated)) {
-            $dataPengadaan->status = $validated['status'];
-        }
+            if (array_key_exists('status', $validated)) {
+                $dataPengadaan->status = $validated['status'];
+            }
 
-        if ($dataPengadaan->status === 'lengkap') {
-            $dataPengadaan->review_status = 'menunggu_review';
-            $dataPengadaan->catatan_penolakan = null;
-            $dataPengadaan->reviewed_by = null;
-            $dataPengadaan->reviewed_at = null;
-        }
+            if ($dataPengadaan->status === 'lengkap') {
+                $dataPengadaan->review_status = 'menunggu_review';
+                $dataPengadaan->catatan_penolakan = null;
+                $dataPengadaan->reviewed_by = null;
+                $dataPengadaan->reviewed_at = null;
+            }
 
-        $dataPengadaan->save();
+            $dataPengadaan->save();
 
-        if ($dataPengadaan->status === 'lengkap') {
-            Transaksi::whereIn('id_transaksi', $dataPengadaan->poDetail()->pluck('transaksi_id'))
-                ->update(['current_stage' => 'keuangan']);
-        }
+            if ($dataPengadaan->status === 'lengkap') {
+                Transaksi::whereIn('id_transaksi', $transaksiIds)
+                    ->update(['current_stage' => 'keuangan']);
+            }
 
-        $this->auditLog->logMany($request->user(), 'update_po', $dataPengadaan->poDetail()->pluck('transaksi_id'), [
-            'data_pengadaan_id' => $dataPengadaan->id,
-            'no_po' => $dataPengadaan->no_po,
-            'before' => $before,
-            'after' => $dataPengadaan->only(['harga', 'total_harga', 'status']),
-        ]);
+            // PO dibatalkan: transaksi dilepas dari PO (po_detail dihapus) dan dikembalikan ke tahap
+            // Pengadaan agar bisa digabung ulang ke PO lain (Bagian 3.4). data_pengadaan transaksi
+            // kembali null sehingga form gabung muncul lagi di timeline.
+            if ($dataPengadaan->status === 'dibatalkan') {
+                Transaksi::whereIn('id_transaksi', $transaksiIds)
+                    ->update(['current_stage' => 'pengadaan']);
+                $dataPengadaan->poDetail()->delete();
+            }
 
-        return response()->json(['data' => $dataPengadaan]);
+            $this->auditLog->logMany($request->user(), 'update_po', $transaksiIds, [
+                'data_pengadaan_id' => $dataPengadaan->id,
+                'no_po' => $dataPengadaan->no_po,
+                'before' => $before,
+                'after' => $dataPengadaan->only(['harga', 'total_harga', 'status']),
+            ]);
+
+            return response()->json(['data' => $dataPengadaan]);
+        });
     }
 
     public function isiNomorIn(Request $request, DataPengadaan $dataPengadaan)
@@ -160,71 +174,6 @@ class PengadaanController extends Controller
         ]);
 
         return response()->json(['data' => $dataKeuangan]);
-    }
-
-    public function operasi(Request $request, DataPengadaan $dataPengadaan)
-    {
-        $validated = $request->validate([
-            'items' => ['required', 'array', 'min:1'],
-            'items.*.po_detail_id' => ['required', 'integer'],
-            'items.*.no_mo' => ['required', 'string', 'max:255'],
-            'items.*.no_tm' => ['required', 'string', 'max:255'],
-            'items.*.hgl_kg' => ['nullable', 'numeric', 'min:0'],
-            'items.*.broken_kg' => ['nullable', 'numeric', 'min:0'],
-            'items.*.menir_kg' => ['nullable', 'numeric', 'min:0'],
-            'items.*.katul_kg' => ['nullable', 'numeric', 'min:0'],
-            'items.*.rendemen_persen' => ['nullable', 'numeric', 'min:0', 'max:100'],
-        ]);
-
-        $created = $this->lifecycleService->inputOperasi($dataPengadaan, $validated['items']);
-
-        $this->auditLog->logMany($request->user(), 'input_operasi', $dataPengadaan->poDetail()->pluck('transaksi_id'), [
-            'data_pengadaan_id' => $dataPengadaan->id,
-            'jumlah_in' => $created->count(),
-        ]);
-
-        return response()->json(['data' => $created], 201);
-    }
-
-    public function approveOut(Request $request, DataPengadaan $dataPengadaan)
-    {
-        $validated = $request->validate([
-            'items' => ['required', 'array', 'min:1'],
-            'items.*.po_detail_id' => ['required', 'integer'],
-            'items.*.no_out' => ['required', 'string', 'max:255'],
-            'items.*.kuantum_out' => ['nullable', 'numeric', 'min:0'],
-        ]);
-
-        $approved = $this->lifecycleService->approveNomorOut($dataPengadaan, $validated['items'], $request->user());
-
-        $this->auditLog->logMany($request->user(), 'approve_nomor_out', $dataPengadaan->poDetail()->pluck('transaksi_id'), [
-            'data_pengadaan_id' => $dataPengadaan->id,
-            'items' => $validated['items'],
-            'jumlah_out' => $approved->count(),
-        ]);
-
-        return response()->json(['data' => $approved]);
-    }
-
-    public function gudang(Request $request, DataPengadaan $dataPengadaan)
-    {
-        $validated = $request->validate([
-            'items' => ['required', 'array', 'min:1'],
-            'items.*.po_detail_id' => ['required', 'integer'],
-            'items.*.tanggal_masuk' => ['required', 'date'],
-            'items.*.nama_gudang' => ['required', 'string', 'max:255'],
-            'items.*.realisasi_hgl' => ['nullable', 'numeric', 'min:0'],
-            'items.*.no_tm' => ['required', 'string', 'max:255'],
-        ]);
-
-        $created = $this->lifecycleService->inputGudang($dataPengadaan, $validated['items']);
-
-        $this->auditLog->logMany($request->user(), 'input_gudang', $dataPengadaan->poDetail()->pluck('transaksi_id'), [
-            'data_pengadaan_id' => $dataPengadaan->id,
-            'jumlah_in' => $created->count(),
-        ]);
-
-        return response()->json(['data' => $created], 201);
     }
 
     public function terimaPo(Request $request, DataPengadaan $dataPengadaan)

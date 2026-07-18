@@ -46,6 +46,13 @@ class TransaksiController extends Controller
             'dataUbJastasma',
             'creator',
             'riwayatPenolakan.penolak',
+            // PO tempat transaksi ini bernaung (bila sudah tergabung). Dimuat lengkap dengan
+            // seluruh transaksi anggota + data keuangan supaya panel Pengadaan/Keuangan bisa
+            // dirender inline di timeline tanpa memanggil endpoint /po terpisah.
+            'poDetail.dataPengadaan.poDetail.transaksi',
+            'poDetail.dataPengadaan.poDetail.dataOperasi.dataGudang',
+            'poDetail.dataPengadaan.dataKeuangan',
+            'poDetail.dataPengadaan.makloon',
         ]);
 
         $transaksi->setRelation('riwayatPenolakan', $transaksi->riwayatPenolakan->sortBy('ditolak_pada')->values());

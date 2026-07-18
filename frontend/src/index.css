@@ -25,27 +25,27 @@ body {
 }
 
 /*
- * Tema toast (sonner) memakai token warna Konekto (Bagian 7.1), bukan default sonner.
+ * Tema toast (sonner) memakai token warna SerGab Lampung (Bagian 7.1), bukan default sonner.
  * Sengaja UNLAYERED (di luar @layer) supaya menang atas CSS bawaan sonner yang juga unlayered.
  */
-[data-sonner-toast].toast-konekto-success {
+[data-sonner-toast].toast-sergab-success {
   background: #EAFAF0;
   border: 1px solid #1E6B4F;
   color: #1E6B4F;
 }
-[data-sonner-toast].toast-konekto-success [data-icon],
-[data-sonner-toast].toast-konekto-success [data-title],
-[data-sonner-toast].toast-konekto-success [data-description] {
+[data-sonner-toast].toast-sergab-success [data-icon],
+[data-sonner-toast].toast-sergab-success [data-title],
+[data-sonner-toast].toast-sergab-success [data-description] {
   color: #1E6B4F;
 }
-[data-sonner-toast].toast-konekto-error {
+[data-sonner-toast].toast-sergab-error {
   background: #FDE8E8;
   border: 1px solid #A13030;
   color: #A13030;
 }
-[data-sonner-toast].toast-konekto-error [data-icon],
-[data-sonner-toast].toast-konekto-error [data-title],
-[data-sonner-toast].toast-konekto-error [data-description] {
+[data-sonner-toast].toast-sergab-error [data-icon],
+[data-sonner-toast].toast-sergab-error [data-title],
+[data-sonner-toast].toast-sergab-error [data-description] {
   color: #A13030;
 }
 

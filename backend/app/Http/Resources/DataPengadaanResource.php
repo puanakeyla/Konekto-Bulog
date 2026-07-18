@@ -19,8 +19,6 @@ class DataPengadaanResource extends JsonResource
         $data = parent::toArray($request);
 
         $poDetails = $this->resource->relationLoaded('poDetail') ? $this->poDetail : collect();
-        $operasiRecords = $poDetails->map(fn ($detail) => $detail->dataOperasi)->filter()->values();
-        $gudangRecords = $operasiRecords->map(fn ($operasi) => $operasi->dataGudang)->filter()->values();
         $keuanganRecord = $this->resource->relationLoaded('dataKeuangan') ? $this->dataKeuangan : null;
 
         return array_merge($data, [
@@ -28,8 +26,6 @@ class DataPengadaanResource extends JsonResource
             'review_timeline' => [
                 'pengadaan' => $this->reviewSummary($this->resource),
                 'keuangan' => $this->reviewSummary($keuanganRecord),
-                'operasi' => $this->reviewCollectionSummary($operasiRecords, $poDetails->count()),
-                'gudang' => $this->reviewCollectionSummary($gudangRecords, $poDetails->count()),
             ],
         ]);
     }

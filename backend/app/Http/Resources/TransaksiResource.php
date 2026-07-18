@@ -28,6 +28,13 @@ class TransaksiResource extends JsonResource
             'data_makloon_mpp' => $this->whenLoaded('dataMakloonMpp'),
             'data_makloon_tjp' => $this->whenLoaded('dataMakloonTjp'),
             'data_ub_jastasma' => $this->whenLoaded('dataUbJastasma'),
+            // PO tempat transaksi ini bernaung (null bila belum digabung). Dipakai timeline untuk
+            // merender panel Pengadaan/Keuangan inline. Satu transaksi hanya punya satu po_detail.
+            'data_pengadaan' => $this->whenLoaded('poDetail', function () {
+                $po = $this->poDetail->first()?->dataPengadaan;
+
+                return $po ? new DataPengadaanResource($po) : null;
+            }),
             'riwayat_penolakan' => RiwayatPenolakanResource::collection($this->whenLoaded('riwayatPenolakan')),
         ];
     }

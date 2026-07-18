@@ -3,42 +3,32 @@
 namespace App\Services\Pengadaan;
 
 use App\Models\DataPengadaan;
-use App\Models\DataKeuangan;
-use App\Models\DataOperasi;
-use App\Models\DataGudang;
-use App\Models\PoDetail;
 use App\Models\RiwayatPenolakan;
 use App\Models\Transaksi;
 use App\Models\User;
 use App\Services\AuditLogService;
 use Illuminate\Support\Facades\DB;
 
+/**
+ * Review PO oleh Keuangan (Terima & Lanjutkan / Tolak) atas data Pengadaan.
+ * Operasi & Gudang sudah menjadi modul mandiri (lihat OperasiService) sehingga tidak lagi
+ * memakai mekanisme review PO ini.
+ */
 class PoReviewService
 {
-    public function __construct(private AuditLogService $auditLog)
-    {
-    }
+    public function __construct(private AuditLogService $auditLog) {}
 
     public function terima(DataPengadaan $dataPengadaan, User $actor): array
     {
         return DB::transaction(function () use ($dataPengadaan, $actor) {
             [$role, $transaksiIds] = $this->reviewContext($dataPengadaan, $actor);
 
-            if ($role === 'keuangan') {
-                $this->acceptRecord($dataPengadaan, $actor);
-                $stage = 'pengadaan';
-            }
-            elseif ($role === 'operasi') {
-                $stage = $this->acceptOperasiStage($dataPengadaan, $actor);
-            }
-            elseif ($role === 'gudang') {
-                $stage = $this->acceptGudangStage($dataPengadaan, $actor);
-            }
-            elseif ($role === 'pengadaan') {
-                $stage = $this->acceptOperasiOutStage($dataPengadaan, $actor);
-            } else {
+            if ($role !== 'keuangan') {
                 abort(403, 'Role ini tidak dapat mereview PO.');
             }
+
+            $this->acceptRecord($dataPengadaan, $actor);
+            $stage = 'pengadaan';
 
             $this->auditLog->logMany($actor, 'terima_po', $transaksiIds, [
                 'data_pengadaan_id' => $dataPengadaan->id,
@@ -46,7 +36,7 @@ class PoReviewService
                 'review_stage' => $role,
             ]);
 
-            return ['stage' => $stage, 'data_pengadaan' => $dataPengadaan->fresh(['dataKeuangan', 'poDetail.dataOperasi.dataGudang'])];
+            return ['stage' => $stage, 'data_pengadaan' => $dataPengadaan->fresh(['dataKeuangan', 'poDetail.transaksi'])];
         });
     }
 
@@ -54,8 +44,12 @@ class PoReviewService
     {
         return DB::transaction(function () use ($dataPengadaan, $actor, $catatan) {
             [$role, $transaksiIds] = $this->reviewContext($dataPengadaan, $actor);
-            [$stage, $records] = $this->rejectTargets($dataPengadaan, $role);
 
+            if ($role !== 'keuangan') {
+                abort(403, 'Role ini tidak dapat menolak PO.');
+            }
+
+            $stage = 'pengadaan';
             foreach ($transaksiIds as $transaksiId) {
                 RiwayatPenolakan::create([
                     'transaksi_id' => $transaksiId,
@@ -66,10 +60,7 @@ class PoReviewService
                 ]);
             }
 
-            foreach ($records as $record) {
-                $this->rejectRecord($record, $actor, $catatan);
-            }
-
+            $this->rejectRecord($dataPengadaan, $actor, $catatan);
             Transaksi::whereIn('id_transaksi', $transaksiIds)->update(['current_stage' => $stage]);
 
             $this->auditLog->logMany($actor, 'tolak_po', $transaksiIds, [
@@ -79,7 +70,7 @@ class PoReviewService
                 'catatan' => $catatan,
             ]);
 
-            return ['stage' => $stage, 'data_pengadaan' => $dataPengadaan->fresh(['dataKeuangan', 'poDetail.dataOperasi.dataGudang'])];
+            return ['stage' => $stage, 'data_pengadaan' => $dataPengadaan->fresh(['dataKeuangan', 'poDetail.transaksi'])];
         });
     }
 
@@ -105,42 +96,9 @@ class PoReviewService
 
     private function currentPoStage(DataPengadaan $dataPengadaan): string
     {
-        $stage = Transaksi::whereIn(
-            'id_transaksi',
-            $dataPengadaan->poDetail()->pluck('transaksi_id')
-        )->value('current_stage');
+        $stage = Transaksi::whereIn('id_transaksi', $dataPengadaan->poDetail()->pluck('transaksi_id'))->value('current_stage');
 
         return $stage ?: abort(422, 'PO tidak memiliki transaksi.');
-    }
-
-    private function rejectTargets(DataPengadaan $dataPengadaan, string $role): array
-    {
-        if ($role === 'keuangan') {
-            return ['pengadaan', [$dataPengadaan]];
-        }
-
-        if ($role === 'operasi') {
-            $record = $dataPengadaan->dataKeuangan ?: abort(422, 'Data Keuangan belum ada.');
-
-            if ($record->review_status !== 'diterima') {
-                return ['keuangan', [$record]];
-            }
-
-            $records = $dataPengadaan->poDetail()->with('dataOperasi')->get()->map(fn ($detail) => $detail->dataOperasi)->filter();
-            return ['pengadaan', $records->all()];
-        }
-
-        if ($role === 'gudang') {
-            $records = $dataPengadaan->poDetail()->with('dataOperasi.dataGudang')->get()->map(fn ($detail) => $detail->dataOperasi)->filter();
-            return ['operasi', $records->all()];
-        }
-
-        if ($role === 'pengadaan') {
-            $records = $dataPengadaan->poDetail()->with('dataOperasi')->get()->map(fn ($detail) => $detail->dataOperasi)->filter();
-            return ['operasi', $records->all()];
-        }
-
-        abort(403, 'Role ini tidak dapat menolak PO.');
     }
 
     private function acceptRecord($record, User $actor): void
@@ -159,62 +117,5 @@ class PoReviewService
         $record->reviewed_at = now();
         $record->catatan_penolakan = $catatan;
         $record->save();
-    }
-
-    private function acceptGudangStage(DataPengadaan $dataPengadaan, User $actor): string
-    {
-        $records = $dataPengadaan->poDetail()->with('dataOperasi')->get()->map(fn ($detail) => $detail->dataOperasi)->filter();
-        if ($records->isEmpty()) {
-            abort(422, 'Data Operasi belum ada.');
-        }
-
-        foreach ($records as $record) {
-            $this->acceptRecord($record, $actor);
-        }
-
-        Transaksi::whereIn('id_transaksi', $dataPengadaan->poDetail()->pluck('transaksi_id'))->update(['current_stage' => 'gudang']);
-        return 'operasi';
-    }
-
-    private function acceptOperasiStage(DataPengadaan $dataPengadaan, User $actor): string
-    {
-        $record = $dataPengadaan->dataKeuangan ?: abort(422, 'Data Keuangan belum ada.');
-        if ($record->review_status !== 'diterima') {
-            $this->acceptRecord($record, $actor);
-            return 'keuangan';
-        }
-
-        $records = $dataPengadaan->poDetail()->with('dataOperasi')->get()->map(fn ($detail) => $detail->dataOperasi)->filter();
-        if ($records->isEmpty()) {
-            abort(422, 'Data Operasi belum ada.');
-        }
-
-        foreach ($records as $operasi) {
-            if ($operasi->status_out !== 'disetujui' || $operasi->no_out === null || $operasi->review_status !== 'diterima') {
-                abort(422, 'Nomor OUT dari Pengadaan belum diterima untuk semua IN.');
-            }
-        }
-
-        Transaksi::whereIn('id_transaksi', $dataPengadaan->poDetail()->pluck('transaksi_id'))->update(['current_stage' => 'gudang']);
-        return 'pengadaan';
-    }
-
-    private function acceptOperasiOutStage(DataPengadaan $dataPengadaan, User $actor): string
-    {
-        $records = $dataPengadaan->poDetail()->with('dataOperasi')->get()->map(fn ($detail) => $detail->dataOperasi)->filter();
-        if ($records->isEmpty()) {
-            abort(422, 'Data Operasi belum ada.');
-        }
-
-        foreach ($records as $record) {
-            if ($record->status_out !== 'disetujui' || $record->no_out === null) {
-                abort(422, 'Nomor OUT belum diisi Pengadaan untuk semua IN.');
-            }
-
-            $this->acceptRecord($record, $actor);
-        }
-
-        Transaksi::whereIn('id_transaksi', $dataPengadaan->poDetail()->pluck('transaksi_id'))->update(['current_stage' => 'operasi']);
-        return 'pengadaan';
     }
 }

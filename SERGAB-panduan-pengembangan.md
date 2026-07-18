@@ -1,7 +1,7 @@
-# Konekto — Sistem Informasi Serap Gabah (SERGAB) untuk Perum BULOG
+# SerGab Lampung — Sistem Informasi Serap Gabah (SERGAB) untuk Perum BULOG
 ## Panduan Teknis Pengembangan (Referensi untuk Claude Code)
 
-> **Konekto** adalah nama produk untuk sistem SERGAB (Sistem Informasi Serap Gabah) yang dibangun untuk Perum BULOG Kanwil Lampung. Dokumen ini merangkum seluruh keputusan desain, alur bisnis, skema database, dan pola arsitektur yang telah dibahas dan disepakati. Gunakan sebagai acuan utama (mis. `CLAUDE.md` atau dokumen referensi di root repo) saat membangun sistem ini.
+> **SerGab Lampung** (dari **Ser**ap **Gab**ah Lampung) adalah nama produk untuk sistem SERGAB (Sistem Informasi Serap Gabah) yang dibangun untuk Perum BULOG Kanwil Lampung. Dokumen ini merangkum seluruh keputusan desain, alur bisnis, skema database, dan pola arsitektur yang telah dibahas dan disepakati. Gunakan sebagai acuan utama (mis. `CLAUDE.md` atau dokumen referensi di root repo) saat membangun sistem ini.
 >
 > **Versi awal ini sengaja disederhanakan** — prioritas utama: dapat dijalankan sebagai website dan mampu menampung banyak foto. Kompleksitas infrastruktur (object storage, container orchestration lanjutan, dsb) ditunda ke fase produksi, lihat catatan di tiap bagian.
 >
@@ -33,7 +33,7 @@ SERGAB adalah sistem digitalisasi alur pengadaan/serap gabah untuk Perum BULOG K
 | Kontainerisasi | *(ditunda)* — jalankan langsung PHP-FPM + nginx di VPS | Disederhanakan untuk versi awal; Docker bisa ditambahkan belakangan tanpa mengubah kode aplikasi |
 | Data-fetching frontend | TanStack Query | Sinkronisasi status transaksi antar role, caching, revalidation |
 | Tabel data | TanStack Table | Server-side pagination/sorting/filtering untuk listing ribuan baris |
-| Styling & komponen | Tailwind CSS + shadcn/ui, tema warna Konekto | Lihat Bagian 7 |
+| Styling & komponen | Tailwind CSS + shadcn/ui, tema warna SerGab Lampung | Lihat Bagian 7 |
 
 **Yang disederhanakan dari versi sebelumnya**: object storage S3 diganti disk lokal server, kontainerisasi Docker ditunda, audit log & queue worker jadi rekomendasi opsional (bukan wajib di versi awal — lihat catatan di Bagian 6 dan 9). Struktur kode tetap dibuat agar migrasi ke S3/Docker nanti tidak perlu menulis ulang logic, cukup ganti konfigurasi.
 
@@ -194,13 +194,24 @@ Admin adalah role tambahan di luar 7 role operasional, dengan karakteristik:
 | status_bayar | enum('belum','dibayarkan') |
 | tanggal_bayar | date nullable |
 
-### `data_operasi`
+### `data_operasi` (per IN / per `po_detail`)
 | Kolom | Tipe |
 |---|---|
 | id | bigint PK |
-| data_pengadaan_id | bigint FK |
-| no_mo, no_tm | varchar |
-| hgl_persen, broken_persen, menir_persen, katul_persen, rendemen_persen | decimal(5,2) |
+| po_detail_id | bigint FK unik |
+| gabah_diolah_kg | decimal(12,2) nullable — jumlah gabah yang diminta Operasi untuk diolah |
+| status_out | varchar — `menunggu_pengadaan` \| `dikeluarkan` \| `dikembalikan` |
+| no_out | varchar nullable unik — diisi Pengadaan manual saat `dikeluarkan` |
+| kuantum_out | decimal(12,2) nullable — jumlah yang dikeluarkan Pengadaan (default = gabah_diolah_kg) |
+| catatan_pengembalian | text nullable — alasan saat `dikembalikan` |
+| no_mo, no_tm | varchar nullable — diisi Operasi **setelah** No. OUT keluar |
+| hgl_kg, broken_kg, menir_kg, katul_kg | decimal(12,2) nullable |
+| rendemen_persen | decimal(5,2) nullable — otomatis = HGL ÷ gabah_diolah × 100 |
+
+> **Operasi adalah loop independen dengan Pengadaan (bukan tahap timeline berurutan).** Alurnya:
+> 1. **Operasi** membuat permintaan pengeluaran stok per IN dengan `gabah_diolah_kg` (`POST /api/po/{id}/operasi`).
+> 2. **Pengadaan** memutuskan tiap permintaan (`PATCH /api/po/{id}/out`): `dikeluarkan` (isi No. OUT manual) atau `dikembalikan` (isi catatan → Operasi ajukan ulang).
+> 3. Setelah No. OUT keluar, **Operasi** mengisi No. MO/TM + hasil produksi (`POST /api/po/{id}/operasi/hasil`). Begitu semua IN punya hasil, transaksi lanjut ke Gudang.
 
 ### `data_gudang`
 | Kolom | Tipe |
@@ -243,8 +254,10 @@ Admin adalah role tambahan di luar 7 role operasional, dengan karakteristik:
 | `POST /api/pengadaan/gabungkan-po` | Gabungkan beberapa transaksi jadi satu PO |
 | `PATCH /api/po/{id}` | Update harga/status PO |
 | `PATCH /api/po/{id}/pembayaran` | Update status pembayaran (Keuangan) |
-| `POST /api/po/{id}/operasi` | Input data Operasi (MO/TM/rendemen) |
-| `POST /api/operasi/{id}/gudang` | Input data penerimaan Gudang |
+| `POST /api/po/{id}/operasi` | Operasi: buat permintaan pengeluaran stok per IN (`gabah_diolah_kg`) |
+| `PATCH /api/po/{id}/out` | Pengadaan: putuskan tiap permintaan — `dikeluarkan` (isi No. OUT) / `dikembalikan` (isi catatan) |
+| `POST /api/po/{id}/operasi/hasil` | Operasi: isi No. MO/TM + hasil produksi setelah No. OUT keluar |
+| `POST /api/po/{id}/gudang` | Input data penerimaan Gudang per IN |
 | `GET/POST/PATCH/DELETE /api/admin/users` | CRUD user & role — khusus Admin (untuk Makloon, sertakan `nama_maklon`) |
 | `GET /api/makloon-options` | Daftar ringan `{id, nama_maklon}` user ber-role Makloon — sumber combobox (Bagian 7.4), dapat diakses semua role yang butuh memilih makloon |
 | `GET /api/monitoring/sebaran-tahap` | Jumlah transaksi per tahap, per skema (Bagian 7.5a) |
@@ -268,7 +281,7 @@ Admin adalah role tambahan di luar 7 role operasional, dengan karakteristik:
 
 ## 7. Pola Desain & UI/UX
 
-### 7.1 Identitas visual Konekto
+### 7.1 Identitas visual SerGab Lampung
 
 **(Revisi)** — emas dikurangi drastis, hanya dipakai di logo mark. Navy dan netral jadi warna dominan di seluruh antarmuka:
 
@@ -302,7 +315,7 @@ Referensi visual sudah didemonstrasikan di percakapan ini: halaman depan publik 
 
 **(Revisi)** — tombol CTA di hero dihapus; satu-satunya jalan masuk adalah tombol "Masuk" di navbar (lebih tenang, tidak terkesan seperti landing page jualan). Struktur yang disarankan (sudah didemonstrasikan visualnya di percakapan ini, versi kedua lebih kaya secara visual):
 
-1. **Navbar** — logo Konekto, menu (Tentang, Visi & Misi, Tata Nilai, Kontak), tombol "Masuk" di kanan (satu-satunya entry point).
+1. **Navbar** — logo SerGab Lampung, menu (Tentang, Visi & Misi, Tata Nilai, Kontak), tombol "Masuk" di kanan (satu-satunya entry point).
 2. **Hero** — judul singkat yang kuat, penjelasan satu-dua kalimat, **grafis hero** (komposisi lingkaran bertingkat + ikon gudang/truk sebagai representasi visual alur logistik, dibuat dengan bentuk flat, bukan foto), plus dekorasi lingkaran samar di latar belakang supaya tidak terasa kosong. Tanpa tombol CTA.
 3. **Baris statistik** — 3 angka ringkas (42 mitra makloon, 2 skema pengadaan, 7 tahap tertelusur) tepat di bawah hero, memberi kesan skala sistem sejak awal.
 4. **Riwayat singkat perusahaan** — ringkas dari teks resmi yang Anda berikan (pendirian 21 Januari 2003, PP No. 7/2003, kini PP No. 13/2016).

@@ -1,4 +1,4 @@
-﻿# Konekto Bulog - SERGAB
+﻿# SerGab Lampung — Sistem Serap Gabah
 
 Aplikasi Sistem Informasi Serap Gabah untuk Perum BULOG. Project ini terdiri dari backend Laravel API dan frontend React/Vite.
 
@@ -18,13 +18,13 @@ Role: admin
 
 ## Database
 
-Project ini memakai MySQL. Database lokal yang digunakan: konekto_bulog.
+Project ini memakai MySQL. Database lokal yang digunakan: sergab_lampung.
 
 Konfigurasi backend/.env:
 DB_CONNECTION=mysql
 DB_HOST=127.0.0.1
 DB_PORT=3306
-DB_DATABASE=konekto_bulog
+DB_DATABASE=sergab_lampung
 DB_USERNAME=root
 DB_PASSWORD=
 
@@ -70,7 +70,7 @@ C:\laragon\bin\php\php-8.2.32-Win32-vs16-x64\php.exe artisan migrate:status
 Reset database lokal:
 C:\laragon\bin\php\php-8.2.32-Win32-vs16-x64\php.exe artisan migrate:fresh --seed
 
-Perhatian: perintah reset menghapus semua data lokal di database konekto_bulog.
+Perhatian: perintah reset menghapus semua data lokal di database sergab_lampung.
 
 ## Troubleshooting Singkat
 

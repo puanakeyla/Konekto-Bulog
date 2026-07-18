@@ -70,10 +70,10 @@ export default function App() {
         <BrowserRouter>
           <AppRoutes />
         </BrowserRouter>
-        {/* Tema toast disesuaikan token Konekto (lihat .toast-konekto-* di index.css) */}
+        {/* Tema toast disesuaikan token SerGab Lampung (lihat .toast-sergab-* di index.css) */}
         <Toaster
           position="top-right"
-          toastOptions={{ classNames: { success: 'toast-konekto-success', error: 'toast-konekto-error' } }}
+          toastOptions={{ classNames: { success: 'toast-sergab-success', error: 'toast-sergab-error' } }}
         />
       </AuthProvider>
     </QueryClientProvider>

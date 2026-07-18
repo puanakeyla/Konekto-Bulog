@@ -20,7 +20,8 @@ function formatNumber(value: string | number) {
 }
 
 function semuaOperasi(po: PoItem) {
-  return po.po_detail.length > 0 && po.po_detail.every((d) => d.data_operasi?.status_out === 'disetujui' && d.data_operasi.no_out)
+  // Siap Gudang: No. OUT sudah keluar DAN hasil produksi (No. MO) sudah diisi Operasi tiap IN.
+  return po.po_detail.length > 0 && po.po_detail.every((d) => d.data_operasi?.status_out === 'dikeluarkan' && d.data_operasi.no_out && d.data_operasi.no_mo)
 }
 
 function belumSemuaGudang(po: PoItem) {

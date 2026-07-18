@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import { useMutation } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import api from '../lib/api'
@@ -7,6 +7,7 @@ import { apiErrorMessage } from '../lib/apiError'
 import { uploadSemuaFoto } from '../lib/uploadFoto'
 import MakloonCombobox from '../components/MakloonCombobox'
 import FotoPicker from '../components/FotoPicker'
+import FormHero from '../components/FormHero'
 
 type FormState = {
   id_pemasok: string
@@ -89,38 +90,13 @@ export default function TransaksiJemputPanganPage() {
 
   return (
     <div className="min-h-screen bg-surface">
-      {/* Hero band navy -- menyatu dengan AppNav di atasnya, gaya landing page. */}
-      <section className="relative overflow-hidden bg-gradient-to-br from-[#14213f] via-primary-dark to-primary text-white">
-        <div
-          aria-hidden
-          className="absolute inset-0 opacity-50"
-          style={{ backgroundImage: 'radial-gradient(circle, rgba(255,255,255,0.10) 1px, transparent 1px)', backgroundSize: '22px 22px' }}
-        />
-        <div aria-hidden className="pointer-events-none absolute -right-24 -top-24 h-72 w-72 rounded-full bg-accent/15 blur-3xl" />
-        <div aria-hidden className="pointer-events-none absolute -left-28 bottom-0 h-64 w-64 rounded-full bg-primary/50 blur-3xl" />
-
-        <div className="relative mx-auto max-w-4xl px-6 pb-24 pt-7">
-          <Link
-            to="/dashboard"
-            className="flex w-fit items-center gap-1.5 text-xs font-semibold text-white/70 transition-colors hover:text-white"
-          >
-            <span aria-hidden className="text-base leading-none">&larr;</span>
-            Kembali ke dashboard
-          </Link>
-
-          <span className="mt-6 inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3.5 py-1.5 text-xs font-semibold text-white">
-            <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-accent" />
-            Skema TJP &middot; Jemput Pangan
-          </span>
-          <h1 className="mt-4 text-3xl font-bold tracking-tight md:text-4xl">
-            Buat Transaksi Jemput Pangan<span className="text-accent">.</span>
-          </h1>
-          <p className="mt-3 max-w-lg text-sm leading-6 text-white/70">
-            Isi data pemasok, lokasi asal, tujuan makloon, dan dokumen. Transaksi langsung dikirim ke
-            Makloon setelah disimpan.
-          </p>
-        </div>
-      </section>
+      <FormHero
+        eyebrow="Perum Bulog Kanwil Lampung"
+        badge="Skema TJP · Jemput Pangan"
+        title="Buat Transaksi Jemput Pangan"
+        subtitle="Isi data pemasok, lokasi asal, tujuan makloon, dan dokumen. Transaksi langsung dikirim ke Makloon setelah disimpan."
+        widthClass="max-w-4xl"
+      />
 
       {/* Kartu form ditarik naik menimpa hero. */}
       <div className="relative mx-auto -mt-16 max-w-4xl px-6 pb-16">
@@ -299,7 +275,7 @@ function Section({
   return (
     <section className="border-b border-border px-5 py-6">
       <div className="mb-4 flex items-center gap-3">
-        <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-primary-tint text-sm font-bold text-primary">
+        <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-primary to-primary-dark text-sm font-bold text-white shadow-sm shadow-primary/20">
           {step}
         </span>
         <div>

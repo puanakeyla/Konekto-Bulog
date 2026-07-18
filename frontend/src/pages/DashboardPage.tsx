@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 import { useTransaksiList, type TransaksiListItem } from '../hooks/useTransaksiList'
@@ -131,7 +131,7 @@ export default function DashboardPage() {
 
   return (
     <div className="min-h-screen bg-surface">
-      {/* Hero sambutan -- navy dramatis, gaya landing page. */}
+      {/* Hero sambutan -- navy dramatis, gaya landing page, dihias cincin + ilustrasi panen. */}
       <section className="relative overflow-hidden bg-gradient-to-br from-[#14213f] via-primary-dark to-primary text-white">
         <div
           aria-hidden
@@ -140,47 +140,65 @@ export default function DashboardPage() {
         />
         <div aria-hidden className="pointer-events-none absolute -right-24 -top-24 h-80 w-80 rounded-full bg-accent/15 blur-3xl" />
         <div aria-hidden className="pointer-events-none absolute -left-28 bottom-0 h-72 w-72 rounded-full bg-primary/50 blur-3xl" />
+        {/* cincin dekoratif samar di kanan */}
+        <div aria-hidden className="pointer-events-none absolute -right-6 top-4 hidden h-80 w-80 rounded-full border border-white/5 lg:block" />
+        <div aria-hidden className="pointer-events-none absolute right-16 top-20 hidden h-48 w-48 rounded-full border border-white/5 lg:block" />
 
         <div className="relative mx-auto max-w-6xl px-6 pb-24 pt-9">
-          <span className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3.5 py-1.5 text-xs font-semibold text-white">
-            <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-accent" />
-            {sapaan} &middot; {tanggalPanjang}
-          </span>
-          <h1 className="mt-5 text-3xl font-bold tracking-tight md:text-4xl">
-            Halo, {user?.username}<span className="text-accent">.</span>
-          </h1>
-          <div className="mt-2 flex items-center gap-2 text-sm text-white/60">
-            <span className="rounded-md bg-white/10 px-2 py-0.5 text-xs font-semibold text-white">{roleLabel}</span>
-          </div>
-          <p className="mt-4 max-w-xl text-sm leading-6 text-white/70">{roleSubtitle}</p>
+          <div className="grid items-center gap-10 lg:grid-cols-[1fr_340px]">
+            <div>
+              {/* Eyebrow brand */}
+              <p className="flex items-center gap-2.5 text-xs font-bold uppercase tracking-[0.18em] text-accent">
+                <span aria-hidden className="h-px w-7 bg-accent" />
+                Perum Bulog Kanwil Lampung
+              </p>
+              <p className="mt-5 text-xs font-medium text-white/50">{sapaan} &middot; {tanggalPanjang}</p>
+              <h1 className="mt-2 text-4xl font-bold leading-tight tracking-tight md:text-5xl">
+                Halo, {user?.username}<span className="text-accent">.</span>
+              </h1>
+              <div aria-hidden className="mt-5 h-1 w-16 rounded-full bg-accent" />
+              <div className="mt-5">
+                <span className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3.5 py-1.5 text-xs font-semibold text-white">
+                  <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-accent" />
+                  {roleLabel}
+                </span>
+              </div>
+              <p className="mt-5 max-w-xl text-sm leading-6 text-white/70">{roleSubtitle}</p>
 
-          {actions.length > 0 && (
-            <div className="mt-6 flex flex-wrap gap-2.5">
-              {actions.map((a, i) => (
-                <Link
-                  key={a.to}
-                  to={a.to}
-                  className={
-                    i === 0
-                      ? 'rounded-lg bg-accent px-5 py-2.5 text-sm font-bold text-primary-dark shadow-sm transition-all hover:bg-white hover:shadow-md'
-                      : 'rounded-lg border border-white/15 bg-white/10 px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-white/20'
-                  }
-                >
-                  {a.label}
-                </Link>
-              ))}
+              {actions.length > 0 && (
+                <div className="mt-7 flex flex-wrap gap-2.5">
+                  {actions.map((a, i) => (
+                    <Link
+                      key={a.to}
+                      to={a.to}
+                      className={
+                        i === 0
+                          ? 'rounded-lg bg-accent px-5 py-2.5 text-sm font-bold text-primary-dark shadow-sm transition-all hover:bg-white hover:shadow-md'
+                          : 'rounded-lg border border-white/15 bg-white/10 px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-white/20'
+                      }
+                    >
+                      {a.label}
+                    </Link>
+                  ))}
+                </div>
+              )}
             </div>
-          )}
+
+            {/* Ilustrasi panen gabah -- hanya tampil di layar lebar untuk mengisi ruang. */}
+            <div aria-hidden className="relative hidden lg:block">
+              <DashboardGrafis />
+            </div>
+          </div>
         </div>
       </section>
 
       {/* Kartu statistik ditarik naik menimpa hero. */}
       <div className="relative mx-auto -mt-16 max-w-6xl px-6">
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <StatCard label="Total transaksi" value={total} sub="keseluruhan" tone="primary" />
-          <StatCard label="Sedang berjalan" value={berjalan} sub="menunggu tindakan" tone="warning" />
-          <StatCard label="Selesai" value={selesai} sub="sudah rampung" tone="success" />
-          <StatCard label="Makloon terhubung" value={makloonTerhubung} sub="mitra pada daftar" tone="accent" />
+          <StatCard label="Total transaksi" value={total} sub="keseluruhan" tone="primary" icon={ICONS.total} />
+          <StatCard label="Sedang berjalan" value={berjalan} sub="menunggu tindakan" tone="warning" icon={ICONS.berjalan} />
+          <StatCard label="Selesai" value={selesai} sub="sudah rampung" tone="success" icon={ICONS.selesai} />
+          <StatCard label="Makloon terhubung" value={makloonTerhubung} sub="mitra pada daftar" tone="accent" icon={ICONS.makloon} />
         </div>
       </div>
 
@@ -275,28 +293,80 @@ export default function DashboardPage() {
   )
 }
 
-// Kartu ringkasan angka di atas daftar transaksi.
+// Ikon garis sederhana untuk kartu statistik (stroke mengikuti warna teks kontainer).
+const ICONS = {
+  total: <path d="M4 7h16M4 12h16M4 17h10" />,
+  berjalan: <><circle cx="12" cy="12" r="8" /><path d="M12 8v4l3 2" /></>,
+  selesai: <><circle cx="12" cy="12" r="8" /><path d="M8.5 12.5l2.5 2.5 4.5-5" /></>,
+  makloon: <><circle cx="9" cy="8" r="3" /><path d="M15 11a3 3 0 1 0-2-5.2M4 19a5 5 0 0 1 10 0M14 19a5 5 0 0 1 6-4.6" /></>,
+}
+
+// Kartu ringkasan angka di atas daftar transaksi -- dengan ikon & aksen warna per tone.
 function StatCard({
   label,
   value,
   sub,
   tone,
+  icon,
 }: {
   label: string
   value: number
   sub: string
   tone: 'primary' | 'warning' | 'success' | 'accent'
+  icon: ReactNode
 }) {
-  const dot = { primary: 'bg-primary', warning: 'bg-warning', success: 'bg-success', accent: 'bg-accent' }[tone]
+  const cfg = {
+    primary: { bar: 'bg-primary', chip: 'bg-primary-tint text-primary' },
+    warning: { bar: 'bg-warning', chip: 'bg-warning-bg text-warning' },
+    success: { bar: 'bg-success', chip: 'bg-success/10 text-success' },
+    accent: { bar: 'bg-accent', chip: 'bg-accent/15 text-accent' },
+  }[tone]
   return (
-    <div className="panel px-5 py-4 transition-shadow hover:shadow-md">
-      <div className="flex items-center gap-2">
-        <span aria-hidden className={`h-2 w-2 rounded-full ${dot}`} />
-        <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">{label}</p>
+    <div className="panel relative overflow-hidden px-5 py-4 transition-shadow hover:shadow-md">
+      <span aria-hidden className={`absolute inset-y-0 left-0 w-1 ${cfg.bar}`} />
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">{label}</p>
+          <p className="mt-2 text-3xl font-bold text-primary-dark">{value}</p>
+          <p className="mt-0.5 text-xs text-slate-500">{sub}</p>
+        </div>
+        <span aria-hidden className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl ${cfg.chip}`}>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5">{icon}</svg>
+        </span>
       </div>
-      <p className="mt-2 text-3xl font-bold text-primary-dark">{value}</p>
-      <p className="mt-0.5 text-xs text-slate-500">{sub}</p>
     </div>
+  )
+}
+
+// Ilustrasi dekoratif hero dashboard: emblem gabah (motif logo) di dalam cincin, butir gabah
+// bertaburan, dan garis tren naik sebagai simbol progres/semangat.
+function DashboardGrafis() {
+  return (
+    <svg viewBox="0 0 360 300" fill="none" className="h-64 w-full" role="img" aria-label="Ilustrasi panen gabah">
+      <circle cx="200" cy="150" r="140" stroke="rgba(255,255,255,0.06)" strokeWidth="1.5" />
+      <circle cx="200" cy="150" r="108" stroke="rgba(217,164,65,0.30)" strokeWidth="1.5" strokeDasharray="3 9" />
+      <circle cx="200" cy="150" r="74" fill="rgba(217,164,65,0.06)" />
+      {/* emblem gabah (motif logo), emas */}
+      <g transform="translate(100,50) scale(5)" stroke="#D9A441" strokeWidth="0.8" strokeLinecap="round">
+        <path d="M20 31V16" />
+        <path d="M20 17c-3.4-.4-5.6-2.4-6.4-5.6" />
+        <path d="M20 17c3.4-.4 5.6-2.4 6.4-5.6" />
+        <path d="M20 22c-3.4-.4-5.6-2.4-6.4-5.6" />
+        <path d="M20 22c3.4-.4 5.6-2.4 6.4-5.6" />
+        <path d="M20 27c-3.4-.4-5.6-2.4-6.4-5.6" />
+        <path d="M20 27c3.4-.4 5.6-2.4 6.4-5.6" />
+        <path d="M20 15.5c0-2.7 1-4.6 3-5.8" />
+        <path d="M20 15.5c0-2.7-1-4.6-3-5.8" />
+      </g>
+      {/* butir gabah bertaburan */}
+      <circle cx="70" cy="72" r="4" fill="#D9A441" fillOpacity="0.7" />
+      <circle cx="304" cy="104" r="5" fill="#ffffff" fillOpacity="0.45" />
+      <circle cx="86" cy="214" r="6" fill="#D9A441" fillOpacity="0.45" />
+      <circle cx="312" cy="228" r="4" fill="#ffffff" fillOpacity="0.4" />
+      {/* garis tren naik */}
+      <polyline points="66,252 116,238 166,244 216,212 266,222 322,182" stroke="rgba(255,255,255,0.32)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx="322" cy="182" r="4" fill="#D9A441" />
+    </svg>
   )
 }
 

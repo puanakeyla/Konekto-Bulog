@@ -4,7 +4,6 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class PoDetail extends Model
 {
@@ -25,11 +24,6 @@ class PoDetail extends Model
     public function transaksi(): BelongsTo
     {
         return $this->belongsTo(Transaksi::class, 'transaksi_id', 'id_transaksi');
-    }
-
-    public function dataOperasi(): HasOne
-    {
-        return $this->hasOne(DataOperasi::class);
     }
 
     protected function casts(): array

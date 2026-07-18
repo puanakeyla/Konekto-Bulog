@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import api from '../lib/api'
@@ -7,9 +7,16 @@ import { apiErrorMessage } from '../lib/apiError'
 import { useAuth } from '../hooks/useAuth'
 import { uploadSemuaFoto } from '../lib/uploadFoto'
 import FotoPicker from '../components/FotoPicker'
+import FormHero from '../components/FormHero'
 import ConfirmDialog from '../components/ConfirmDialog'
 import { SkeletonTimeline } from '../components/Skeleton'
 import MakloonCombobox from '../components/MakloonCombobox'
+import GabungPoForm from '../components/pengadaan/GabungPoForm'
+import PoInForm from '../components/pengadaan/PoInForm'
+import PembayaranForm from '../components/pengadaan/PembayaranForm'
+import PoReviewCard from '../components/pengadaan/PoReviewCard'
+import { useTransaksiList } from '../hooks/useTransaksiList'
+import type { PoItem } from '../hooks/usePoList'
 
 type StageData = Record<string, unknown> & { status: string }
 
@@ -61,6 +68,7 @@ type TransaksiDetail = {
   data_makloon_mpp: StageData | null
   data_makloon_tjp: StageData | null
   data_ub_jastasma: StageData | null
+  data_pengadaan: PoItem | null
   riwayat_penolakan: RiwayatPenolakan[]
 }
 
@@ -78,11 +86,27 @@ const STAGES: StageConfig[] = [
   { id: 'jemput_pangan', label: 'Jemput Pangan', owner: 'Jemput Pangan', dataKeys: ['data_jemput_pangan'], helper: 'Input pemasok, kuantum awal, tujuan makloon, dan dokumen lapangan.' },
   { id: 'makloon', label: 'Makloon', owner: 'Makloon', dataKeys: ['data_makloon_tjp', 'data_makloon_mpp'], helper: 'Input data bongkar dan dokumen timbang dari makloon.' },
   { id: 'ub_jastasma', label: 'UB Jastasma', owner: 'UB Jastasma', dataKeys: ['data_ub_jastasma'], helper: 'Cek mutu gabah sebelum transaksi masuk pengadaan.' },
-  { id: 'pengadaan', label: 'Pengadaan', owner: 'Pengadaan', dataKeys: [], helper: 'Gabungkan transaksi yang diterima menjadi PO dan isi nomor IN.', actionPath: '/pengadaan', actionLabel: 'Buka Pengadaan' },
-  { id: 'keuangan', label: 'Keuangan', owner: 'Keuangan', dataKeys: [], helper: 'Input No. SPP dan tanggal pembayaran PO.', actionPath: '/keuangan', actionLabel: 'Buka Keuangan' },
+  { id: 'pengadaan', label: 'Pengadaan', owner: 'Pengadaan', dataKeys: [], helper: 'Gabungkan transaksi yang diterima menjadi PO dan isi nomor IN.' },
+  { id: 'keuangan', label: 'Keuangan', owner: 'Keuangan', dataKeys: [], helper: 'Input No. SPP dan tanggal pembayaran PO.' },
   { id: 'operasi', label: 'Operasi', owner: 'Operasi', dataKeys: [], helper: 'Input MO/TM dan persentase hasil produksi.', actionPath: '/operasi', actionLabel: 'Buka Operasi' },
   { id: 'gudang', label: 'Gudang', owner: 'Gudang', dataKeys: [], helper: 'Catat penerimaan akhir ke gudang.', actionPath: '/gudang', actionLabel: 'Buka Gudang' },
 ]
+
+// Ikon garis sederhana per tahap (stroke currentColor) supaya marker timeline lebih
+// hidup daripada sekadar titik. Ukuran seragam 14x14 di dalam marker bulat.
+const STAGE_ICONS: Record<string, React.ReactNode> = {
+  jemput_pangan: (
+    <>
+      <path d="M1.5 4h8.5v7H1.5z M10 6.5h3.5l2.5 2.5V11H10z" />
+      <circle cx="4.5" cy="13.5" r="1.5" />
+      <circle cx="13" cy="13.5" r="1.5" />
+    </>
+  ),
+  makloon: <path d="M2 16V7l4 2.5V7l4 2.5V4.5l6 3.5V16z M6 16v-3 M11 16v-3" />,
+  ub_jastasma: <path d="M7 2.5h4 M8.5 2.5v4l-4 7.5a1 1 0 0 0 .9 1.5h7.2a1 1 0 0 0 .9-1.5l-4-7.5v-4 M6.3 11.5h5.4" />,
+  pengadaan: <path d="M4.5 2.5h6l3.5 3.5V15.5h-9.5z M10.5 2.5v3.5h3.5 M7 9.5h4 M7 12h4" />,
+  keuangan: <path d="M2 5.5h14v8H2z M2 8.5h14 M12 11.5h2.5" />,
+}
 
 const HIDDEN_FIELDS = new Set(['id', 'transaksi_id', 'locked_by', 'submitted_by', 'created_at', 'updated_at'])
 
@@ -192,8 +216,14 @@ function labelOf(key: string) {
   return FIELD_LABELS[key] ?? key.replaceAll('_', ' ')
 }
 
+// Operasi & Gudang sengaja tidak dirender di timeline -- alurnya dikerjakan di halaman
+// /operasi & /gudang. Timeline berhenti di Keuangan. Definisi keduanya tetap ada di STAGES
+// untuk keperluan lookup label (mis. current_stage, riwayat penolakan).
+const TIMELINE_HIDDEN = new Set(['operasi', 'gudang'])
+
 function stagesFor(skema: 'TJP' | 'MPP') {
-  return skema === 'MPP' ? STAGES.filter((stage) => stage.id !== 'jemput_pangan') : STAGES
+  const base = skema === 'MPP' ? STAGES.filter((stage) => stage.id !== 'jemput_pangan') : STAGES
+  return base.filter((stage) => !TIMELINE_HIDDEN.has(stage.id))
 }
 
 function textField(data: StageData | null | undefined, key: string) {
@@ -248,6 +278,10 @@ export default function TransaksiDetailPage() {
       return data.data
     },
   })
+
+  // Daftar transaksi kandidat untuk digabung menjadi PO (dipakai panel Pengadaan inline saat
+  // transaksi ini belum tergabung). Sama sumbernya dengan halaman Pengadaan (mode siap_po).
+  const { data: kandidatResult } = useTransaksiList(1, 100, true)
 
   useEffect(() => {
     if (!transaksi) return
@@ -387,57 +421,147 @@ export default function TransaksiDetailPage() {
   const canFillJemputPangan = canAct && !pendingData && transaksi.skema === 'TJP' && transaksi.current_stage === 'jemput_pangan' && transaksi.data_jemput_pangan?.status === 'ditolak'
   const canFillMakloon = canAct && !pendingData && transaksi.current_stage === 'makloon' && (transaksi.skema === 'TJP' || transaksi.skema === 'MPP')
   const canFillUb = canAct && !pendingData && transaksi.current_stage === 'ub_jastasma'
+  // Tahap PO (level PO, dikerjakan inline). po = PO tempat transaksi ini bernaung (null bila belum).
+  // PENTING: setelah digabung, backend memindahkan current_stage transaksi langsung ke 'keuangan'
+  // (lihat PoGroupingService), padahal pengisian No. IN masih tugas Pengadaan selama PO 'proses'.
+  // Karena itu visibilitas panel PO diturunkan dari STATUS PO + role, bukan current_stage.
+  const po = transaksi.data_pengadaan
+  const isPengadaanRole = role === 'pengadaan' || role === 'admin'
+  const isKeuanganRole = role === 'keuangan' || role === 'admin'
+  const poRejected = !!po && po.status === 'lengkap' && po.review_status === 'ditolak'
+  const poFillingIn = !!po && (po.status === 'proses' || poRejected) // fase Pengadaan mengisi No. IN
+  const poWaitingReview = !!po && po.status === 'lengkap' && po.review_status === 'menunggu_review'
+  const poAccepted = !!po && po.status === 'lengkap' && po.review_status === 'diterima'
+  const poPaid = po?.data_keuangan?.status_bayar === 'dibayarkan'
+  // Pengadaan: gabung PO (belum ada PO) lalu isi No. IN (PO 'proses'/ditolak).
+  const showCombine = !po && transaksi.current_stage === 'pengadaan' && !pendingData && isPengadaanRole
+  const showIsiIn = poFillingIn && isPengadaanRole
+  const pengadaanCurrent = showCombine || poFillingIn
+  const pengadaanComplete = poWaitingReview || poAccepted || poPaid
+  // Keuangan: review data Pengadaan lalu pembayaran.
+  const showKeuanganReview = poWaitingReview && isKeuanganRole
+  const showBayar = poAccepted && !poPaid && isKeuanganRole
+  const keuanganCurrent = poWaitingReview || (poAccepted && !poPaid)
+  const keuanganComplete = poPaid
 
   const jemputPanganError = (simpanJemputPangan.error as { response?: { data?: { message?: string } } } | null)?.response?.data?.message
   const makloonError = (simpanMakloon.error as { response?: { data?: { message?: string } } } | null)?.response?.data?.message
   const ubError = (simpanUb.error as { response?: { data?: { message?: string } } } | null)?.response?.data?.message
   const actionError = ((terima.error || tolak.error) as { response?: { data?: { message?: string } } } | null)?.response?.data?.message
 
-  return (
-    <div className="page-shell">
-      <div className="mx-auto w-full max-w-[46rem]">
-        <header className="page-header">
-          <div>
-            <h1 className="page-title">{transaksi.id_transaksi}</h1>
-            <p className="page-subtitle">Alur {transaksi.skema === 'TJP' ? 'TJP: Jemput Pangan ke Makloon lalu UB Jastasma' : 'MPP: Makloon langsung ke UB Jastasma'} - dibuat {formatDateTime(transaksi.created_at)}</p>
-          </div>
-          <div className="flex flex-wrap gap-2"><span className="badge">Skema {transaksi.skema}</span><Link to="/dashboard" className="btn btn-ghost">Dashboard</Link></div>
-        </header>
+  // Ringkasan progres alur untuk progress bar hero (memakai aturan isComplete yang sama).
+  const completedCount = activeStages.filter((stage) => {
+    if (stage.id === 'pengadaan') return pengadaanComplete
+    if (stage.id === 'keuangan') return keuanganComplete
+    const data = stage.dataKeys.map((key) => transaksi[key] as StageData | null).find(Boolean) ?? null
+    return !!data && data.status === 'diterima'
+  }).length
+  const totalStages = activeStages.length
+  const progressPct = totalStages > 0 ? Math.round((completedCount / totalStages) * 100) : 0
+  const activeStageLabel = poFillingIn ? 'Pengadaan' : (STAGES.find((stage) => stage.id === transaksi.current_stage)?.label ?? transaksi.current_stage)
+  const allDone = completedCount === totalStages
 
+  return (
+    <div className="min-h-screen bg-surface">
+      <FormHero
+        title={transaksi.id_transaksi}
+        subtitle={`Alur ${transaksi.skema === 'TJP' ? 'TJP: Jemput Pangan ke Makloon lalu UB Jastasma' : 'MPP: Makloon langsung ke UB Jastasma'} · dibuat ${formatDateTime(transaksi.created_at)}`}
+        eyebrow="Perum Bulog Kanwil Lampung"
+        badge={`Skema ${transaksi.skema}`}
+      />
+
+      <div className="relative mx-auto -mt-16 w-full max-w-[46rem] px-6 pb-16">
         <div className="panel p-4 sm:p-6">
-          <div className="mb-5 rounded-lg border border-border bg-primary-tint p-4">
-            <div className="section-title">Tahap aktif: {STAGES.find((stage) => stage.id === transaksi.current_stage)?.label ?? transaksi.current_stage}</div>
-            <p className="page-subtitle">Setiap tahap mengisi data, tahap berikutnya mengecek dengan aksi Terima atau Tolak. Setelah UB Jastasma diterima, alur lanjut ke halaman PO Pengadaan.</p>
+          {/* Panel tahap aktif + progres alur -- memberi rasa "sudah sejauh mana". */}
+          <div className="mb-5 overflow-hidden rounded-xl border border-border bg-gradient-to-br from-primary-tint to-white p-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-[0.6875rem] font-bold uppercase tracking-[0.14em] text-primary/70">
+                  {allDone ? 'Alur selesai' : 'Tahap aktif'}
+                </p>
+                <div className="mt-0.5 flex items-center gap-2">
+                  <span className={`h-2 w-2 shrink-0 rounded-full ${allDone ? 'bg-success' : 'bg-accent'}`} />
+                  <span className="text-base font-bold text-primary-dark">{allDone ? 'Seluruh tahap tuntas' : activeStageLabel}</span>
+                </div>
+              </div>
+              <div className="text-right">
+                <p className="text-2xl font-bold leading-none text-primary">
+                  {completedCount}<span className="text-base font-semibold text-slate-400">/{totalStages}</span>
+                </p>
+                <p className="text-[0.625rem] font-semibold uppercase tracking-wider text-slate-500">tahap selesai</p>
+              </div>
+            </div>
+            <div className="mt-3 h-2 overflow-hidden rounded-full bg-white/70 ring-1 ring-inset ring-border">
+              <div
+                className={`h-full rounded-full transition-all duration-500 ${allDone ? 'bg-success' : 'bg-gradient-to-r from-accent to-primary'}`}
+                style={{ width: `${Math.max(progressPct, 4)}%` }}
+              />
+            </div>
+            <p className="mt-2.5 text-xs leading-5 text-slate-500">Setiap tahap mengisi data, tahap berikutnya mengecek dengan aksi Terima atau Tolak. Pengadaan &amp; Keuangan dikerjakan langsung di sini; Operasi &amp; Gudang dilanjutkan di halaman masing-masing.</p>
           </div>
 
           {actionError && <div className="alert-danger mb-4">{actionError}</div>}
 
           <RiwayatPenolakanPanel items={transaksi.riwayat_penolakan ?? []} />
 
-          <ol className="relative space-y-3 before:absolute before:left-3 before:top-4 before:h-[calc(100%-2rem)] before:w-px before:bg-border">
+          <ol className="relative space-y-3 before:absolute before:left-4 before:top-5 before:h-[calc(100%-2.5rem)] before:w-px before:bg-border">
             {activeStages.map((stage, index) => {
               const data = stage.dataKeys.map((key) => transaksi[key] as StageData | null).find(Boolean) ?? null
-              const isComplete = !!data && data.status === 'diterima'
               const isPendingReview = !!data && data.status === 'menunggu_review'
-              const isRejected = !!data && data.status === 'ditolak'
-              const isCurrent = transaksi.current_stage === stage.id || isPendingReview || (stage.id === pendingData?.stageId)
-              const isFuture = currentIndex >= 0 && index > currentIndex && !data
+              const isRejected = stage.id !== 'pengadaan' && stage.id !== 'keuangan' && !!data && data.status === 'ditolak'
+              // Tahap PO (pengadaan/keuangan) diturunkan dari STATUS PO + role, bukan current_stage,
+              // karena current_stage transaksi sudah pindah ke 'keuangan' begitu PO dibuat.
+              const isComplete = stage.id === 'pengadaan' ? pengadaanComplete
+                : stage.id === 'keuangan' ? keuanganComplete
+                : (!!data && data.status === 'diterima')
+              const isCurrent = stage.id === 'pengadaan' ? pengadaanCurrent
+                : stage.id === 'keuangan' ? keuanganCurrent
+                : (transaksi.current_stage === stage.id || isPendingReview || (stage.id === pendingData?.stageId))
+              const isFuture = stage.id === 'pengadaan' ? (!po && !pengadaanCurrent && !pengadaanComplete)
+                : stage.id === 'keuangan' ? (!keuanganCurrent && !keuanganComplete)
+                : (currentIndex >= 0 && index > currentIndex && !data)
               const canReviewThis = canAct && isPendingReview && stage.id === pendingData?.stageId
               const showJemputPanganForm = stage.id === 'jemput_pangan' && canFillJemputPangan
               const showMakloonForm = stage.id === 'makloon' && canFillMakloon
               const showUbForm = stage.id === 'ub_jastasma' && canFillUb
-              const canOpenPoPage = canAct && stage.id === transaksi.current_stage && !!stage.actionPath && !pendingData
+              const showPengadaanCombine = stage.id === 'pengadaan' && showCombine
+              const showPengadaanIn = stage.id === 'pengadaan' && showIsiIn
+              const showKeuanganReviewCard = stage.id === 'keuangan' && showKeuanganReview
+              const showKeuanganBayar = stage.id === 'keuangan' && showBayar
+              const showPoPanel = showPengadaanCombine || showPengadaanIn || showKeuanganReviewCard || showKeuanganBayar
 
               return (
-                <li key={stage.id} className="relative pl-10">
-                  <span className={`absolute left-0 top-1 grid h-6 w-6 place-items-center rounded-full border text-xs font-bold ${isComplete ? 'border-primary bg-primary text-white' : isCurrent ? 'border-primary bg-white text-primary' : 'border-border bg-white text-gray-300'}`}>{isComplete ? '✓' : isCurrent ? '•' : ''}</span>
-                  <section className={`rounded-lg p-4 ${isCurrent ? 'border border-primary bg-white shadow-sm' : isFuture ? 'bg-white/50 text-gray-300' : 'bg-surface'}`}>
+                <li key={stage.id} className="relative pl-12">
+                  <span
+                    className={`absolute left-0 top-0.5 grid h-8 w-8 place-items-center rounded-full border transition-all ${
+                      isComplete
+                        ? 'border-success bg-success text-white'
+                        : isCurrent
+                          ? 'border-accent bg-white text-accent ring-4 ring-accent/15'
+                          : 'border-border bg-white text-slate-300'
+                    }`}
+                  >
+                    {isComplete ? (
+                      <svg viewBox="0 0 20 20" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M5 10.5 8.5 14 15 6.5" />
+                      </svg>
+                    ) : (
+                      <svg viewBox="0 0 18 18" className="h-[0.95rem] w-[0.95rem]" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+                        {STAGE_ICONS[stage.id] ?? <circle cx="9" cy="9" r="2.5" />}
+                      </svg>
+                    )}
+                  </span>
+                  <section className={`rounded-xl p-4 transition-all ${isCurrent ? 'border border-accent/40 bg-white shadow-md shadow-primary/5 ring-1 ring-accent/10' : isFuture ? 'border border-transparent bg-white/50 text-gray-300' : 'border border-border bg-surface'}`}>
                     <div className="flex items-start justify-between gap-3">
                       <div>
-                        <h2 className="section-title">{stage.label}{isCurrent && !isPendingReview && !showJemputPanganForm && !showMakloonForm && !showUbForm ? ' - sedang berjalan' : ''}</h2>
-                        <p className="mt-1 text-xs text-gray-500">{isComplete ? `Diterima oleh ${stage.owner}${data?.locked_at ? ' · ' + formatDateTime(String(data.locked_at)) : ''}` : isPendingReview ? `Menunggu dicek oleh ${STAGES.find((s) => s.id === transaksi.current_stage)?.owner ?? transaksi.current_stage}` : showJemputPanganForm || showMakloonForm || showUbForm ? 'Giliran Anda mengisi data tahap ini' : isFuture ? 'Menunggu tahap sebelumnya' : stage.helper}</p>
+                        <h2 className="section-title">{stage.label}{isCurrent && !isPendingReview && !showJemputPanganForm && !showMakloonForm && !showUbForm && !showPoPanel ? ' - sedang berjalan' : ''}</h2>
+                        <p className="mt-1 text-xs text-gray-500">{isComplete ? `Diterima oleh ${stage.owner}${data?.locked_at ? ' · ' + formatDateTime(String(data.locked_at)) : ''}` : isPendingReview ? `Menunggu dicek oleh ${STAGES.find((s) => s.id === transaksi.current_stage)?.owner ?? transaksi.current_stage}` : showJemputPanganForm || showMakloonForm || showUbForm || showPoPanel ? 'Giliran Anda mengisi data tahap ini' : isFuture ? 'Menunggu tahap sebelumnya' : stage.helper}</p>
                       </div>
-                      {isCurrent && <span className="badge">{isPendingReview ? 'Menunggu review' : 'Giliran Anda'}</span>}
+                      {isCurrent && (
+                        isPendingReview
+                          ? <span className="badge shrink-0">Menunggu review</span>
+                          : <span className="inline-flex shrink-0 items-center gap-1.5 rounded-md bg-accent px-2.5 py-1 text-[0.6875rem] font-bold text-primary-dark shadow-sm"><span aria-hidden className="h-1.5 w-1.5 rounded-full bg-primary-dark" />Giliran Anda</span>
+                      )}
                     </div>
 
                     {data && (isComplete ? (
@@ -472,9 +596,30 @@ export default function TransaksiDetailPage() {
                       />
                     )}
 
-                    {canOpenPoPage && (
-                      <div className="mt-4 flex justify-end border-t border-border pt-4">
-                        <Link to={stage.actionPath!} className="btn btn-primary">{stage.actionLabel}</Link>
+                    {showPengadaanCombine && (
+                      <div className="mt-4 border-t border-border pt-4">
+                        <GabungPoForm transaksiList={kandidatResult?.items ?? []} preselectId={transaksi.id_transaksi} onChanged={invalidate} />
+                      </div>
+                    )}
+
+                    {showPengadaanIn && po && (
+                      <div className="mt-4 border-t border-border pt-4">
+                        {poRejected && po.catatan_penolakan && (
+                          <div className="alert-danger mb-3">Ditolak Keuangan: {po.catatan_penolakan}. Perbaiki lalu kirim ulang.</div>
+                        )}
+                        <PoInForm po={po} onChanged={invalidate} />
+                      </div>
+                    )}
+
+                    {showKeuanganReviewCard && po && (
+                      <div className="mt-4 border-t border-border pt-4">
+                        <PoReviewCard po={po} reviewLabel="Pengadaan" onChanged={invalidate} />
+                      </div>
+                    )}
+
+                    {showKeuanganBayar && po && (
+                      <div className="mt-4 border-t border-border pt-4">
+                        <PembayaranForm po={po} onChanged={invalidate} />
                       </div>
                     )}
                   </section>

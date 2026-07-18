@@ -4,6 +4,8 @@ type Props = {
   title: string
   subtitle?: string
   badge?: string
+  /** Label kecil beraksen emas di atas badge (mis. "Perum Bulog Kanwil Lampung"). */
+  eyebrow?: string
   backTo?: string
   backLabel?: string
   /** Lebar konten hero, disesuaikan dengan lebar konten halaman di bawahnya. */
@@ -16,6 +18,7 @@ export default function FormHero({
   title,
   subtitle,
   badge,
+  eyebrow,
   backTo = '/dashboard',
   backLabel = 'Kembali ke dashboard',
   widthClass = 'max-w-6xl',
@@ -39,8 +42,16 @@ export default function FormHero({
           {backLabel}
         </Link>
 
+        {eyebrow && (
+          <p className="mt-6 flex items-center gap-2.5 text-xs font-bold uppercase tracking-[0.18em] text-accent">
+            <span aria-hidden className="h-px w-7 bg-accent" />
+            {eyebrow}
+          </p>
+        )}
         {badge && (
-          <span className="mt-6 inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3.5 py-1.5 text-xs font-semibold text-white">
+          <span
+            className={`${eyebrow ? 'mt-3' : 'mt-6'} inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3.5 py-1.5 text-xs font-semibold text-white`}
+          >
             <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-accent" />
             {badge}
           </span>

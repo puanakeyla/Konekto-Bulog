@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
-import logoKonekto from '../assets/logo-konekto.png'
+import logoSergab from '../assets/logo-sergab.png'
 
 export default function LoginPage() {
   const [username, setUsername] = useState('')
@@ -44,7 +44,7 @@ export default function LoginPage() {
 
         <div className="relative flex flex-1 flex-col justify-between p-10 lg:p-14">
           <Link to="/" className="flex items-center">
-            <img src={logoKonekto} alt="Konekto" className="h-8 w-auto" />
+            <img src={logoSergab} alt="SerGab Lampung" className="h-8 w-auto" />
           </Link>
 
           <div>
@@ -81,13 +81,13 @@ export default function LoginPage() {
           </Link>
           {/* logo ringkas untuk tampilan mobile (panel kiri disembunyikan) */}
           <span className="rounded-lg bg-primary-dark px-2.5 py-1.5 md:hidden">
-            <img src={logoKonekto} alt="Konekto" className="h-5 w-auto" />
+            <img src={logoSergab} alt="SerGab Lampung" className="h-5 w-auto" />
           </span>
         </div>
 
         <div className="flex flex-1 items-center justify-center py-10">
           <form onSubmit={handleSubmit} className="w-full max-w-sm">
-            <h1 className="text-2xl font-bold tracking-tight text-slate-950">Masuk ke Konekto</h1>
+            <h1 className="text-2xl font-bold tracking-tight text-slate-950">Masuk ke SerGab Lampung</h1>
             <p className="mt-1.5 text-sm text-slate-500">Gunakan akun yang telah terdaftar untuk melanjutkan.</p>
 
             {error && <p className="alert-danger mt-6">{error}</p>}

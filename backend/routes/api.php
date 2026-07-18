@@ -7,6 +7,7 @@ use App\Http\Controllers\Api\FotoController;
 use App\Http\Controllers\Api\FotoStreamController;
 use App\Http\Controllers\Api\MakloonOptionController;
 use App\Http\Controllers\Api\MonitoringController;
+use App\Http\Controllers\Api\OperasiController;
 use App\Http\Controllers\Api\PengadaanController;
 use App\Http\Controllers\Api\TransaksiController;
 use Illuminate\Support\Facades\Route;
@@ -70,14 +71,23 @@ Route::middleware('auth:sanctum')->group(function () {
         ->middleware('role:pengadaan|admin');
     Route::patch('/po/{dataPengadaan}/pembayaran', [PengadaanController::class, 'pembayaran'])
         ->middleware('role:keuangan|admin');
-    Route::post('/po/{dataPengadaan}/operasi', [PengadaanController::class, 'operasi'])
-        ->middleware('role:operasi|admin');
-    Route::patch('/po/{dataPengadaan}/out', [PengadaanController::class, 'approveOut'])
-        ->middleware('role:pengadaan|admin');
-    Route::post('/po/{dataPengadaan}/gudang', [PengadaanController::class, 'gudang'])
-        ->middleware('role:gudang|admin');
     Route::post('/po/{dataPengadaan}/terima', [PengadaanController::class, 'terimaPo'])
         ->middleware('role:pengadaan|keuangan|operasi|gudang|admin');
     Route::post('/po/{dataPengadaan}/tolak', [PengadaanController::class, 'tolakPo'])
         ->middleware('role:pengadaan|keuangan|operasi|gudang|admin');
+
+    // Modul Operasi mandiri (lepas dari PO/IN): Operasi ajukan pengeluaran stok ->
+    // Pengadaan putuskan OUT -> Operasi isi hasil -> Gudang terima batch.
+    Route::get('/operasi', [OperasiController::class, 'index'])
+        ->middleware('role:operasi|pengadaan|gudang|admin');
+    Route::post('/operasi', [OperasiController::class, 'store'])
+        ->middleware('role:operasi|admin');
+    Route::patch('/operasi/{permintaanOperasi}', [OperasiController::class, 'update'])
+        ->middleware('role:operasi|admin');
+    Route::patch('/operasi/{permintaanOperasi}/out', [OperasiController::class, 'decide'])
+        ->middleware('role:pengadaan|admin');
+    Route::post('/operasi/{permintaanOperasi}/hasil', [OperasiController::class, 'hasil'])
+        ->middleware('role:operasi|admin');
+    Route::post('/operasi/{permintaanOperasi}/gudang', [OperasiController::class, 'gudang'])
+        ->middleware('role:gudang|admin');
 });

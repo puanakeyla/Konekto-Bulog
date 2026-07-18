@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
-import logoKonekto from '../assets/logo-konekto.png'
+import logoSergab from '../assets/logo-sergab.png'
 
 // Nama role internal -> label ramah untuk ditampilkan di navbar.
 const roleLabels: Record<string, string> = {
@@ -24,7 +24,7 @@ export default function AppNav() {
     <header className="sticky top-0 z-30 border-b border-white/10 bg-primary-dark/90 backdrop-blur-md">
       <nav className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-6 py-3">
         <Link to="/dashboard" className="flex items-center" aria-label="Ke dashboard">
-          <img src={logoKonekto} alt="Konekto" className="h-7 w-auto" />
+          <img src={logoSergab} alt="SerGab Lampung" className="h-7 w-auto" />
         </Link>
 
         <div className="flex items-center gap-3">

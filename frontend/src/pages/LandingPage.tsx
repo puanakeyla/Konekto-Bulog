@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
-import logoKonekto from '../assets/logo-konekto.png'
+import logoSergab from '../assets/logo-sergab.png'
 
 // Halaman publik murni informasional (Bagian 7.3) -- TANPA data transaksi.
 // Sebaran tahap & daftar makloon adalah fitur halaman internal (MonitoringPage),
@@ -48,48 +48,97 @@ function Eyebrow({ children, tone = 'light' }: { children: ReactNode; tone?: 'li
   )
 }
 
-// Grafis hero: komposisi lingkaran bertingkat + ikon gudang & truk (Bagian 7.1/7.3),
-// memakai token warna navy resmi + sentuhan aksen emas (matahari & butir gabah).
-function HeroGrafis() {
+// Tahap yang tampil di mockup preview aplikasi (mini timeline TJP).
+const previewStages = [
+  { label: 'Jemput Pangan', state: 'done' as const },
+  { label: 'Makloon', state: 'current' as const },
+  { label: 'UB Jastasma', state: 'todo' as const },
+  { label: 'Pengadaan', state: 'todo' as const },
+]
+
+// Grafis hero: mockup jendela aplikasi (bukan ilustrasi abstrak) supaya pengunjung
+// langsung melihat tampilan layar yang dipakai tiap role -- pita navy + timeline.
+function AppPreview() {
   return (
-    <svg viewBox="0 0 440 360" role="img" aria-label="Ilustrasi alur logistik pengadaan gabah" className="h-64 w-full md:h-72">
-      <defs>
-        <linearGradient id="warehouseFill" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" stopColor="var(--color-primary)" />
-          <stop offset="1" stopColor="var(--color-primary-dark)" />
-        </linearGradient>
-      </defs>
-      <circle cx="220" cy="180" r="160" fill="var(--color-primary-tint)" />
-      <circle cx="220" cy="180" r="120" fill="none" stroke="var(--color-primary)" strokeOpacity="0.14" strokeWidth="2" strokeDasharray="3 7" />
-      <circle cx="220" cy="180" r="82" fill="var(--color-primary)" fillOpacity="0.06" />
+    <div className="relative">
+      {/* halo emas lembut di belakang jendela */}
+      <div aria-hidden className="pointer-events-none absolute -inset-6 rounded-[2rem] bg-accent/10 blur-2xl" />
 
-      {/* Matahari aksen emas di belakang gudang */}
-      <circle cx="316" cy="104" r="30" fill="var(--color-accent)" fillOpacity="0.9" />
-      <circle cx="316" cy="104" r="42" fill="none" stroke="var(--color-accent)" strokeOpacity="0.3" strokeWidth="2" strokeDasharray="2 6" />
+      <div className="relative overflow-hidden rounded-2xl border border-white/10 shadow-2xl shadow-black/40 ring-1 ring-black/5">
+        {/* Top bar aplikasi (meniru AppNav navy) */}
+        <div className="flex items-center gap-3 bg-primary-dark px-4 py-3">
+          <div className="flex gap-1.5">
+            <span className="h-2.5 w-2.5 rounded-full bg-white/20" />
+            <span className="h-2.5 w-2.5 rounded-full bg-white/20" />
+            <span className="h-2.5 w-2.5 rounded-full bg-accent/70" />
+          </div>
+          <span className="text-xs font-bold tracking-tight text-white">
+            SerGab<span className="text-accent">.</span>
+          </span>
+          <span className="ml-auto flex items-center gap-1.5 rounded-full border border-white/15 bg-white/10 px-2.5 py-1 text-[0.625rem] font-semibold text-white">
+            <span className="h-1.5 w-1.5 rounded-full bg-accent" />
+            Jemput Pangan
+          </span>
+        </div>
 
-      {/* Butir gabah / partikel */}
-      <circle cx="352" cy="200" r="7" fill="var(--color-accent)" fillOpacity="0.55" />
-      <circle cx="360" cy="248" r="5" fill="var(--color-primary)" fillOpacity="0.2" />
-      <circle cx="92" cy="262" r="10" fill="var(--color-primary)" fillOpacity="0.16" />
-      <circle cx="104" cy="132" r="6" fill="var(--color-accent)" fillOpacity="0.45" />
+        {/* Body: satu kartu timeline aplikasi */}
+        <div className="bg-surface p-4">
+          <div className="rounded-xl border border-border bg-white p-4 shadow-sm">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-[0.8125rem] font-bold text-primary-dark">00001/07/2026/TJP</p>
+                <p className="text-[0.625rem] text-slate-500">Alur TJP &middot; Serap gabah</p>
+              </div>
+              <span className="rounded-md bg-accent px-2 py-1 text-[0.625rem] font-bold text-primary-dark">
+                Giliran Anda
+              </span>
+            </div>
 
-      {/* Gudang */}
-      <polygon points="150,150 236,110 322,150" fill="var(--color-primary-dark)" />
-      <rect x="166" y="150" width="140" height="74" rx="5" fill="url(#warehouseFill)" />
-      <rect x="214" y="182" width="44" height="42" rx="3" fill="var(--color-primary-tint)" />
-      <rect x="180" y="164" width="24" height="18" rx="2" fill="#ffffff" fillOpacity="0.35" />
-      <rect x="268" y="164" width="24" height="18" rx="2" fill="#ffffff" fillOpacity="0.35" />
-      <rect x="222" y="192" width="4" height="24" rx="2" fill="var(--color-accent)" fillOpacity="0.7" />
+            {/* Progress alur */}
+            <div className="mt-3">
+              <div className="flex items-center justify-between text-[0.625rem] font-semibold text-slate-500">
+                <span>Progres alur</span>
+                <span className="text-primary">1 / 4 tahap</span>
+              </div>
+              <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-primary-tint">
+                <div className="h-full w-1/4 rounded-full bg-gradient-to-r from-accent to-primary" />
+              </div>
+            </div>
 
-      {/* Truk */}
-      <rect x="128" y="232" width="92" height="50" rx="5" fill="var(--color-primary)" />
-      <path d="M220 244 h34 l26 26 v12 h-60 z" fill="var(--color-primary-dark)" />
-      <rect x="228" y="250" width="30" height="20" rx="2" fill="var(--color-primary-tint)" />
-      <circle cx="158" cy="290" r="13" fill="#14213f" />
-      <circle cx="158" cy="290" r="5" fill="var(--color-accent)" />
-      <circle cx="262" cy="290" r="13" fill="#14213f" />
-      <circle cx="262" cy="290" r="5" fill="var(--color-accent)" />
-    </svg>
+            {/* Mini timeline */}
+            <div className="relative mt-4 space-y-3 before:absolute before:left-[0.6875rem] before:top-2 before:h-[calc(100%-1rem)] before:w-px before:bg-border">
+              {previewStages.map((stage) => (
+                <div key={stage.label} className="relative flex items-center gap-3 pl-8">
+                  <span
+                    className={`absolute left-0 grid h-[1.375rem] w-[1.375rem] place-items-center rounded-full border text-[0.625rem] font-bold ${
+                      stage.state === 'done'
+                        ? 'border-success bg-success text-white'
+                        : stage.state === 'current'
+                          ? 'border-accent bg-white text-accent ring-4 ring-accent/15'
+                          : 'border-border bg-white text-slate-300'
+                    }`}
+                  >
+                    {stage.state === 'done' ? '✓' : stage.state === 'current' ? '•' : ''}
+                  </span>
+                  <span
+                    className={`text-xs font-semibold ${
+                      stage.state === 'todo' ? 'text-slate-400' : 'text-primary-dark'
+                    }`}
+                  >
+                    {stage.label}
+                  </span>
+                  {stage.state === 'current' && (
+                    <span className="ml-auto rounded bg-primary-tint px-1.5 py-0.5 text-[0.5625rem] font-bold text-primary">
+                      sedang berjalan
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
   )
 }
 
@@ -99,7 +148,7 @@ export default function LandingPage() {
       <header className="sticky top-0 z-20 border-b border-white/10 bg-primary-dark/90 backdrop-blur-md">
         <nav className="mx-auto flex max-w-6xl items-center justify-between px-5 py-3.5">
           <a href="#tentang" className="flex items-center">
-            <img src={logoKonekto} alt="Konekto" className="h-8 w-auto" />
+            <img src={logoSergab} alt="SerGab Lampung" className="h-8 w-auto" />
           </a>
           <div className="hidden items-center gap-8 text-xs font-medium text-white/60 md:flex">
             <a href="#tentang" className="border-b-2 border-accent pb-1 text-white">Tentang</a>
@@ -131,7 +180,7 @@ export default function LandingPage() {
             <div>
               <Eyebrow tone="dark">Perum Bulog Kanwil Lampung</Eyebrow>
               <h1 className="mt-6 text-6xl font-bold leading-[0.95] tracking-tight md:text-8xl">
-                Konekto<span className="text-accent">.</span>
+                SerGab Lampung<span className="text-accent">.</span>
               </h1>
               <div className="mt-5 h-1 w-20 rounded-full bg-accent" />
               <p className="mt-7 max-w-lg text-sm leading-7 text-white/70 md:text-base">Sistem monitoring serap gabah yang membedakan alur TJP dan MPP dari input awal, review, PO, pembayaran, operasi, sampai penerimaan gudang.</p>
@@ -140,11 +189,7 @@ export default function LandingPage() {
                 <span className="rounded-full border border-white/15 bg-white/10 px-4 py-1.5 text-xs font-semibold text-white">MPP</span>
               </div>
             </div>
-            <div className="relative rounded-2xl border border-white/10 bg-white p-3 shadow-2xl shadow-black/30">
-              <div className="rounded-xl bg-gradient-to-br from-primary-tint/70 to-white p-2">
-                <HeroGrafis />
-              </div>
-            </div>
+            <AppPreview />
           </div>
         </section>
 
@@ -254,7 +299,7 @@ export default function LandingPage() {
           <div className="mx-auto grid max-w-6xl gap-8 px-5 py-14 md:grid-cols-3">
             <div>
               <div className="flex items-center">
-                <img src={logoKonekto} alt="Konekto" className="h-9 w-auto" />
+                <img src={logoSergab} alt="SerGab Lampung" className="h-9 w-auto" />
               </div>
               <p className="mt-3 text-sm leading-6 text-white/70">Sistem informasi serap gabah Perum BULOG Kanwil Lampung.</p>
             </div>
