@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Api\AdminMakloonController;
 use App\Http\Controllers\Api\AdminUserController;
 use App\Http\Controllers\Api\AuditLogController;
 use App\Http\Controllers\Api\AuthController;
@@ -34,6 +35,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::middleware('role:admin')->prefix('admin')->group(function () {
         Route::get('/audit-logs', [AuditLogController::class, 'index']);
         Route::get('/roles', [AdminUserController::class, 'roles']);
+        Route::apiResource('makloon', AdminMakloonController::class)
+            ->parameters(['makloon' => 'makloon']);
         Route::post('/users/import-makloon', [AdminUserController::class, 'importMakloon']);
         Route::patch('/users/{user}/reset-password', [AdminUserController::class, 'resetPassword']);
         Route::patch('/users/{user}/deactivate', [AdminUserController::class, 'deactivate']);

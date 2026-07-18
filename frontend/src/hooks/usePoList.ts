@@ -68,14 +68,15 @@ export type PoItem = {
   data_keuangan: DataKeuangan | null
 }
 
-export function usePoList(page = 1, perPage = 20) {
+export function usePoList(page = 1, perPage = 20, search = '', enabled = true) {
   return useQuery({
-    queryKey: ['po-list', page, perPage],
+    queryKey: ['po-list', page, perPage, search],
+    enabled,
     queryFn: async () => {
       // /api/po memakai ResourceCollection, sama seperti /api/transaksi:
       // item ada di `data`, metadata pagination di `meta`.
       const { data } = await api.get<{ data: PoItem[]; meta: PaginationMeta }>('/api/po', {
-        params: { page, per_page: perPage },
+        params: { page, per_page: perPage, q: search || undefined },
       })
       return { items: data.data, meta: data.meta }
     },

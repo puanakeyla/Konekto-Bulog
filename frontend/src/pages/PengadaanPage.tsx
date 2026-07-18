@@ -1,4 +1,5 @@
 import { useState, type Dispatch, type SetStateAction } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import api from '../lib/api'
@@ -17,11 +18,13 @@ function adaOutMenunggu(po: PoItem) {
 }
 
 export default function PengadaanPage() {
+  const [searchParams, setSearchParams] = useSearchParams()
   const [transaksiPage, setTransaksiPage] = useState(1)
   const [poPage, setPoPage] = useState(1)
+  const [poSearch, setPoSearch] = useState(() => searchParams.get('po') ?? '')
   const [selCount, setSelCount] = useState(0)
   const { data: transaksiResult, isLoading: loadingTransaksi } = useTransaksiList(transaksiPage, 20, true)
-  const { data: poResult, isLoading: loadingPo } = usePoList(poPage)
+  const { data: poResult, isLoading: loadingPo } = usePoList(poPage, 20, poSearch.trim())
 
   const transaksiList = transaksiResult?.items ?? []
   const transaksiMeta = transaksiResult?.meta
@@ -67,6 +70,35 @@ export default function PengadaanPage() {
               <div><h2 className="section-title">PO Proses - Isi Nomor IN</h2><p className="page-subtitle">Setelah seluruh nomor IN terisi, PO masuk ke antrean Keuangan.</p></div>
               <span className="badge badge-warning">{poBelumLengkap.length} PO proses</span>
             </div>
+            <form
+              className="mb-4 flex flex-col gap-2 sm:flex-row"
+              onSubmit={(event) => {
+                event.preventDefault()
+                setPoPage(1)
+                setSearchParams(poSearch.trim() ? { po: poSearch.trim() } : {})
+              }}
+            >
+              <input
+                className="input"
+                value={poSearch}
+                onChange={(event) => setPoSearch(event.target.value)}
+                placeholder="Cari No. PO, No. SPP, pemasok, makloon, atau ID transaksi"
+              />
+              <button type="submit" className="btn btn-primary">Cari</button>
+              {poSearch && (
+                <button
+                  type="button"
+                  className="btn btn-ghost"
+                  onClick={() => {
+                    setPoSearch('')
+                    setPoPage(1)
+                    setSearchParams({})
+                  }}
+                >
+                  Reset
+                </button>
+              )}
+            </form>
 
             {loadingPo && <SkeletonPoCards />}
             {!loadingPo && poBelumLengkap.length === 0 && (

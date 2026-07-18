@@ -27,7 +27,18 @@ class PengadaanController extends Controller
 
     public function index(Request $request)
     {
+        $search = trim((string) $request->query('q', ''));
+
         $dataPengadaan = DataPengadaan::with(['poDetail.transaksi.riwayatPenolakan.penolak', 'dataKeuangan'])
+            ->when($search !== '', function ($query) use ($search) {
+                $query->where(function ($query) use ($search) {
+                    $query->where('no_po', 'like', "%{$search}%")
+                        ->orWhere('no_spp', 'like', "%{$search}%")
+                        ->orWhere('id_pemasok', 'like', "%{$search}%")
+                        ->orWhereHas('makloon', fn ($query) => $query->where('nama_maklon', 'like', "%{$search}%"))
+                        ->orWhereHas('poDetail', fn ($query) => $query->where('transaksi_id', 'like', "%{$search}%"));
+                });
+            })
             ->orderByDesc('created_at')
             ->paginate($request->integer('per_page', 20));
 

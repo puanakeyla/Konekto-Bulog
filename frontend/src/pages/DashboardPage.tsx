@@ -1,5 +1,5 @@
 import { useMemo, useState, type ReactNode } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, NavLink } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 import { useTransaksiList, type TransaksiListItem } from '../hooks/useTransaksiList'
 import { SkeletonMakloonGroups, SkeletonTable } from '../components/Skeleton'
@@ -36,7 +36,19 @@ const ROLE_SUBTITLE: Record<string, string> = {
 // Tombol aksi utama per role -- kondisi identik dengan versi lama, hanya dipindah ke hero.
 function buildActions(role: string): { to: string; label: string }[] {
   const a: { to: string; label: string }[] = []
-  if (role === 'admin') a.push({ to: '/admin/users', label: 'Kelola User' }, { to: '/admin/audit-logs', label: 'Audit Log' }, { to: '/monitoring', label: 'Monitoring' })
+  if (role === 'admin') {
+    a.push(
+      { to: '/admin/users', label: 'Kelola User' },
+      { to: '/admin/makloon', label: 'Kelola Makloon' },
+      { to: '/monitoring', label: 'Monitoring' },
+      { to: '/pengadaan', label: 'Kelola Pengadaan' },
+      { to: '/keuangan', label: 'Kelola Pembayaran PO' },
+      { to: '/operasi', label: 'Input Data Operasi' },
+      { to: '/gudang', label: 'Input Penerimaan Gudang' },
+      { to: '/admin/audit-logs', label: 'Audit Log' },
+    )
+    return a
+  }
   if (role === 'jemput_pangan') a.push({ to: '/transaksi/baru', label: 'Buat Transaksi Jemput Pangan' })
   if (role === 'makloon') a.push({ to: '/transaksi/baru-mpp', label: 'Buat Baru (MPP)' })
   if (role === 'pengadaan' || role === 'admin') a.push({ to: '/pengadaan', label: 'Kelola Pengadaan' })
@@ -167,18 +179,19 @@ export default function DashboardPage() {
 
               {actions.length > 0 && (
                 <div className="mt-7 flex flex-wrap gap-2.5">
-                  {actions.map((a, i) => (
-                    <Link
+                  {actions.map((a) => (
+                    <NavLink
                       key={a.to}
                       to={a.to}
-                      className={
-                        i === 0
-                          ? 'rounded-lg bg-accent px-5 py-2.5 text-sm font-bold text-primary-dark shadow-sm transition-all hover:bg-white hover:shadow-md'
-                          : 'rounded-lg border border-white/15 bg-white/10 px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-white/20'
+                      className={({ isActive }) =>
+                        'rounded-lg px-5 py-2.5 text-sm font-semibold transition-all ' +
+                        (isActive
+                          ? 'bg-accent text-primary-dark shadow-sm hover:bg-white hover:shadow-md'
+                          : 'border border-white/15 bg-white/10 text-white hover:bg-white/20')
                       }
                     >
                       {a.label}
-                    </Link>
+                    </NavLink>
                   ))}
                 </div>
               )}
