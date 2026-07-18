@@ -44,6 +44,10 @@ Route::middleware('auth:sanctum')->group(function () {
     });
 
     Route::get('/transaksi', [TransaksiController::class, 'index']);
+    // HARUS sebelum '/transaksi/{transaksi}' karena pattern {transaksi} greedy ('.*'),
+    // kalau tidak 'rekap' akan ditangkap sebagai id transaksi.
+    Route::get('/transaksi/rekap', [TransaksiController::class, 'rekap'])
+        ->middleware('role:jemput_pangan|makloon|ub_jastasma|pengadaan|keuangan|admin');
     // Route dengan suffix di belakang {transaksi} (pattern '.*', greedy) HARUS didaftarkan
     // sebelum GET /transaksi/{transaksi} (show) -- kalau tidak, show akan menelan seluruh
     // sisa path (mis. "/foto/foto_petani") sebagai bagian dari {transaksi} karena ia

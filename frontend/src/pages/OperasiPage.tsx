@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import api from '../lib/api'
@@ -67,11 +68,14 @@ export default function OperasiPage() {
           {menunggu.map((item) => <RingkasCard key={item.id} item={item} badge="Menunggu Pengadaan" tone="warning" />)}
         </Section>
 
-        {selesai.length > 0 && (
-          <Section title="Riwayat Batch Selesai" desc="Hasil produksi sudah diisi." count={selesai.length}>
-            {selesai.map((item) => <RingkasCard key={item.id} item={item} badge={item.data_gudang ? 'Diterima Gudang' : 'Menunggu Gudang'} tone="success" />)}
-          </Section>
-        )}
+        {/* Riwayat/hasil lengkap dipindah ke halaman rekap terpisah (tabel + ekspor). */}
+        <Link to="/operasi/rekap" className="panel flex items-center justify-between gap-4 px-5 py-4 transition-colors hover:border-primary/40">
+          <div>
+            <h2 className="section-title">Rekap Hasil Operasi</h2>
+            <p className="page-subtitle">{selesai.length} batch selesai · lihat tabel lengkap &amp; ekspor CSV</p>
+          </div>
+          <span className="btn btn-primary shrink-0">Buka Rekap</span>
+        </Link>
       </div>
     </div>
   )

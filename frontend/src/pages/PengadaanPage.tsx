@@ -1,108 +1,42 @@
-import { useState, type Dispatch, type SetStateAction } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import api from '../lib/api'
 import { apiErrorMessage } from '../lib/apiError'
 import { formatNumber } from '../lib/poFormat'
-import { useTransaksiList } from '../hooks/useTransaksiList'
-import { usePoList } from '../hooks/usePoList'
 import { useOperasiList, type PermintaanOperasi } from '../hooks/useOperasiList'
 import ConfirmDialog from '../components/ConfirmDialog'
-import { SkeletonPoCards, SkeletonTable } from '../components/Skeleton'
+import { SkeletonPoCards } from '../components/Skeleton'
 import FormHero from '../components/FormHero'
-import GabungPoForm from '../components/pengadaan/GabungPoForm'
-import PoInForm from '../components/pengadaan/PoInForm'
 
 export default function PengadaanPage() {
-  const [searchParams, setSearchParams] = useSearchParams()
-  const [transaksiPage, setTransaksiPage] = useState(1)
-  const [poPage, setPoPage] = useState(1)
-  const [poSearch, setPoSearch] = useState(() => searchParams.get('po') ?? '')
-  const [selCount, setSelCount] = useState(0)
-  const { data: transaksiResult, isLoading: loadingTransaksi } = useTransaksiList(transaksiPage, 20, true)
-  const { data: poResult, isLoading: loadingPo } = usePoList(poPage, 20, poSearch.trim())
   const { data: operasiResult, isLoading: loadingOperasi } = useOperasiList()
 
-  const transaksiList = transaksiResult?.items ?? []
-  const transaksiMeta = transaksiResult?.meta
-  const poList = poResult?.items ?? []
-  const poMeta = poResult?.meta
-  const poBelumLengkap = poList.filter((po) => po.status === 'proses')
-  // Permintaan pengeluaran stok dari modul Operasi (mandiri, lepas dari PO/IN).
-  const permintaanMenunggu = (operasiResult?.items ?? []).filter((i) => i.status_out === 'menunggu_pengadaan')
+  // Halaman ini KHUSUS keputusan pengeluaran stok (OUT). Penggabungan PO & pengisian
+  // nomor IN dikerjakan langsung dari timeline transaksi, jadi tidak diduplikasi di sini.
+  const permintaan = operasiResult?.items ?? []
+  const permintaanMenunggu = permintaan.filter((i) => i.status_out === 'menunggu_pengadaan')
+  const sudahDikeluarkan = permintaan.filter((i) => i.status_out === 'dikeluarkan')
+  const dikembalikan = permintaan.filter((i) => i.status_out === 'dikembalikan')
+  const totalDiminta = permintaanMenunggu.reduce((sum, i) => sum + Number(i.gabah_diolah_kg || 0), 0)
 
   return (
     <div className="min-h-screen bg-surface">
       <FormHero
-        title="Pengadaan"
-        subtitle="Gabungkan transaksi Makloon menjadi PO, lalu isi nomor IN per transaksi asal."
+        eyebrow="Perum Bulog Kanwil Lampung"
         badge="Role Pengadaan"
+        title="Keputusan Pengeluaran Stok"
+        subtitle="Putuskan permintaan pengeluaran stok dari Operasi: keluarkan dengan menerbitkan No. OUT, atau kembalikan dengan catatan."
       />
 
-      <div className="relative mx-auto -mt-16 max-w-6xl space-y-6 px-6 pb-16">
+      <div className="relative mx-auto -mt-16 max-w-5xl space-y-6 px-6 pb-16">
           <div className="stats-grid">
-            <div className="stat-card"><div className="stat-label">Transaksi siap PO</div><div className="stat-value">{transaksiMeta?.total ?? transaksiList.length}</div></div>
-            <div className="stat-card"><div className="stat-label">Dipilih</div><div className="stat-value">{selCount}</div></div>
-            <div className="stat-card"><div className="stat-label">PO proses</div><div className="stat-value">{poBelumLengkap.length}</div></div>
-            <div className="stat-card"><div className="stat-label">Permintaan OUT</div><div className="stat-value">{permintaanMenunggu.length}</div></div>
+            <div className="stat-card"><div className="stat-label">Menunggu keputusan</div><div className="stat-value">{permintaanMenunggu.length}</div></div>
+            <div className="stat-card"><div className="stat-label">Gabah diminta (kg)</div><div className="stat-value">{formatNumber(totalDiminta)}</div></div>
+            <div className="stat-card"><div className="stat-label">Sudah dikeluarkan</div><div className="stat-value">{sudahDikeluarkan.length}</div></div>
+            <div className="stat-card"><div className="stat-label">Dikembalikan</div><div className="stat-value">{dikembalikan.length}</div></div>
           </div>
 
-          <section className="panel panel-pad @container">
-            {loadingTransaksi && <SkeletonTable cols={6} />}
-            {!loadingTransaksi && (
-              <>
-                <GabungPoForm transaksiList={transaksiList} onSelectionChange={(count) => setSelCount(count)} />
-                {transaksiMeta && transaksiMeta.last_page > 1 && (
-                  <PaginationBar className="mt-4" meta={transaksiMeta} page={transaksiPage} setPage={setTransaksiPage} label="transaksi" />
-                )}
-              </>
-            )}
-          </section>
-
-          <section className="panel panel-pad @container">
-            <div className="toolbar-card mb-4">
-              <div><h2 className="section-title">PO Proses - Isi Nomor IN</h2><p className="page-subtitle">Setelah seluruh nomor IN terisi, PO masuk ke antrean Keuangan.</p></div>
-              <span className="badge badge-warning">{poBelumLengkap.length} PO proses</span>
-            </div>
-            <form
-              className="mb-4 flex flex-col gap-2 sm:flex-row"
-              onSubmit={(event) => {
-                event.preventDefault()
-                setPoPage(1)
-                setSearchParams(poSearch.trim() ? { po: poSearch.trim() } : {})
-              }}
-            >
-              <input
-                className="input"
-                value={poSearch}
-                onChange={(event) => setPoSearch(event.target.value)}
-                placeholder="Cari No. PO, No. SPP, pemasok, makloon, atau ID transaksi"
-              />
-              <button type="submit" className="btn btn-primary">Cari</button>
-              {poSearch && (
-                <button
-                  type="button"
-                  className="btn btn-ghost"
-                  onClick={() => {
-                    setPoSearch('')
-                    setPoPage(1)
-                    setSearchParams({})
-                  }}
-                >
-                  Reset
-                </button>
-              )}
-            </form>
-
-            {loadingPo && <SkeletonPoCards />}
-            {!loadingPo && poBelumLengkap.length === 0 && (
-              <div className="empty-state"><div className="empty-title">Tidak ada PO yang menunggu nomor IN</div><p className="empty-copy">PO yang sudah lengkap otomatis lanjut ke antrean Keuangan.</p></div>
-            )}
-
-            <div className="space-y-4">{poBelumLengkap.map((po) => <PoInForm key={po.id} po={po} />)}</div>
-            {poMeta && poMeta.last_page > 1 && <PaginationBar className="mt-4" meta={poMeta} page={poPage} setPage={setPoPage} label="PO" />}
-          </section>
 
           <section className="panel panel-pad @container">
             <div className="toolbar-card mb-4">
@@ -121,20 +55,6 @@ export default function PengadaanPage() {
     </div>
   )
 }
-
-function PaginationBar({ meta, page, setPage, label, className = '' }: { meta: { current_page: number; last_page: number; total: number; from: number | null; to: number | null }; page: number; setPage: Dispatch<SetStateAction<number>>; label: string; className?: string }) {
-  return (
-    <div className={`flex flex-wrap items-center justify-between gap-3 text-sm text-muted ${className}`}>
-      <span>Menampilkan {meta.from ?? 0}-{meta.to ?? 0} dari {meta.total} {label}</span>
-      <div className="flex gap-2">
-        <button className="btn btn-ghost" disabled={page <= 1} onClick={() => setPage((prev) => Math.max(1, prev - 1))}>Sebelumnya</button>
-        <span className="badge">Halaman {meta.current_page}/{meta.last_page}</span>
-        <button className="btn btn-ghost" disabled={page >= meta.last_page} onClick={() => setPage((prev) => prev + 1)}>Berikutnya</button>
-      </div>
-    </div>
-  )
-}
-
 
 type Keputusan = '' | 'dikeluarkan' | 'dikembalikan'
 

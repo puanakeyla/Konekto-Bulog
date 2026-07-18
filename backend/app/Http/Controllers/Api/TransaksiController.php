@@ -37,6 +37,36 @@ class TransaksiController extends Controller
         return TransaksiResource::collection($transaksi);
     }
 
+    /**
+     * Rekap lintas tahap untuk halaman tabel/ekspor. Beda dari index(): TIDAK difilter
+     * `current_stage`, jadi transaksi tetap tampil walau sudah lewat tahap role tersebut.
+     * Data tiap tahap ikut dimuat sehingga tabel selalu mencerminkan kondisi terkini —
+     * termasuk status kunci tiap tahap (`menunggu_review`/`diterima`/`ditolak`).
+     * Visibilitas field tetap dijaga oleh resource masing-masing (lihat FieldVisibility).
+     */
+    public function rekap(Request $request)
+    {
+        $role = $request->user()->role->nama_role;
+
+        $query = Transaksi::with([
+            'dataJemputPangan.makloon',
+            'dataMakloonMpp',
+            'dataMakloonTjp',
+            'dataUbJastasma',
+            'poDetail.dataPengadaan.dataKeuangan',
+            'creator',
+        ])->orderByDesc('created_at');
+
+        // Role Jemput Pangan hanya relevan dengan skema TJP (MPP tidak punya tahap JP).
+        if ($role === 'jemput_pangan') {
+            $query->where('skema', 'TJP');
+        }
+
+        $transaksi = $query->paginate($request->integer('per_page', 100));
+
+        return TransaksiResource::collection($transaksi);
+    }
+
     public function show(Request $request, Transaksi $transaksi)
     {
         $transaksi->load([

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import api from '../lib/api'
@@ -55,31 +56,14 @@ export default function GudangPage() {
           <div className="space-y-4">{menunggu.map((item) => <GudangForm key={item.id} item={item} />)}</div>
         </section>
 
-        {diterima.length > 0 && (
-          <section className="panel panel-pad">
-            <div className="toolbar-card mb-4">
-              <div><h2 className="section-title">Riwayat Penerimaan</h2><p className="page-subtitle">Batch yang sudah tercatat masuk gudang.</p></div>
-              <span className="badge badge-success">{diterima.length}</span>
-            </div>
-            <div className="data-table-wrap">
-              <table className="data-table">
-                <thead><tr><th>No. OUT</th><th>No. MO</th><th>HGL (kg)</th><th>Rendemen</th><th>Gudang</th><th>Tanggal masuk</th></tr></thead>
-                <tbody>
-                  {diterima.map((i) => (
-                    <tr key={i.id}>
-                      <td className="font-semibold text-primary-dark">{i.no_out}</td>
-                      <td>{i.no_mo}</td>
-                      <td>{formatNumber(i.hgl_kg)}</td>
-                      <td>{i.rendemen_persen ? `${i.rendemen_persen}%` : '-'}</td>
-                      <td>{i.data_gudang?.nama_gudang}</td>
-                      <td>{i.data_gudang ? new Date(i.data_gudang.tanggal_masuk).toLocaleDateString('id-ID') : '-'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </section>
-        )}
+        {/* Riwayat penerimaan dipindah ke halaman rekap terpisah (tabel + ekspor). */}
+        <Link to="/gudang/rekap" className="panel flex items-center justify-between gap-4 px-5 py-4 transition-colors hover:border-primary/40">
+          <div>
+            <h2 className="section-title">Rekap Penerimaan Gudang</h2>
+            <p className="page-subtitle">{diterima.length} batch diterima · lihat tabel lengkap &amp; ekspor CSV</p>
+          </div>
+          <span className="btn btn-primary shrink-0">Buka Rekap</span>
+        </Link>
       </div>
     </div>
   )

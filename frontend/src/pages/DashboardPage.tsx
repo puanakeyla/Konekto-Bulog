@@ -41,20 +41,27 @@ function buildActions(role: string): { to: string; label: string }[] {
       { to: '/admin/users', label: 'Kelola User' },
       { to: '/admin/makloon', label: 'Kelola Makloon' },
       { to: '/monitoring', label: 'Monitoring' },
-      { to: '/pengadaan', label: 'Kelola Pengadaan' },
+      { to: '/rekap', label: 'Rekap Data' },
+      { to: '/pengadaan', label: 'Keputusan Pengeluaran Stok' },
       { to: '/keuangan', label: 'Kelola Pembayaran PO' },
       { to: '/operasi', label: 'Input Data Operasi' },
+      { to: '/operasi/rekap', label: 'Rekap Hasil Operasi' },
       { to: '/gudang', label: 'Input Penerimaan Gudang' },
+      { to: '/gudang/rekap', label: 'Rekap Penerimaan Gudang' },
       { to: '/admin/audit-logs', label: 'Audit Log' },
     )
     return a
   }
   if (role === 'jemput_pangan') a.push({ to: '/transaksi/baru', label: 'Buat Transaksi Jemput Pangan' })
   if (role === 'makloon') a.push({ to: '/transaksi/baru-mpp', label: 'Buat Baru (MPP)' })
-  if (role === 'pengadaan' || role === 'admin') a.push({ to: '/pengadaan', label: 'Kelola Pengadaan' })
+  // Rekap tabel lintas tahap (kolom kumulatif sesuai role).
+  if (['jemput_pangan', 'makloon', 'ub_jastasma', 'pengadaan', 'keuangan'].includes(role)) {
+    a.push({ to: '/rekap', label: 'Rekap Data' })
+  }
+  if (role === 'pengadaan' || role === 'admin') a.push({ to: '/pengadaan', label: 'Keputusan Pengeluaran Stok' })
   if (role === 'keuangan' || role === 'admin') a.push({ to: '/keuangan', label: 'Kelola Pembayaran PO' })
-  if (role === 'operasi' || role === 'admin') a.push({ to: '/operasi', label: 'Input Data Operasi' })
-  if (role === 'gudang' || role === 'admin') a.push({ to: '/gudang', label: 'Input Penerimaan Gudang' })
+  if (role === 'operasi' || role === 'admin') a.push({ to: '/operasi', label: 'Input Data Operasi' }, { to: '/operasi/rekap', label: 'Rekap Hasil Operasi' })
+  if (role === 'gudang' || role === 'admin') a.push({ to: '/gudang', label: 'Input Penerimaan Gudang' }, { to: '/gudang/rekap', label: 'Rekap Penerimaan Gudang' })
   return a
 }
 
@@ -215,6 +222,9 @@ export default function DashboardPage() {
         </div>
       </div>
 
+      {/* Operasi & Gudang adalah modul mandiri (lepas dari timeline transaksi),
+          jadi daftar transaksi menunggu tindakan tidak relevan untuk dua role ini. */}
+      {!['operasi', 'gudang'].includes(role) && (
       <div className="mx-auto max-w-6xl px-6 py-8">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
           <div>
@@ -302,6 +312,7 @@ export default function DashboardPage() {
           </div>
         )}
       </div>
+      )}
     </div>
   )
 }
