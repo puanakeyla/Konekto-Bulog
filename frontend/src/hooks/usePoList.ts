@@ -8,7 +8,6 @@ export type PoDetailItem = {
   transaksi_id: string
   kuantum_kontribusi: string
   no_in: string | null
-  data_operasi: DataOperasi | null
 }
 
 export type ReviewStatus = 'menunggu_review' | 'diterima' | 'ditolak'
@@ -20,35 +19,6 @@ export type DataKeuangan = {
   tanggal_bayar: string | null
   review_status?: ReviewStatus | null
   catatan_penolakan?: string | null
-}
-
-export type StatusOut = 'menunggu_pengadaan' | 'dikeluarkan' | 'dikembalikan'
-
-export type DataOperasi = {
-  id: number
-  po_detail_id: number
-  gabah_diolah_kg: string | null
-  no_mo: string | null
-  no_tm: string | null
-  no_out: string | null
-  kuantum_out: string | null
-  status_out: StatusOut
-  catatan_pengembalian: string | null
-  hgl_kg: string | null
-  broken_kg: string | null
-  menir_kg: string | null
-  katul_kg: string | null
-  rendemen_persen: string | null
-  data_gudang: DataGudang | null
-}
-
-export type DataGudang = {
-  id: number
-  data_operasi_id: number
-  tanggal_masuk: string
-  nama_gudang: string
-  realisasi_hgl: string | null
-  no_tm: string
 }
 
 export type PoItem = {

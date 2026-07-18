@@ -6,16 +6,13 @@ import api from '../lib/api'
 import { apiErrorMessage } from '../lib/apiError'
 import { formatNumber } from '../lib/poFormat'
 import { useTransaksiList } from '../hooks/useTransaksiList'
-import { usePoList, type PoItem, type PoDetailItem } from '../hooks/usePoList'
+import { usePoList } from '../hooks/usePoList'
+import { useOperasiList, type PermintaanOperasi } from '../hooks/useOperasiList'
 import ConfirmDialog from '../components/ConfirmDialog'
 import { SkeletonPoCards, SkeletonTable } from '../components/Skeleton'
 import FormHero from '../components/FormHero'
 import GabungPoForm from '../components/pengadaan/GabungPoForm'
 import PoInForm from '../components/pengadaan/PoInForm'
-
-function adaOutMenunggu(po: PoItem) {
-  return po.po_detail.some((detail) => detail.data_operasi?.status_out === 'menunggu_pengadaan')
-}
 
 export default function PengadaanPage() {
   const [searchParams, setSearchParams] = useSearchParams()
@@ -25,17 +22,15 @@ export default function PengadaanPage() {
   const [selCount, setSelCount] = useState(0)
   const { data: transaksiResult, isLoading: loadingTransaksi } = useTransaksiList(transaksiPage, 20, true)
   const { data: poResult, isLoading: loadingPo } = usePoList(poPage, 20, poSearch.trim())
+  const { data: operasiResult, isLoading: loadingOperasi } = useOperasiList()
 
   const transaksiList = transaksiResult?.items ?? []
   const transaksiMeta = transaksiResult?.meta
   const poList = poResult?.items ?? []
   const poMeta = poResult?.meta
-  const poMenungguOut = poList.filter(adaOutMenunggu)
   const poBelumLengkap = poList.filter((po) => po.status === 'proses')
-  const detailBelumOut = poMenungguOut.reduce(
-    (sum, po) => sum + po.po_detail.filter((detail) => detail.data_operasi?.status_out === 'menunggu_pengadaan').length,
-    0,
-  )
+  // Permintaan pengeluaran stok dari modul Operasi (mandiri, lepas dari PO/IN).
+  const permintaanMenunggu = (operasiResult?.items ?? []).filter((i) => i.status_out === 'menunggu_pengadaan')
 
   return (
     <div className="min-h-screen bg-surface">
@@ -50,7 +45,7 @@ export default function PengadaanPage() {
             <div className="stat-card"><div className="stat-label">Transaksi siap PO</div><div className="stat-value">{transaksiMeta?.total ?? transaksiList.length}</div></div>
             <div className="stat-card"><div className="stat-label">Dipilih</div><div className="stat-value">{selCount}</div></div>
             <div className="stat-card"><div className="stat-label">PO proses</div><div className="stat-value">{poBelumLengkap.length}</div></div>
-            <div className="stat-card"><div className="stat-label">Nomor OUT kosong</div><div className="stat-value">{detailBelumOut}</div></div>
+            <div className="stat-card"><div className="stat-label">Permintaan OUT</div><div className="stat-value">{permintaanMenunggu.length}</div></div>
           </div>
 
           <section className="panel panel-pad @container">
@@ -111,16 +106,16 @@ export default function PengadaanPage() {
 
           <section className="panel panel-pad @container">
             <div className="toolbar-card mb-4">
-              <div><h2 className="section-title">Keputusan Pengeluaran Stok (OUT)</h2><p className="page-subtitle">Tiap permintaan Operasi: keluarkan dengan mengisi No. OUT, atau kembalikan dengan catatan.</p></div>
-              <span className="badge badge-warning">{poMenungguOut.length} PO menunggu</span>
+              <div><h2 className="section-title">Keputusan Pengeluaran Stok (OUT)</h2><p className="page-subtitle">Permintaan Operasi: keluarkan dengan mengisi No. OUT, atau kembalikan dengan catatan.</p></div>
+              <span className="badge badge-warning">{permintaanMenunggu.length} menunggu</span>
             </div>
 
-            {loadingPo && <SkeletonPoCards />}
-            {!loadingPo && poMenungguOut.length === 0 && (
+            {loadingOperasi && <SkeletonPoCards />}
+            {!loadingOperasi && permintaanMenunggu.length === 0 && (
               <div className="empty-state"><div className="empty-title">Tidak ada permintaan OUT</div><p className="empty-copy">Permintaan muncul setelah Operasi mengajukan pengeluaran stok.</p></div>
             )}
 
-            <div className="space-y-4">{poMenungguOut.map((po) => <PoOutApprovalForm key={po.id} po={po} />)}</div>
+            <div className="space-y-4">{permintaanMenunggu.map((item) => <OutApprovalForm key={item.id} item={item} />)}</div>
           </section>
       </div>
     </div>
@@ -140,42 +135,34 @@ function PaginationBar({ meta, page, setPage, label, className = '' }: { meta: {
   )
 }
 
-type Keputusan = '' | 'dikeluarkan' | 'dikembalikan'
-type OutRow = { keputusan: Keputusan; no_out: string; catatan: string }
-const emptyOut: OutRow = { keputusan: '', no_out: '', catatan: '' }
 
-function PoOutApprovalForm({ po }: { po: PoItem }) {
+type Keputusan = '' | 'dikeluarkan' | 'dikembalikan'
+
+// Keputusan Pengadaan atas SATU permintaan pengeluaran stok dari Operasi (modul mandiri).
+function OutApprovalForm({ item }: { item: PermintaanOperasi }) {
   const queryClient = useQueryClient()
-  const pendingDetails = po.po_detail.filter((detail) => detail.data_operasi?.status_out === 'menunggu_pengadaan')
-  const [rows, setRows] = useState<Record<number, OutRow>>(() => Object.fromEntries(pendingDetails.map((d) => [d.id, { ...emptyOut }])))
+  const [keputusan, setKeputusan] = useState<Keputusan>('')
+  const [noOut, setNoOut] = useState('')
+  const [catatan, setCatatan] = useState('')
   const [confirmOut, setConfirmOut] = useState(false)
 
-  const setRow = (id: number, patch: Partial<OutRow>) => setRows((prev) => ({ ...prev, [id]: { ...prev[id], ...patch } }))
-
-  const rowValid = (d: PoDetailItem) => {
-    const r = rows[d.id]
-    if (r?.keputusan === 'dikeluarkan') return !!r.no_out.trim()
-    if (r?.keputusan === 'dikembalikan') return !!r.catatan.trim()
-    return false
-  }
-  const allValid = pendingDetails.length > 0 && pendingDetails.every(rowValid)
-  const keluarCount = pendingDetails.filter((d) => rows[d.id]?.keputusan === 'dikeluarkan').length
-  const kembaliCount = pendingDetails.filter((d) => rows[d.id]?.keputusan === 'dikembalikan').length
+  const valid = keputusan === 'dikeluarkan' ? !!noOut.trim() : keputusan === 'dikembalikan' ? !!catatan.trim() : false
 
   const mutation = useMutation({
     mutationFn: () =>
-      api.patch(`/api/po/${po.id}/out`, {
-        items: pendingDetails.map((d) => {
-          const r = rows[d.id]
-          return r.keputusan === 'dikeluarkan'
-            ? { po_detail_id: d.id, keputusan: 'dikeluarkan', no_out: r.no_out }
-            : { po_detail_id: d.id, keputusan: 'dikembalikan', catatan: r.catatan }
-        }),
-      }),
+      api.patch(`/api/operasi/${item.id}/out`,
+        keputusan === 'dikeluarkan'
+          ? { keputusan: 'dikeluarkan', no_out: noOut }
+          : { keputusan: 'dikembalikan', catatan },
+      ),
     onSuccess: () => {
       setConfirmOut(false)
-      queryClient.invalidateQueries({ queryKey: ['po-list'] })
-      toast.success(`Keputusan OUT PO ${po.no_po} terkirim ke Operasi.`)
+      queryClient.invalidateQueries({ queryKey: ['operasi-list'] })
+      toast.success(
+        keputusan === 'dikeluarkan'
+          ? `Nomor OUT ${noOut} dikirim ke Operasi.`
+          : 'Permintaan dikembalikan ke Operasi.',
+      )
     },
     onError: (err) => toast.error(apiErrorMessage(err, 'Gagal menyimpan keputusan OUT.')),
   })
@@ -185,41 +172,49 @@ function PoOutApprovalForm({ po }: { po: PoItem }) {
   return (
     <form className="po-card @container" onSubmit={(e) => { e.preventDefault(); setConfirmOut(true) }}>
       <div className="po-card-header">
-        <div><div className="po-title">{po.no_po}</div><div className="po-meta">Pemasok {po.id_pemasok} - {formatNumber(po.total_kuantum)} kg - No. SPP {po.no_spp ?? '-'}</div></div>
-        <span className="badge badge-warning">{pendingDetails.length} permintaan</span>
+        <div>
+          <div className="po-title">Permintaan {formatNumber(item.gabah_diolah_kg)} kg gabah</div>
+          <div className="po-meta">
+            Diajukan {new Date(item.created_at).toLocaleDateString('id-ID')}
+            {item.creator ? ` oleh ${item.creator.username}` : ''}
+          </div>
+        </div>
+        <span className="badge badge-warning">Menunggu keputusan</span>
       </div>
       {errorMessage && <div className="alert-danger mb-3">{errorMessage}</div>}
 
-      <div className="space-y-3">
-        {pendingDetails.map((detail) => {
-          const r = rows[detail.id] ?? emptyOut
-          return (
-            <div key={detail.id} className="rounded-lg border border-border bg-surface p-3">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="section-title">IN {detail.transaksi_id}{detail.no_in ? ` — No. IN ${detail.no_in}` : ''}</div>
-                <div className="text-xs text-muted">Gabah diolah {formatNumber(detail.data_operasi?.gabah_diolah_kg ?? 0)} kg</div>
-              </div>
-              <div className="mt-3 flex flex-wrap gap-2">
-                <button type="button" onClick={() => setRow(detail.id, { keputusan: 'dikeluarkan' })} className={`btn ${r.keputusan === 'dikeluarkan' ? 'btn-primary' : 'btn-ghost border border-border bg-white'}`}>Dikeluarkan</button>
-                <button type="button" onClick={() => setRow(detail.id, { keputusan: 'dikembalikan' })} className={`btn ${r.keputusan === 'dikembalikan' ? 'btn-danger' : 'btn-ghost border border-border bg-white'}`}>Dikembalikan</button>
-              </div>
-              {r.keputusan === 'dikeluarkan' && (
-                <label className="mt-3 block"><span className="label">Nomor OUT</span><input className="input" placeholder="Masukkan nomor OUT" value={r.no_out} onChange={(e) => setRow(detail.id, { no_out: e.target.value })} /></label>
-              )}
-              {r.keputusan === 'dikembalikan' && (
-                <label className="mt-3 block"><span className="label">Catatan pengembalian</span><textarea className="input min-h-16" placeholder="Alasan dikembalikan ke Operasi" value={r.catatan} onChange={(e) => setRow(detail.id, { catatan: e.target.value })} /></label>
-              )}
-            </div>
-          )
-        })}
+      <div className="flex flex-wrap gap-2">
+        <button type="button" onClick={() => setKeputusan('dikeluarkan')} className={`btn ${keputusan === 'dikeluarkan' ? 'btn-primary' : 'btn-ghost border border-border bg-white'}`}>Dikeluarkan</button>
+        <button type="button" onClick={() => setKeputusan('dikembalikan')} className={`btn ${keputusan === 'dikembalikan' ? 'btn-danger' : 'btn-ghost border border-border bg-white'}`}>Dikembalikan</button>
       </div>
 
-      <div className="mt-4 flex justify-end"><button type="submit" disabled={!allValid || mutation.isPending} className="btn btn-primary">{mutation.isPending ? 'Mengirim...' : 'Kirim Keputusan'}</button></div>
+      {keputusan === 'dikeluarkan' && (
+        <label className="mt-3 block max-w-sm">
+          <span className="label">Nomor OUT</span>
+          <input className="input" placeholder="Masukkan nomor OUT" value={noOut} onChange={(e) => setNoOut(e.target.value)} />
+        </label>
+      )}
+      {keputusan === 'dikembalikan' && (
+        <label className="mt-3 block">
+          <span className="label">Catatan pengembalian</span>
+          <textarea className="input min-h-16" placeholder="Alasan dikembalikan ke Operasi" value={catatan} onChange={(e) => setCatatan(e.target.value)} />
+        </label>
+      )}
+
+      <div className="mt-4 flex justify-end">
+        <button type="submit" disabled={!valid || mutation.isPending} className="btn btn-primary">
+          {mutation.isPending ? 'Mengirim...' : 'Kirim Keputusan'}
+        </button>
+      </div>
 
       <ConfirmDialog
         open={confirmOut}
         title="Kirim keputusan OUT?"
-        description={<><strong>{keluarCount} dikeluarkan</strong> &amp; <strong>{kembaliCount} dikembalikan</strong> pada PO <strong>{po.no_po}</strong> akan dikirim ke Operasi. Yang dikeluarkan lanjut diisi hasil produksinya; yang dikembalikan diajukan ulang. Lanjutkan?</>}
+        description={
+          keputusan === 'dikeluarkan'
+            ? <>Permintaan <strong>{formatNumber(item.gabah_diolah_kg)} kg</strong> akan <strong>dikeluarkan</strong> dengan No. OUT <strong>{noOut}</strong>. Operasi lanjut mengisi hasil produksi. Lanjutkan?</>
+            : <>Permintaan <strong>{formatNumber(item.gabah_diolah_kg)} kg</strong> akan <strong>dikembalikan</strong> ke Operasi untuk diajukan ulang. Lanjutkan?</>
+        }
         confirmLabel="Kirim Keputusan"
         loading={mutation.isPending}
         error={errorMessage}

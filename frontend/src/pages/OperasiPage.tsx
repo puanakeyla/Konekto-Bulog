@@ -1,180 +1,144 @@
-import { useState, type Dispatch, type SetStateAction } from 'react'
+import { useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import api from '../lib/api'
-import { usePoList, type PoItem, type PoDetailItem } from '../hooks/usePoList'
-import ConfirmDialog from '../components/ConfirmDialog'
 import { toast } from 'sonner'
+import api from '../lib/api'
 import { apiErrorMessage } from '../lib/apiError'
+import { useOperasiList, sudahIsiHasil, type PermintaanOperasi } from '../hooks/useOperasiList'
+import ConfirmDialog from '../components/ConfirmDialog'
 import { SkeletonPoCards } from '../components/Skeleton'
 import FormHero from '../components/FormHero'
 
-function formatNumber(value: string | number) {
+function formatNumber(value: string | number | null) {
+  if (value === null || value === '') return '-'
   return Number(value).toLocaleString('id-ID', { maximumFractionDigits: 2 })
 }
 
-// Status per IN (po_detail) diturunkan dari status_out data_operasi:
-//   belum ada / dikembalikan -> perlu ( re)ajukan permintaan
-//   menunggu_pengadaan       -> menunggu keputusan Pengadaan
-//   dikeluarkan + belum no_mo -> No. OUT keluar, tinggal isi hasil produksi
-const inPerluRequest = (d: PoDetailItem) => !d.data_operasi || d.data_operasi.status_out === 'dikembalikan'
-const inMenunggu = (d: PoDetailItem) => d.data_operasi?.status_out === 'menunggu_pengadaan'
-const inPerluHasil = (d: PoDetailItem) => d.data_operasi?.status_out === 'dikeluarkan' && !d.data_operasi.no_mo
-
-const poDibayar = (po: PoItem) => po.data_keuangan?.status_bayar === 'dibayarkan'
-const poPerluRequest = (po: PoItem) => poDibayar(po) && po.po_detail.some(inPerluRequest)
-const poMenunggu = (po: PoItem) => po.po_detail.some(inMenunggu)
-const poPerluHasil = (po: PoItem) => po.po_detail.some(inPerluHasil)
+function formatDateTime(value: string) {
+  return new Intl.DateTimeFormat('id-ID', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }).format(new Date(value))
+}
 
 export default function OperasiPage() {
-  const [page, setPage] = useState(1)
-  const { data: poResult, isLoading } = usePoList(page)
-  const poList = poResult?.items ?? []
-  const meta = poResult?.meta
+  const { data, isLoading } = useOperasiList()
+  const items = data?.items ?? []
 
-  const perluRequest = poList.filter(poPerluRequest)
-  const menunggu = poList.filter(poMenunggu)
-  const perluHasil = poList.filter(poPerluHasil)
-  const totalGabah = perluRequest.reduce(
-    (sum, po) => sum + po.po_detail.filter(inPerluRequest).reduce((a, d) => a + Number(d.kuantum_kontribusi || 0), 0),
-    0,
-  )
+  const menunggu = items.filter((i) => i.status_out === 'menunggu_pengadaan')
+  const dikembalikan = items.filter((i) => i.status_out === 'dikembalikan')
+  const perluHasil = items.filter((i) => i.status_out === 'dikeluarkan' && !i.no_mo)
+  const selesai = items.filter(sudahIsiHasil)
+  const totalDiproses = perluHasil.reduce((sum, i) => sum + Number(i.gabah_diolah_kg || 0), 0)
 
   return (
     <div className="min-h-screen bg-surface">
       <FormHero
         eyebrow="Perum Bulog Kanwil Lampung"
-        title="Operasi — Pengeluaran & Produksi"
-        subtitle="Ajukan permintaan pengeluaran stok ke Pengadaan, lalu isi hasil produksi setelah nomor OUT keluar."
         badge="Role Operasi"
+        title="Operasi — Pengeluaran Stok"
+        subtitle="Ajukan permintaan pengeluaran stok gabah ke Pengadaan. Setelah nomor OUT keluar, isi hasil produksi (MO, TM, HGL, dan turunannya)."
       />
 
-      <div className="relative mx-auto -mt-16 max-w-6xl space-y-6 px-6 pb-16">
+      <div className="relative mx-auto -mt-16 max-w-5xl space-y-6 px-6 pb-16">
         <div className="stats-grid">
-          <div className="stat-card"><div className="stat-label">Perlu permintaan</div><div className="stat-value">{perluRequest.length}</div></div>
           <div className="stat-card"><div className="stat-label">Menunggu Pengadaan</div><div className="stat-value">{menunggu.length}</div></div>
           <div className="stat-card"><div className="stat-label">Perlu isi hasil</div><div className="stat-value">{perluHasil.length}</div></div>
-          <div className="stat-card"><div className="stat-label">Kuantum antre (kg)</div><div className="stat-value">{formatNumber(totalGabah)}</div></div>
+          <div className="stat-card"><div className="stat-label">Dikembalikan</div><div className="stat-value">{dikembalikan.length}</div></div>
+          <div className="stat-card"><div className="stat-label">Gabah diproses (kg)</div><div className="stat-value">{formatNumber(totalDiproses)}</div></div>
         </div>
 
-        {/* 1. Permintaan pengeluaran stok */}
-        <section className="panel panel-pad">
-          <Toolbar title="Permintaan Pengeluaran Stok" desc="Ajukan jumlah gabah yang ingin diolah per IN ke Pengadaan." badge={`${perluRequest.length} PO`} />
-          {isLoading && <SkeletonPoCards />}
-          {!isLoading && perluRequest.length === 0 && (
-            <Empty title="Tidak ada PO yang perlu permintaan" copy="PO muncul setelah Keuangan menandai pembayaran sebagai dibayarkan." />
-          )}
-          <div className="space-y-4">{perluRequest.map((po) => <RequestForm key={po.id} po={po} />)}</div>
-          {meta && meta.last_page > 1 && <PaginationBar meta={meta} page={page} setPage={setPage} />}
-        </section>
+        <AjukanForm />
 
-        {/* 2. Isi hasil produksi (setelah OUT keluar) */}
-        <section className="panel panel-pad">
-          <Toolbar title="Isi Hasil Produksi" desc="Nomor OUT sudah keluar — isi No. MO/TM dan hasil giling per IN." badge={`${perluHasil.length} PO`} />
-          {!isLoading && perluHasil.length === 0 && (
-            <Empty title="Belum ada nomor OUT yang perlu diproses" copy="Hasil produksi bisa diisi setelah Pengadaan mengeluarkan nomor OUT." />
-          )}
-          <div className="space-y-4">{perluHasil.map((po) => <HasilForm key={po.id} po={po} />)}</div>
-        </section>
+        {isLoading && <SkeletonPoCards />}
 
-        {/* 3. Menunggu keputusan Pengadaan */}
-        <section className="panel panel-pad">
-          <Toolbar title="Menunggu Keputusan Pengadaan" desc="Permintaan terkirim, menunggu dikeluarkan atau dikembalikan." badge={`${menunggu.length} PO`} />
-          {!isLoading && menunggu.length === 0 && (
-            <Empty title="Tidak ada permintaan menunggu" copy="Permintaan yang dikirim akan tampil di sini sampai Pengadaan memutuskan." />
+        {dikembalikan.length > 0 && (
+          <Section title="Dikembalikan Pengadaan" desc="Perbaiki jumlah lalu ajukan ulang." count={dikembalikan.length} tone="danger">
+            {dikembalikan.map((item) => <DikembalikanCard key={item.id} item={item} />)}
+          </Section>
+        )}
+
+        {perluHasil.length > 0 && (
+          <Section title="Nomor OUT Sudah Keluar" desc="Isi hasil produksi untuk batch ini." count={perluHasil.length} tone="accent">
+            {perluHasil.map((item) => <HasilForm key={item.id} item={item} />)}
+          </Section>
+        )}
+
+        <Section title="Menunggu Keputusan Pengadaan" desc="Permintaan terkirim, menunggu nomor OUT." count={menunggu.length}>
+          {menunggu.length === 0 && !isLoading && (
+            <div className="empty-state"><div className="empty-title">Tidak ada permintaan menunggu</div><p className="empty-copy">Ajukan pengeluaran stok di form atas.</p></div>
           )}
-          <div className="space-y-4">{menunggu.map((po) => <MenungguCard key={po.id} po={po} />)}</div>
-        </section>
+          {menunggu.map((item) => <RingkasCard key={item.id} item={item} badge="Menunggu Pengadaan" tone="warning" />)}
+        </Section>
+
+        {selesai.length > 0 && (
+          <Section title="Riwayat Batch Selesai" desc="Hasil produksi sudah diisi." count={selesai.length}>
+            {selesai.map((item) => <RingkasCard key={item.id} item={item} badge={item.data_gudang ? 'Diterima Gudang' : 'Menunggu Gudang'} tone="success" />)}
+          </Section>
+        )}
       </div>
     </div>
   )
 }
 
-function Toolbar({ title, desc, badge }: { title: string; desc: string; badge: string }) {
+function Section({ title, desc, count, tone, children }: { title: string; desc: string; count: number; tone?: 'accent' | 'danger' | 'success'; children: React.ReactNode }) {
+  const badgeClass = tone === 'danger' ? 'badge badge-danger' : tone === 'accent' ? 'badge badge-warning' : 'badge'
   return (
-    <div className="toolbar-card mb-4">
-      <div><h2 className="section-title">{title}</h2><p className="page-subtitle">{desc}</p></div>
-      <span className="badge badge-warning">{badge}</span>
-    </div>
-  )
-}
-
-function Empty({ title, copy }: { title: string; copy: string }) {
-  return <div className="empty-state"><div className="empty-title">{title}</div><p className="empty-copy">{copy}</p></div>
-}
-
-function PaginationBar({ meta, page, setPage }: { meta: { current_page: number; last_page: number; total: number; from: number | null; to: number | null }; page: number; setPage: Dispatch<SetStateAction<number>> }) {
-  return (
-    <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm text-muted">
-      <span>Menampilkan {meta.from ?? 0}-{meta.to ?? 0} dari {meta.total} PO</span>
-      <div className="flex gap-2">
-        <button className="btn btn-ghost" disabled={page <= 1} onClick={() => setPage((prev) => Math.max(1, prev - 1))}>Sebelumnya</button>
-        <span className="badge">Halaman {meta.current_page}/{meta.last_page}</span>
-        <button className="btn btn-ghost" disabled={page >= meta.last_page} onClick={() => setPage((prev) => prev + 1)}>Berikutnya</button>
+    <section className="panel panel-pad">
+      <div className="toolbar-card mb-4">
+        <div><h2 className="section-title">{title}</h2><p className="page-subtitle">{desc}</p></div>
+        <span className={badgeClass}>{count}</span>
       </div>
-    </div>
+      <div className="space-y-4">{children}</div>
+    </section>
   )
 }
 
-function PoHeader({ po, right }: { po: PoItem; right: React.ReactNode }) {
-  return (
-    <div className="po-card-header">
-      <div><div className="po-title">{po.no_po}</div><div className="po-meta">Pemasok {po.id_pemasok} - {formatNumber(po.total_kuantum)} kg - No. SPP {po.no_spp ?? '-'}</div></div>
-      {right}
-    </div>
-  )
-}
-
-// --- 1. Form permintaan pengeluaran stok (gabah diolah) ---
-function RequestForm({ po }: { po: PoItem }) {
+// Form utama: Operasi mengajukan jumlah gabah bebas (tidak terikat PO/IN).
+function AjukanForm() {
   const queryClient = useQueryClient()
-  const details = po.po_detail.filter(inPerluRequest)
-  const [values, setValues] = useState<Record<number, string>>(() =>
-    Object.fromEntries(details.map((d) => [d.id, d.kuantum_kontribusi ?? ''])),
-  )
+  const [jumlah, setJumlah] = useState('')
   const [confirm, setConfirm] = useState(false)
 
-  const allValid = details.every((d) => values[d.id]?.trim() && Number(values[d.id]) > 0)
-
   const mutation = useMutation({
-    mutationFn: () =>
-      api.post(`/api/po/${po.id}/operasi`, {
-        items: details.map((d) => ({ po_detail_id: d.id, gabah_diolah_kg: Number(values[d.id]) })),
-      }),
+    mutationFn: () => api.post('/api/operasi', { gabah_diolah_kg: Number(jumlah) }),
     onSuccess: () => {
       setConfirm(false)
-      queryClient.invalidateQueries({ queryKey: ['po-list'] })
-      toast.success(`Permintaan pengeluaran stok PO ${po.no_po} dikirim ke Pengadaan.`)
+      setJumlah('')
+      queryClient.invalidateQueries({ queryKey: ['operasi-list'] })
+      toast.success('Permintaan pengeluaran stok terkirim ke Pengadaan.')
     },
-    onError: (err) => toast.error(apiErrorMessage(err, 'Gagal mengirim permintaan Operasi.')),
+    onError: (err) => toast.error(apiErrorMessage(err, 'Gagal mengirim permintaan.')),
   })
 
   const errorMessage = (mutation.error as { response?: { data?: { message?: string } } } | null)?.response?.data?.message
+  const valid = jumlah.trim() !== '' && Number(jumlah) > 0
 
   return (
-    <form className="po-card @container" onSubmit={(e) => { e.preventDefault(); setConfirm(true) }}>
-      <PoHeader po={po} right={<span className="badge badge-success">Sudah dibayar</span>} />
-      {errorMessage && <div className="alert-danger mb-3">{errorMessage}</div>}
-
-      {details.map((d) => (
-        <div key={d.id} className="mb-4 rounded-lg border border-border bg-surface p-3">
-          <div className="section-title mb-3">IN {d.transaksi_id} — {formatNumber(d.kuantum_kontribusi)} kg{d.no_in ? ` — No. IN ${d.no_in}` : ''}</div>
-          {d.data_operasi?.status_out === 'dikembalikan' && d.data_operasi.catatan_pengembalian && (
-            <div className="alert-warning mb-3">Dikembalikan Pengadaan: {d.data_operasi.catatan_pengembalian}. Perbaiki jumlah lalu ajukan lagi.</div>
-          )}
-          <div className="grid gap-4 @md:grid-cols-2">
-            <Field label="Gabah diolah (kg)">
-              <input required type="number" step="0.01" min="0" className="input" value={values[d.id] ?? ''} onChange={(e) => setValues((prev) => ({ ...prev, [d.id]: e.target.value }))} />
-            </Field>
+    <form className="panel overflow-hidden" onSubmit={(e) => { e.preventDefault(); setConfirm(true) }}>
+      <div className="border-b border-border px-5 py-4">
+        <div className="flex items-center gap-3">
+          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-primary to-primary-dark text-lg font-bold text-white shadow-sm shadow-primary/20">+</span>
+          <div>
+            <h2 className="section-title">Ajukan Pengeluaran Stok</h2>
+            <p className="mt-0.5 text-xs text-slate-500">Isi jumlah gabah yang ingin diolah. Bebas, tidak terikat nomor IN.</p>
           </div>
         </div>
-      ))}
-
-      <div className="mt-4 flex justify-end"><button type="submit" disabled={!allValid || mutation.isPending} className="btn btn-primary">{mutation.isPending ? 'Mengirim...' : 'Kirim Permintaan OUT'}</button></div>
+      </div>
+      <div className="px-5 py-5">
+        {errorMessage && <div className="alert-danger mb-3">{errorMessage}</div>}
+        <label className="block max-w-sm">
+          <span className="label">Gabah diolah (kg)</span>
+          <input required type="number" step="0.01" min="0.01" className="input" placeholder="Contoh: 15000" value={jumlah} onChange={(e) => setJumlah(e.target.value)} />
+        </label>
+      </div>
+      <div className="flex flex-col gap-3 bg-primary-tint/40 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+        <p className="text-xs text-slate-500">Permintaan dikirim ke Pengadaan untuk dikeluarkan atau dikembalikan.</p>
+        <button type="submit" disabled={!valid || mutation.isPending} className="rounded-lg bg-accent px-6 py-2.5 text-sm font-bold text-primary-dark shadow-sm transition-all hover:bg-primary hover:text-white hover:shadow-md disabled:cursor-not-allowed disabled:opacity-60">
+          {mutation.isPending ? 'Mengirim...' : 'Kirim Permintaan'}
+        </button>
+      </div>
 
       <ConfirmDialog
         open={confirm}
         title="Kirim permintaan pengeluaran stok?"
-        description={<>Permintaan untuk <strong>{details.length} IN</strong> pada PO <strong>{po.no_po}</strong> akan dikirim ke <strong>Pengadaan</strong> untuk diputuskan dikeluarkan atau dikembalikan. Lanjutkan?</>}
+        description={<>Permintaan pengeluaran <strong>{formatNumber(jumlah)} kg</strong> gabah akan dikirim ke <strong>Pengadaan</strong>. Lanjutkan?</>}
         confirmLabel="Kirim Permintaan"
         loading={mutation.isPending}
         error={errorMessage}
@@ -185,82 +149,133 @@ function RequestForm({ po }: { po: PoItem }) {
   )
 }
 
-// --- 2. Form isi hasil produksi (setelah OUT keluar) ---
-type HasilRow = { no_mo: string; no_tm: string; hgl_kg: string; broken_kg: string; menir_kg: string; katul_kg: string }
-const emptyHasil: HasilRow = { no_mo: '', no_tm: '', hgl_kg: '', broken_kg: '', menir_kg: '', katul_kg: '' }
-
-function rendemenOf(hgl: string, gabah: string | null) {
-  const h = Number(hgl)
-  const g = Number(gabah)
-  if (!hgl.trim() || !g) return ''
-  return (h / g * 100).toFixed(2)
+function CardHeader({ item, badge, tone }: { item: PermintaanOperasi; badge: string; tone: 'warning' | 'success' | 'danger' | 'accent' }) {
+  const cls = tone === 'success' ? 'badge badge-success' : tone === 'danger' ? 'badge badge-danger' : 'badge badge-warning'
+  return (
+    <div className="po-card-header">
+      <div>
+        <div className="po-title">{formatNumber(item.gabah_diolah_kg)} kg gabah{item.no_out ? ` — No. OUT ${item.no_out}` : ''}</div>
+        <div className="po-meta">Diajukan {formatDateTime(item.created_at)}{item.creator ? ` oleh ${item.creator.username}` : ''}</div>
+      </div>
+      <span className={cls}>{badge}</span>
+    </div>
+  )
 }
 
-function HasilForm({ po }: { po: PoItem }) {
+function RingkasCard({ item, badge, tone }: { item: PermintaanOperasi; badge: string; tone: 'warning' | 'success' }) {
+  return (
+    <div className="po-card">
+      <CardHeader item={item} badge={badge} tone={tone} />
+      {item.no_mo && (
+        <div className="grid gap-2 text-sm sm:grid-cols-2">
+          <Info label="No. MO" value={item.no_mo} />
+          <Info label="No. TM" value={item.no_tm} />
+          <Info label="HGL (kg)" value={formatNumber(item.hgl_kg)} />
+          <Info label="Rendemen" value={item.rendemen_persen ? `${item.rendemen_persen}%` : '-'} />
+        </div>
+      )}
+    </div>
+  )
+}
+
+function Info({ label, value }: { label: string; value: string | null }) {
+  return (
+    <div className="flex justify-between gap-4 border-t border-border/70 pt-2">
+      <span className="text-gray-500">{label}</span>
+      <span className="text-right font-medium text-primary-dark">{value ?? '-'}</span>
+    </div>
+  )
+}
+
+// Permintaan dikembalikan Pengadaan -> Operasi perbaiki jumlah lalu ajukan ulang.
+function DikembalikanCard({ item }: { item: PermintaanOperasi }) {
   const queryClient = useQueryClient()
-  const details = po.po_detail.filter(inPerluHasil)
-  const [rows, setRows] = useState<Record<number, HasilRow>>(() => Object.fromEntries(details.map((d) => [d.id, { ...emptyHasil }])))
+  const [jumlah, setJumlah] = useState(String(Number(item.gabah_diolah_kg)))
+
+  const mutation = useMutation({
+    mutationFn: () => api.patch(`/api/operasi/${item.id}`, { gabah_diolah_kg: Number(jumlah) }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['operasi-list'] })
+      toast.success('Permintaan diajukan ulang ke Pengadaan.')
+    },
+    onError: (err) => toast.error(apiErrorMessage(err, 'Gagal mengajukan ulang.')),
+  })
+
+  return (
+    <form className="po-card" onSubmit={(e) => { e.preventDefault(); mutation.mutate() }}>
+      <CardHeader item={item} badge="Dikembalikan" tone="danger" />
+      {item.catatan_pengembalian && <div className="alert-danger mb-3">Catatan Pengadaan: {item.catatan_pengembalian}</div>}
+      <div className="flex flex-wrap items-end gap-3">
+        <label className="block w-52">
+          <span className="label">Gabah diolah (kg)</span>
+          <input required type="number" step="0.01" min="0.01" className="input" value={jumlah} onChange={(e) => setJumlah(e.target.value)} />
+        </label>
+        <button type="submit" disabled={mutation.isPending || Number(jumlah) <= 0} className="btn btn-primary">
+          {mutation.isPending ? 'Mengirim...' : 'Ajukan Ulang'}
+        </button>
+      </div>
+    </form>
+  )
+}
+
+// Setelah No. OUT keluar: Operasi mengisi hasil produksi. Rendemen dihitung otomatis backend.
+function HasilForm({ item }: { item: PermintaanOperasi }) {
+  const queryClient = useQueryClient()
+  const [form, setForm] = useState({ no_mo: '', no_tm: '', hgl_kg: '', broken_kg: '', menir_kg: '', katul_kg: '' })
   const [confirm, setConfirm] = useState(false)
 
-  const setField = (id: number, key: keyof HasilRow, value: string) =>
-    setRows((prev) => ({ ...prev, [id]: { ...prev[id], [key]: value } }))
-
-  const allValid = details.every((d) => rows[d.id]?.no_mo.trim() && rows[d.id]?.no_tm.trim())
+  const set = (key: keyof typeof form, value: string) => setForm((prev) => ({ ...prev, [key]: value }))
   const num = (v: string) => (v.trim() !== '' ? Number(v) : undefined)
 
   const mutation = useMutation({
     mutationFn: () =>
-      api.post(`/api/po/${po.id}/operasi/hasil`, {
-        items: details.map((d) => ({
-          po_detail_id: d.id,
-          no_mo: rows[d.id].no_mo,
-          no_tm: rows[d.id].no_tm,
-          hgl_kg: num(rows[d.id].hgl_kg),
-          broken_kg: num(rows[d.id].broken_kg),
-          menir_kg: num(rows[d.id].menir_kg),
-          katul_kg: num(rows[d.id].katul_kg),
-          rendemen_persen: num(rendemenOf(rows[d.id].hgl_kg, d.data_operasi?.gabah_diolah_kg ?? null)),
-        })),
+      api.post(`/api/operasi/${item.id}/hasil`, {
+        no_mo: form.no_mo,
+        no_tm: form.no_tm,
+        hgl_kg: num(form.hgl_kg),
+        broken_kg: num(form.broken_kg),
+        menir_kg: num(form.menir_kg),
+        katul_kg: num(form.katul_kg),
       }),
     onSuccess: () => {
       setConfirm(false)
-      queryClient.invalidateQueries({ queryKey: ['po-list'] })
-      toast.success(`Hasil produksi PO ${po.no_po} tersimpan, transaksi lanjut ke Gudang.`)
+      queryClient.invalidateQueries({ queryKey: ['operasi-list'] })
+      toast.success('Hasil produksi tersimpan, batch siap diterima Gudang.')
     },
     onError: (err) => toast.error(apiErrorMessage(err, 'Gagal menyimpan hasil produksi.')),
   })
 
   const errorMessage = (mutation.error as { response?: { data?: { message?: string } } } | null)?.response?.data?.message
+  const valid = form.no_mo.trim() && form.no_tm.trim()
+  const gabah = Number(item.gabah_diolah_kg || 0)
+  const rendemenPreview = form.hgl_kg.trim() !== '' && gabah > 0 ? ((Number(form.hgl_kg) / gabah) * 100).toFixed(2) : null
 
   return (
     <form className="po-card @container" onSubmit={(e) => { e.preventDefault(); setConfirm(true) }}>
-      <PoHeader po={po} right={<span className="badge badge-warning">Nomor OUT keluar</span>} />
+      <CardHeader item={item} badge="Siap diproses" tone="accent" />
       {errorMessage && <div className="alert-danger mb-3">{errorMessage}</div>}
-
-      {details.map((d) => (
-        <div key={d.id} className="mb-4 rounded-lg border border-border bg-surface p-3">
-          <div className="section-title mb-1">IN {d.transaksi_id}{d.no_in ? ` — No. IN ${d.no_in}` : ''}</div>
-          <p className="mb-3 text-xs text-muted">No. OUT {d.data_operasi?.no_out ?? '-'} · Gabah diolah {formatNumber(d.data_operasi?.gabah_diolah_kg ?? 0)} kg</p>
-          <div className="grid gap-4 @md:grid-cols-2">
-            <Field label="No. MO"><input required className="input" value={rows[d.id].no_mo} onChange={(e) => setField(d.id, 'no_mo', e.target.value)} /></Field>
-            <Field label="No. TM"><input required className="input" value={rows[d.id].no_tm} onChange={(e) => setField(d.id, 'no_tm', e.target.value)} /></Field>
-            <Field label="HGL (kg)"><input type="number" step="0.01" min="0" className="input" value={rows[d.id].hgl_kg} onChange={(e) => setField(d.id, 'hgl_kg', e.target.value)} /></Field>
-            <Field label="Broken (kg)"><input type="number" step="0.01" min="0" className="input" value={rows[d.id].broken_kg} onChange={(e) => setField(d.id, 'broken_kg', e.target.value)} /></Field>
-            <Field label="Menir (kg)"><input type="number" step="0.01" min="0" className="input" value={rows[d.id].menir_kg} onChange={(e) => setField(d.id, 'menir_kg', e.target.value)} /></Field>
-            <Field label="Katul (kg)"><input type="number" step="0.01" min="0" className="input" value={rows[d.id].katul_kg} onChange={(e) => setField(d.id, 'katul_kg', e.target.value)} /></Field>
-            <Field label="Rendemen (%) — otomatis dari HGL ÷ gabah diolah">
-              <input readOnly className="input bg-primary-tint/40" value={rendemenOf(rows[d.id].hgl_kg, d.data_operasi?.gabah_diolah_kg ?? null) || '-'} />
-            </Field>
-          </div>
-        </div>
-      ))}
-
-      <div className="mt-4 flex justify-end"><button type="submit" disabled={!allValid || mutation.isPending} className="btn btn-primary">{mutation.isPending ? 'Menyimpan...' : 'Simpan Hasil Produksi'}</button></div>
+      <div className="grid gap-4 @md:grid-cols-2">
+        <Field label="No. MO"><input required className="input" value={form.no_mo} onChange={(e) => set('no_mo', e.target.value)} /></Field>
+        <Field label="No. TM"><input required className="input" value={form.no_tm} onChange={(e) => set('no_tm', e.target.value)} /></Field>
+        <Field label="HGL (kg)"><input type="number" step="0.01" min="0" className="input" value={form.hgl_kg} onChange={(e) => set('hgl_kg', e.target.value)} /></Field>
+        <Field label="Broken (kg)"><input type="number" step="0.01" min="0" className="input" value={form.broken_kg} onChange={(e) => set('broken_kg', e.target.value)} /></Field>
+        <Field label="Menir (kg)"><input type="number" step="0.01" min="0" className="input" value={form.menir_kg} onChange={(e) => set('menir_kg', e.target.value)} /></Field>
+        <Field label="Katul (kg)"><input type="number" step="0.01" min="0" className="input" value={form.katul_kg} onChange={(e) => set('katul_kg', e.target.value)} /></Field>
+      </div>
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4">
+        <p className="text-xs text-slate-500">
+          Rendemen otomatis = HGL ÷ {formatNumber(item.gabah_diolah_kg)} kg
+          {rendemenPreview && <span className="ml-1 font-bold text-primary">= {rendemenPreview}%</span>}
+        </p>
+        <button type="submit" disabled={!valid || mutation.isPending} className="btn btn-primary">
+          {mutation.isPending ? 'Menyimpan...' : 'Simpan Hasil Produksi'}
+        </button>
+      </div>
 
       <ConfirmDialog
         open={confirm}
         title="Simpan hasil produksi?"
-        description={<>Hasil produksi <strong>{details.length} IN</strong> pada PO <strong>{po.no_po}</strong> akan disimpan. Jika seluruh IN lengkap, transaksi lanjut ke <strong>Gudang</strong>. Lanjutkan?</>}
+        description={<>Hasil produksi batch <strong>No. OUT {item.no_out}</strong> akan disimpan dan diteruskan ke <strong>Gudang</strong>. Lanjutkan?</>}
         confirmLabel="Simpan Hasil"
         loading={mutation.isPending}
         error={errorMessage}
@@ -268,31 +283,6 @@ function HasilForm({ po }: { po: PoItem }) {
         onConfirm={() => mutation.mutate()}
       />
     </form>
-  )
-}
-
-// --- 3. Kartu status permintaan yang menunggu keputusan Pengadaan ---
-function MenungguCard({ po }: { po: PoItem }) {
-  const details = po.po_detail.filter(inMenunggu)
-  return (
-    <div className="po-card">
-      <PoHeader po={po} right={<span className="badge badge-warning">Menunggu Pengadaan</span>} />
-      <div className="data-table-wrap">
-        <table className="data-table">
-          <thead><tr><th>ID Transaksi</th><th>No. IN</th><th>Gabah diolah (kg)</th><th>Status</th></tr></thead>
-          <tbody>
-            {details.map((d) => (
-              <tr key={d.id}>
-                <td className="font-semibold text-primary-dark">{d.transaksi_id}</td>
-                <td>{d.no_in ?? '-'}</td>
-                <td>{formatNumber(d.data_operasi?.gabah_diolah_kg ?? 0)}</td>
-                <td><span className="badge badge-warning">Menunggu keputusan</span></td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
   )
 }
 

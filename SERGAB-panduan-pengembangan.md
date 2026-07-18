@@ -13,8 +13,10 @@
 
 SERGAB adalah sistem digitalisasi alur pengadaan/serap gabah untuk Perum BULOG Kanwil Lampung, menggantikan proses manual dengan alur kerja bertahap (workflow) lintas 7 role, mendukung dua skema pengadaan:
 
-- **TJP** (Tebus Jemput Pangan): Jemput Pangan → Makloon → UB Jastasma → Pengadaan → Keuangan → Operasi → Gudang (7 tahap)
-- **MPP** (Makloon Pengadaan Pangan): Makloon → UB Jastasma → Pengadaan → Keuangan → Operasi → Gudang (6 tahap)
+- **TJP** (Tebus Jemput Pangan): Jemput Pangan → Makloon → UB Jastasma → Pengadaan → Keuangan (5 tahap)
+- **MPP** (Makloon Pengadaan Pangan): Makloon → UB Jastasma → Pengadaan → Keuangan (4 tahap)
+
+**Operasi & Gudang bukan tahap timeline.** Keduanya adalah **modul mandiri** yang lepas dari transaksi/PO: Operasi mengajukan permintaan pengeluaran stok (jumlah gabah bebas, bukan per IN) ke Pengadaan; Pengadaan memutuskan `dikeluarkan` (mengisi No. OUT manual) atau `dikembalikan` (dengan catatan); setelah No. OUT keluar Operasi mengisi hasil produksi (MO, TM, HGL, Broken, Menir, Katul, Rendemen = HGL ÷ gabah diolah); Gudang menerima per batch permintaan tersebut.
 
 **Konteks**: dikembangkan sebagai proyek PKL, dengan potensi berlanjut ke produksi sungguhan di BULOG Kanwil Lampung. Arsitektur dibangun dengan asumsi produksi sejak awal, tanpa over-engineering di fase demo.
 
@@ -194,11 +196,11 @@ Admin adalah role tambahan di luar 7 role operasional, dengan karakteristik:
 | status_bayar | enum('belum','dibayarkan') |
 | tanggal_bayar | date nullable |
 
-### `data_operasi` (per IN / per `po_detail`)
+### `permintaan_operasi` (mandiri — TIDAK terikat PO/IN)
 | Kolom | Tipe |
 |---|---|
 | id | bigint PK |
-| po_detail_id | bigint FK unik |
+| created_by | bigint FK users — user Operasi pengaju |
 | gabah_diolah_kg | decimal(12,2) nullable — jumlah gabah yang diminta Operasi untuk diolah |
 | status_out | varchar — `menunggu_pengadaan` \| `dikeluarkan` \| `dikembalikan` |
 | no_out | varchar nullable unik — diisi Pengadaan manual saat `dikeluarkan` |
@@ -209,15 +211,16 @@ Admin adalah role tambahan di luar 7 role operasional, dengan karakteristik:
 | rendemen_persen | decimal(5,2) nullable — otomatis = HGL ÷ gabah_diolah × 100 |
 
 > **Operasi adalah loop independen dengan Pengadaan (bukan tahap timeline berurutan).** Alurnya:
-> 1. **Operasi** membuat permintaan pengeluaran stok per IN dengan `gabah_diolah_kg` (`POST /api/po/{id}/operasi`).
-> 2. **Pengadaan** memutuskan tiap permintaan (`PATCH /api/po/{id}/out`): `dikeluarkan` (isi No. OUT manual) atau `dikembalikan` (isi catatan → Operasi ajukan ulang).
-> 3. Setelah No. OUT keluar, **Operasi** mengisi No. MO/TM + hasil produksi (`POST /api/po/{id}/operasi/hasil`). Begitu semua IN punya hasil, transaksi lanjut ke Gudang.
+> 1. **Operasi** membuat permintaan pengeluaran stok dengan `gabah_diolah_kg` **bebas** — bukan per IN, tidak memilih PO (`POST /api/operasi`).
+> 2. **Pengadaan** memutuskan permintaan (`PATCH /api/operasi/{id}/out`): `dikeluarkan` (isi No. OUT manual) atau `dikembalikan` (isi catatan → Operasi ajukan ulang via `PATCH /api/operasi/{id}`).
+> 3. Setelah No. OUT keluar, **Operasi** mengisi No. MO/TM + hasil produksi (`POST /api/operasi/{id}/hasil`); Rendemen dihitung otomatis = HGL ÷ gabah diolah × 100.
+> 4. **Gudang** menerima hasil produksi per batch permintaan (`POST /api/operasi/{id}/gudang`).
 
 ### `data_gudang`
 | Kolom | Tipe |
 |---|---|
 | id | bigint PK |
-| data_operasi_id | bigint FK |
+| permintaan_operasi_id | bigint FK unik |
 | tanggal_masuk | date |
 | nama_gudang | varchar |
 | realisasi_hgl | decimal(10,2) |
@@ -254,10 +257,12 @@ Admin adalah role tambahan di luar 7 role operasional, dengan karakteristik:
 | `POST /api/pengadaan/gabungkan-po` | Gabungkan beberapa transaksi jadi satu PO |
 | `PATCH /api/po/{id}` | Update harga/status PO |
 | `PATCH /api/po/{id}/pembayaran` | Update status pembayaran (Keuangan) |
-| `POST /api/po/{id}/operasi` | Operasi: buat permintaan pengeluaran stok per IN (`gabah_diolah_kg`) |
-| `PATCH /api/po/{id}/out` | Pengadaan: putuskan tiap permintaan — `dikeluarkan` (isi No. OUT) / `dikembalikan` (isi catatan) |
-| `POST /api/po/{id}/operasi/hasil` | Operasi: isi No. MO/TM + hasil produksi setelah No. OUT keluar |
-| `POST /api/po/{id}/gudang` | Input data penerimaan Gudang per IN |
+| `GET /api/operasi` | List permintaan pengeluaran stok (Operasi/Pengadaan/Gudang) |
+| `POST /api/operasi` | Operasi: ajukan pengeluaran stok, `gabah_diolah_kg` bebas (tidak terikat PO/IN) |
+| `PATCH /api/operasi/{id}` | Operasi: ajukan ulang permintaan yang dikembalikan |
+| `PATCH /api/operasi/{id}/out` | Pengadaan: `dikeluarkan` (isi No. OUT) / `dikembalikan` (isi catatan) |
+| `POST /api/operasi/{id}/hasil` | Operasi: isi No. MO/TM + hasil produksi setelah No. OUT keluar |
+| `POST /api/operasi/{id}/gudang` | Gudang: catat penerimaan per batch permintaan |
 | `GET/POST/PATCH/DELETE /api/admin/users` | CRUD user & role — khusus Admin (untuk Makloon, sertakan `nama_maklon`) |
 | `GET /api/makloon-options` | Daftar ringan `{id, nama_maklon}` user ber-role Makloon — sumber combobox (Bagian 7.4), dapat diakses semua role yang butuh memilih makloon |
 | `GET /api/monitoring/sebaran-tahap` | Jumlah transaksi per tahap, per skema (Bagian 7.5a) |
@@ -405,7 +410,7 @@ src/
 
 Bagian ini sengaja dipisah karena ada beberapa detail yang saya asumsikan berdasarkan diskusi kita, **belum dikonfirmasi eksplisit** — mohon direview sebelum implementasi dimulai. (Asumsi soal visibilitas field TJP, Admin bypass, dan penyimpanan foto sudah dikonfirmasi dan tidak lagi masuk daftar ini.)
 
-1. **Level Operasi & Gudang**: saya tempatkan di level PO (satu PO → satu data Operasi → satu data Gudang), karena Pengadaan sudah menggabungkan banyak transaksi jadi satu PO. Kalau kenyataannya satu MO/TM bisa berasal dari beberapa PO sekaligus (atau sebaliknya), relasinya perlu diubah jadi many-to-many.
+1. **Level Operasi & Gudang** — *(TERJAWAB 2026-07-18)*: Operasi **tidak terikat PO/IN sama sekali**. Operasi adalah modul mandiri yang mengajukan pengeluaran stok dengan jumlah bebas (`permintaan_operasi`), disetujui Pengadaan lewat No. OUT, lalu Gudang menerima per batch permintaan. Asumsi lama (level PO / per-IN) sudah dibatalkan.
 2. **Satu user = satu role**: saya asumsikan tidak ada user yang punya lebih dari satu role sekaligus (termasuk Admin — asumsi: Admin adalah role terpisah, bukan tambahan di atas role operasional). Kalau ada petugas yang bisa berperan ganda, permission perlu disesuaikan.
 3. **Reset nomor urut ID transaksi**: format `00001/bulan/tahun/skema` saya asumsikan nomor urut reset tiap bulan. Kalau resetnya per tahun atau tidak reset sama sekali, perlu diperjelas sebelum dibuat trigger/logic auto-increment-nya.
 4. **Provider cloud spesifik**: Anda sebutkan cloud (VPS/AWS/GCP) tapi belum ditentukan provider mana — ini menentukan detail setup nginx/PHP-FPM saat deployment, meski tidak mengubah keputusan disk lokal untuk foto.
