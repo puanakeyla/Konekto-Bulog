@@ -67,7 +67,7 @@ export default function MonitoringPage() {
         <div className="work-layout">
           <section className="panel panel-pad">
             <div className="toolbar-card mb-4">
-              <div><h2 className="section-title">Sebaran Tahap Saat Ini</h2><p className="page-subtitle">Data tersambung ke GET /api/monitoring/sebaran-tahap.</p></div>
+              <div><h2 className="section-title">Sebaran Tahap Saat Ini</h2></div>
             </div>
             {loadingSebaran && <SkeletonSebaranTahap />}
             <div className="grid gap-4 lg:grid-cols-2">
@@ -133,7 +133,7 @@ export default function MonitoringPage() {
 
           <section className="panel panel-pad">
             <div className="toolbar-card mb-4">
-              <div><h2 className="section-title">Makloon Terdaftar</h2><p className="page-subtitle">Data tersambung ke GET /api/monitoring/makloon.</p></div>
+              <div><h2 className="section-title">Makloon Terdaftar</h2></div>
               <div className="flex flex-wrap gap-2">
                 {(['semua', 'TJP', 'MPP'] as const).map((item) => <button key={item} className={`btn ${filter === item ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setFilter(item)}>{item === 'semua' ? 'Semua' : item}</button>)}
               </div>
