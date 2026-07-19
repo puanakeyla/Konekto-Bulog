@@ -1,6 +1,8 @@
 import { useMemo, useState, type ReactNode } from 'react'
-import { Link, NavLink } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
+import { useRekapTransaksi, type RekapTransaksi } from '../hooks/useRekapTransaksi'
+import { useOperasiList, type PermintaanOperasi } from '../hooks/useOperasiList'
 import { useTransaksiList, type TransaksiListItem } from '../hooks/useTransaksiList'
 import { SkeletonMakloonGroups, SkeletonTable } from '../components/Skeleton'
 
@@ -33,37 +35,7 @@ const ROLE_SUBTITLE: Record<string, string> = {
   makloon: 'Kelola bongkar dan proses gabah dari mitra dengan rapi dan tepat waktu.',
 }
 
-// Tombol aksi utama per role -- kondisi identik dengan versi lama, hanya dipindah ke hero.
-function buildActions(role: string): { to: string; label: string }[] {
-  const a: { to: string; label: string }[] = []
-  if (role === 'admin') {
-    a.push(
-      { to: '/admin/users', label: 'Kelola User' },
-      { to: '/admin/makloon', label: 'Kelola Makloon' },
-      { to: '/monitoring', label: 'Monitoring' },
-      { to: '/rekap', label: 'Rekap Data' },
-      { to: '/pengadaan', label: 'Keputusan Pengeluaran Stok' },
-      { to: '/keuangan', label: 'Kelola Pembayaran PO' },
-      { to: '/operasi', label: 'Input Data Operasi' },
-      { to: '/operasi/rekap', label: 'Rekap Hasil Operasi' },
-      { to: '/gudang', label: 'Input Penerimaan Gudang' },
-      { to: '/gudang/rekap', label: 'Rekap Penerimaan Gudang' },
-      { to: '/admin/audit-logs', label: 'Audit Log' },
-    )
-    return a
-  }
-  if (role === 'jemput_pangan') a.push({ to: '/transaksi/baru', label: 'Buat Transaksi Jemput Pangan' })
-  if (role === 'makloon') a.push({ to: '/transaksi/baru-mpp', label: 'Buat Baru (MPP)' })
-  // Rekap tabel lintas tahap (kolom kumulatif sesuai role).
-  if (['jemput_pangan', 'makloon', 'ub_jastasma', 'pengadaan', 'keuangan'].includes(role)) {
-    a.push({ to: '/rekap', label: 'Rekap Data' })
-  }
-  if (role === 'pengadaan' || role === 'admin') a.push({ to: '/pengadaan', label: 'Keputusan Pengeluaran Stok' })
-  if (role === 'keuangan' || role === 'admin') a.push({ to: '/keuangan', label: 'Kelola Pembayaran PO' })
-  if (role === 'operasi' || role === 'admin') a.push({ to: '/operasi', label: 'Input Data Operasi' }, { to: '/operasi/rekap', label: 'Rekap Hasil Operasi' })
-  if (role === 'gudang' || role === 'admin') a.push({ to: '/gudang', label: 'Input Penerimaan Gudang' }, { to: '/gudang/rekap', label: 'Rekap Penerimaan Gudang' })
-  return a
-}
+const ACTIVE_STAT_ROLES = new Set(['jemput_pangan', 'ub_jastasma', 'pengadaan', 'keuangan'])
 
 type MakloonGroup = {
   nama: string
@@ -115,12 +87,159 @@ function StatusBadge({ status }: { status: string }) {
   return <span className={`badge ${cls} capitalize`}>{status.replaceAll('_', ' ')}</span>
 }
 
+function num(value: string | number | null | undefined) {
+  if (value === null || value === undefined || value === '') return 0
+  return Number(value) || 0
+}
+
+function fmt(value: number) {
+  return new Intl.NumberFormat('id-ID', { maximumFractionDigits: 0 }).format(value)
+}
+
+function pct(value: number) {
+  return `${new Intl.NumberFormat('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value)}%`
+}
+
+type PantauanRow = {
+  nama: string
+  gabahDiterima: number
+  gabahAdministrasi: number
+  belumDiadministrasi: number
+  gabahSudahDiolah: number
+  stokGudangAdmAda: number
+  hgl: number
+  broken: number
+  menir: number
+  katul: number
+  rataRendemen: number
+  realisasiPenerimaanHgb: number
+  hglBelumAdministrasi: number
+  persenDiolah: number
+}
+
+type OperasiTotals = {
+  gabahDiolah: number
+  hgl: number
+  broken: number
+  menir: number
+  katul: number
+  rendemenPersen: number
+  realisasiPenerimaanHgb: number
+}
+
+function kontribusiPo(row: RekapTransaksi) {
+  return num(row.data_pengadaan?.po_detail?.find((detail) => detail.transaksi_id === row.id_transaksi)?.kuantum_kontribusi)
+}
+
+function kuantumMakloon(row: RekapTransaksi) {
+  return num(row.data_makloon_tjp?.kuantum_bongkar ?? row.data_makloon_mpp?.kuantum)
+}
+
+function operasiTotals(items: PermintaanOperasi[]): OperasiTotals {
+  const totals = items.reduce(
+    (acc, item) => ({
+      gabahDiolah: acc.gabahDiolah + (item.no_mo ? num(item.gabah_diolah_kg) : 0),
+      hgl: acc.hgl + num(item.hgl_kg),
+      broken: acc.broken + num(item.broken_kg),
+      menir: acc.menir + num(item.menir_kg),
+      katul: acc.katul + num(item.katul_kg),
+      rendemenBobot: acc.rendemenBobot + (item.rendemen_persen !== null ? num(item.rendemen_persen) * num(item.gabah_diolah_kg) : 0),
+      gabahRendemen: acc.gabahRendemen + (item.rendemen_persen !== null ? num(item.gabah_diolah_kg) : 0),
+      realisasiPenerimaanHgb: acc.realisasiPenerimaanHgb + num(item.data_gudang?.realisasi_hgl),
+    }),
+    { gabahDiolah: 0, hgl: 0, broken: 0, menir: 0, katul: 0, rendemenBobot: 0, gabahRendemen: 0, realisasiPenerimaanHgb: 0 },
+  )
+
+  return {
+    gabahDiolah: totals.gabahDiolah,
+    hgl: totals.hgl,
+    broken: totals.broken,
+    menir: totals.menir,
+    katul: totals.katul,
+    rendemenPersen: totals.gabahRendemen > 0 ? totals.rendemenBobot / totals.gabahRendemen : (totals.gabahDiolah > 0 ? (totals.hgl / totals.gabahDiolah) * 100 : 0),
+    realisasiPenerimaanHgb: totals.realisasiPenerimaanHgb,
+  }
+}
+
+function pantauanRows(rows: RekapTransaksi[], hasilOperasi: OperasiTotals): PantauanRow[] {
+  const map = new Map<string, PantauanRow>()
+
+  for (const row of rows) {
+    const nama = row.nama_maklon ?? 'Tanpa makloon'
+    let item = map.get(nama)
+    if (!item) {
+      item = {
+        nama,
+        gabahDiterima: 0,
+        gabahAdministrasi: 0,
+        belumDiadministrasi: 0,
+        gabahSudahDiolah: 0,
+        stokGudangAdmAda: 0,
+        hgl: 0,
+        broken: 0,
+        menir: 0,
+        katul: 0,
+        rataRendemen: 0,
+        realisasiPenerimaanHgb: 0,
+        hglBelumAdministrasi: 0,
+        persenDiolah: 0,
+      }
+      map.set(nama, item)
+    }
+
+    const diterima = kuantumMakloon(row)
+    const administrasi = kontribusiPo(row)
+
+    item.gabahDiterima += diterima
+    item.gabahAdministrasi += administrasi
+  }
+
+  const items = Array.from(map.values())
+  const totalAdministrasi = items.reduce((sum, row) => sum + row.gabahAdministrasi, 0)
+  const fallbackGabahDiolah = items.reduce((sum, row) => sum + row.gabahAdministrasi, 0)
+  const totalGabahDiolah = hasilOperasi.gabahDiolah > 0 ? hasilOperasi.gabahDiolah : fallbackGabahDiolah
+
+  return items
+    .map((row) => {
+      const share = totalAdministrasi > 0 ? row.gabahAdministrasi / totalAdministrasi : (items.length > 0 ? 1 / items.length : 0)
+      const gabahSudahDiolah = totalGabahDiolah * share
+      const hgl = hasilOperasi.hgl * share
+      const broken = hasilOperasi.broken * share
+      const menir = hasilOperasi.menir * share
+      const katul = hasilOperasi.katul * share
+      const realisasiPenerimaanHgb = hasilOperasi.realisasiPenerimaanHgb * share
+      const belumDiadministrasi = Math.max(row.gabahDiterima - row.gabahAdministrasi, 0)
+      const stokGudangAdmAda = Math.max(row.gabahAdministrasi - gabahSudahDiolah, 0)
+      const hglBelumAdministrasi = Math.max(hgl - realisasiPenerimaanHgb, 0)
+
+      return {
+        ...row,
+        gabahSudahDiolah,
+        belumDiadministrasi,
+        stokGudangAdmAda,
+        hgl,
+        broken,
+        menir,
+        katul,
+        realisasiPenerimaanHgb,
+        hglBelumAdministrasi,
+        rataRendemen: hasilOperasi.rendemenPersen,
+        persenDiolah: row.gabahAdministrasi > 0 ? (gabahSudahDiolah / row.gabahAdministrasi) * 100 : 0,
+      }
+    })
+    .sort((a, b) => b.gabahDiterima - a.gabahDiterima || a.nama.localeCompare(b.nama, 'id'))
+}
+
 export default function DashboardPage() {
   const { user } = useAuth()
   const [page, setPage] = useState(1)
   const { data: transaksiPage, isLoading } = useTransaksiList(page)
+  const { data: rekapPage } = useRekapTransaksi(1, 200)
+  const { data: operasiPage } = useOperasiList(1, 500)
   const [skemaFilter, setSkemaFilter] = useState<SkemaFilter>('semua')
   const transaksi = transaksiPage?.items ?? []
+  const rekapTransaksi = rekapPage?.items ?? []
+  const operasiTransaksi = operasiPage?.items ?? []
   const meta = transaksiPage?.meta
   const filteredTransaksi = useMemo(
     () => transaksi.filter((item) => skemaFilter === 'semua' || item.skema === skemaFilter),
@@ -130,23 +249,53 @@ export default function DashboardPage() {
   const makloonGroups = useMemo(() => groupByMakloon(filteredTransaksi), [filteredTransaksi])
 
   // Ringkasan dihitung dari data yang sudah di-fetch (tanpa endpoint baru).
-  const total = meta?.total ?? transaksi.length
-  const berjalan = useMemo(() => transaksi.filter((t) => t.status_keseluruhan === 'berjalan').length, [transaksi])
-  const selesai = useMemo(() => transaksi.filter((t) => t.status_keseluruhan === 'selesai').length, [transaksi])
-  const makloonTerhubung = useMemo(
-    () => new Set(transaksi.map((t) => t.nama_maklon ?? 'Tanpa makloon')).size,
-    [transaksi],
+  const role = user?.role.nama_role ?? ''
+  const statSource = role === 'admin' || role === 'keuangan' ? rekapTransaksi : transaksi
+  const total = role === 'admin' || role === 'keuangan' ? rekapTransaksi.length : (meta?.total ?? transaksi.length)
+  const berjalan = useMemo(
+    () => role === 'admin'
+      ? rekapTransaksi.filter((t) => t.status_keseluruhan === 'berjalan').length
+      : transaksi.filter((t) => t.status_keseluruhan === 'berjalan').length,
+    [rekapTransaksi, role, transaksi],
   )
+  const selesai = useMemo(
+    () => role === 'admin' || role === 'keuangan'
+      ? rekapTransaksi.filter((t) => t.status_keseluruhan === 'selesai' || t.current_stage === 'selesai').length
+      : transaksi.filter((t) => t.status_keseluruhan === 'selesai').length,
+    [rekapTransaksi, role, transaksi],
+  )
+  const makloonTerhubung = useMemo(
+    () => new Set(statSource.map((t) => t.nama_maklon ?? 'Tanpa makloon')).size,
+    [statSource],
+  )
+  const perluTindakan = useMemo(
+    () => role === 'admin'
+      ? rekapTransaksi.filter((t) => ACTIVE_STAT_ROLES.has(t.current_stage) && t.status_keseluruhan === 'berjalan').length
+      : berjalan,
+    [berjalan, rekapTransaksi, role],
+  )
+  const statCards = role === 'admin'
+    ? [
+        { label: 'Total transaksi', value: total, sub: 'data rekap masuk', tone: 'primary' as const, icon: ICONS.total },
+        { label: 'Perlu diproses', value: perluTindakan, sub: 'tahap aktif', tone: 'warning' as const, icon: ICONS.berjalan },
+        { label: 'Selesai', value: selesai, sub: 'sudah rampung', tone: 'success' as const, icon: ICONS.selesai },
+        { label: 'Makloon terhubung', value: makloonTerhubung, sub: 'mitra pada rekap', tone: 'accent' as const, icon: ICONS.makloon },
+      ]
+    : [
+        { label: 'Total transaksi', value: total, sub: 'keseluruhan', tone: 'primary' as const, icon: ICONS.total },
+        { label: 'Sedang berjalan', value: berjalan, sub: 'menunggu tindakan', tone: 'warning' as const, icon: ICONS.berjalan },
+        { label: 'Selesai', value: selesai, sub: 'sudah rampung', tone: 'success' as const, icon: ICONS.selesai },
+        { label: 'Makloon terhubung', value: makloonTerhubung, sub: 'mitra pada daftar', tone: 'accent' as const, icon: ICONS.makloon },
+      ]
+  const pantauan = useMemo(() => pantauanRows(rekapTransaksi, operasiTotals(operasiTransaksi)), [operasiTransaksi, rekapTransaksi])
 
   const now = new Date()
   const jam = now.getHours()
   const sapaan = jam < 11 ? 'Selamat pagi' : jam < 15 ? 'Selamat siang' : jam < 18 ? 'Selamat sore' : 'Selamat malam'
   const tanggalPanjang = new Intl.DateTimeFormat('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }).format(now)
 
-  const role = user?.role.nama_role ?? ''
   const roleLabel = ROLE_LABEL[role] ?? role.replaceAll('_', ' ')
   const roleSubtitle = ROLE_SUBTITLE[role] ?? 'Pantau dan kelola transaksi serap gabah dari satu tempat.'
-  const actions = user ? buildActions(role) : []
 
   return (
     <div className="min-h-screen bg-surface">
@@ -190,26 +339,6 @@ export default function DashboardPage() {
             <div aria-hidden className="relative hidden lg:block">
               <DashboardGrafis />
             </div>
-
-            {actions.length > 0 && (
-              <div className="grid gap-2.5 sm:grid-cols-2 md:grid-cols-3 lg:col-span-2 lg:grid-cols-4 xl:grid-cols-6">
-                {actions.map((a) => (
-                  <NavLink
-                    key={a.to}
-                    to={a.to}
-                    end={a.to === '/operasi' || a.to === '/gudang'}
-                    className={({ isActive }) =>
-                      'inline-flex min-h-10 items-center justify-center rounded-lg px-4 py-2.5 text-center text-sm font-semibold leading-snug transition-all ' +
-                      (isActive
-                        ? 'border border-accent bg-accent text-primary-dark shadow-sm'
-                        : 'border border-white/15 bg-white/10 text-white hover:border-accent/80 hover:bg-white/20')
-                    }
-                  >
-                    {a.label}
-                  </NavLink>
-                ))}
-              </div>
-            )}
           </div>
         </div>
       </section>
@@ -217,16 +346,19 @@ export default function DashboardPage() {
       {/* Kartu statistik ditarik naik menimpa hero. */}
       <div className="relative mx-auto -mt-16 max-w-6xl px-6">
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <StatCard label="Total transaksi" value={total} sub="keseluruhan" tone="primary" icon={ICONS.total} />
-          <StatCard label="Sedang berjalan" value={berjalan} sub="menunggu tindakan" tone="warning" icon={ICONS.berjalan} />
-          <StatCard label="Selesai" value={selesai} sub="sudah rampung" tone="success" icon={ICONS.selesai} />
-          <StatCard label="Makloon terhubung" value={makloonTerhubung} sub="mitra pada daftar" tone="accent" icon={ICONS.makloon} />
+          {statCards.map((card) => <StatCard key={card.label} {...card} />)}
         </div>
       </div>
 
+      {role === 'admin' && (
+        <div className="mx-auto max-w-[96rem] px-4 pt-6 sm:px-6 2xl:max-w-[104rem]">
+          <PantauanPengadaanTable rows={pantauan} />
+        </div>
+      )}
+
       {/* Operasi & Gudang adalah modul mandiri (lepas dari timeline transaksi),
           jadi daftar transaksi menunggu tindakan tidak relevan untuk dua role ini. */}
-      {!['operasi', 'gudang'].includes(role) && (
+      {!['operasi', 'gudang', 'admin'].includes(role) && (
       <div className="mx-auto max-w-6xl px-6 py-8">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
           <div>
@@ -361,6 +493,136 @@ function StatCard({
         </span>
       </div>
     </div>
+  )
+}
+
+function PantauanPengadaanTable({ rows }: { rows: PantauanRow[] }) {
+  const totals = rows.reduce(
+    (acc, row) => ({
+      gabahDiterima: acc.gabahDiterima + row.gabahDiterima,
+      gabahAdministrasi: acc.gabahAdministrasi + row.gabahAdministrasi,
+      belumDiadministrasi: acc.belumDiadministrasi + row.belumDiadministrasi,
+      gabahSudahDiolah: acc.gabahSudahDiolah + row.gabahSudahDiolah,
+      stokGudangAdmAda: acc.stokGudangAdmAda + row.stokGudangAdmAda,
+      hgl: acc.hgl + row.hgl,
+      broken: acc.broken + row.broken,
+      menir: acc.menir + row.menir,
+      katul: acc.katul + row.katul,
+      realisasiPenerimaanHgb: acc.realisasiPenerimaanHgb + row.realisasiPenerimaanHgb,
+      hglBelumAdministrasi: acc.hglBelumAdministrasi + row.hglBelumAdministrasi,
+    }),
+    { gabahDiterima: 0, gabahAdministrasi: 0, belumDiadministrasi: 0, gabahSudahDiolah: 0, stokGudangAdmAda: 0, hgl: 0, broken: 0, menir: 0, katul: 0, realisasiPenerimaanHgb: 0, hglBelumAdministrasi: 0 },
+  )
+  const totalRendemen = totals.gabahSudahDiolah > 0
+    ? rows.reduce((sum, row) => sum + (row.rataRendemen * row.gabahSudahDiolah), 0) / totals.gabahSudahDiolah
+    : 0
+  const totalPersenDiolah = totals.gabahAdministrasi > 0 ? (totals.gabahSudahDiolah / totals.gabahAdministrasi) * 100 : 0
+
+  return (
+    <section className="panel overflow-hidden">
+      <div className="flex flex-col gap-2 border-b border-border bg-white px-5 py-4 md:flex-row md:items-end md:justify-between">
+        <div>
+          <p className="text-[0.68rem] font-bold uppercase tracking-[0.18em] text-accent">Pantauan Admin</p>
+          <h2 className="mt-1 text-base font-extrabold uppercase tracking-wide text-primary-dark">Pantauan Pengadaan GKP Tahun 2026</h2>
+        </div>
+        <span className="badge">{rows.length} makloon</span>
+      </div>
+
+      <div className="overflow-x-auto">
+        <table className="min-w-[1740px] w-full table-fixed border-collapse text-[0.70rem] text-primary-dark">
+          <colgroup>
+            <col className="w-[44px]" />
+            <col className="w-[260px]" />
+            <col className="w-[112px]" />
+            <col className="w-[122px]" />
+            <col className="w-[124px]" />
+            <col className="w-[122px]" />
+            <col className="w-[130px]" />
+            <col className="w-[108px]" />
+            <col className="w-[108px]" />
+            <col className="w-[108px]" />
+            <col className="w-[108px]" />
+            <col className="w-[120px]" />
+            <col className="w-[134px]" />
+            <col className="w-[132px]" />
+            <col className="w-[156px]" />
+          </colgroup>
+          <thead className="text-center font-extrabold uppercase leading-tight">
+            <tr>
+              <th rowSpan={2} className="border border-slate-300 bg-slate-100 px-1.5 py-2">No</th>
+              <th rowSpan={2} className="border border-slate-300 bg-slate-100 px-3 py-2 text-left">Nama Makloon</th>
+              <th colSpan={5} className="border border-slate-300 bg-[#fff56a] px-2 py-2">GKP</th>
+              <th colSpan={4} className="border border-slate-300 bg-[#dbe8f5] px-2 py-2">Hasil Olah</th>
+              <th rowSpan={2} className="border border-slate-300 bg-[#8cff66] px-2 py-2">Rata-rata<br />rendemen</th>
+              <th rowSpan={2} className="border border-slate-300 bg-[#e7a13a] px-2 py-2">Realisasi<br />Penerimaan HGB</th>
+              <th rowSpan={2} className="border border-slate-300 bg-[#e7a13a] px-2 py-2">HGL Belum<br />Administrasi</th>
+              <th rowSpan={2} className="border border-slate-300 bg-[#fff0b5] px-2 py-2">Persentase Gabah<br />Diolah dibanding<br />Administrasi Gabah</th>
+            </tr>
+            <tr>
+              <th className="border border-slate-300 bg-[#fff56a] px-2 py-2">Gabah<br />Diterima</th>
+              <th className="border border-slate-300 bg-[#fff56a] px-2 py-2">Gabah<br />Administrasi</th>
+              <th className="border border-slate-300 bg-[#fff56a] px-2 py-2">Belum<br />Diadministrasi</th>
+              <th className="border border-slate-300 bg-[#fff56a] px-2 py-2">Gabah Sudah<br />Diolah</th>
+              <th className="border border-slate-300 bg-[#fff56a] px-2 py-2">Stok di Gudang<br />ADM ADA</th>
+              <th className="border border-slate-300 bg-[#dbe8f5] px-2 py-2">HGL</th>
+              <th className="border border-slate-300 bg-[#dbe8f5] px-2 py-2">Broken</th>
+              <th className="border border-slate-300 bg-[#dbe8f5] px-2 py-2">Menir</th>
+              <th className="border border-slate-300 bg-[#dbe8f5] px-2 py-2">Katul</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.length === 0 && (
+              <tr>
+                <td colSpan={16} className="border border-slate-300 px-4 py-8 text-center text-muted">Belum ada data transaksi yang dapat dipantau.</td>
+              </tr>
+            )}
+            {rows.map((row, index) => <PantauanRowView key={row.nama} row={row} index={index} />)}
+          </tbody>
+          {rows.length > 0 && (
+            <tfoot className="font-extrabold">
+              <tr>
+                <td colSpan={2} className="border border-slate-300 bg-slate-100 px-3 py-2 text-right">TOTAL</td>
+                <td className="border border-slate-300 bg-[#fffbc0] px-2 py-2 text-right">{fmt(totals.gabahDiterima)}</td>
+                <td className="border border-slate-300 bg-[#fffbc0] px-2 py-2 text-right">{fmt(totals.gabahAdministrasi)}</td>
+                <td className="border border-slate-300 bg-[#fffbc0] px-2 py-2 text-right">{fmt(totals.belumDiadministrasi)}</td>
+                <td className="border border-slate-300 bg-[#fffbc0] px-2 py-2 text-right">{fmt(totals.gabahSudahDiolah)}</td>
+                <td className="border border-slate-300 bg-[#fffbc0] px-2 py-2 text-right">{fmt(totals.stokGudangAdmAda)}</td>
+                <td className="border border-slate-300 bg-[#eaf2fa] px-2 py-2 text-right">{fmt(totals.hgl)}</td>
+                <td className="border border-slate-300 bg-[#eaf2fa] px-2 py-2 text-right">{fmt(totals.broken)}</td>
+                <td className="border border-slate-300 bg-[#eaf2fa] px-2 py-2 text-right">{fmt(totals.menir)}</td>
+                <td className="border border-slate-300 bg-[#eaf2fa] px-2 py-2 text-right">{fmt(totals.katul)}</td>
+                <td className="border border-slate-300 bg-[#caffb6] px-2 py-2 text-right">{pct(totalRendemen)}</td>
+                <td className="border border-slate-300 bg-[#f2be72] px-2 py-2 text-right">{fmt(totals.realisasiPenerimaanHgb)}</td>
+                <td className="border border-slate-300 bg-[#f2be72] px-2 py-2 text-right">{fmt(totals.hglBelumAdministrasi)}</td>
+                <td className="border border-slate-300 bg-[#fff0b5] px-2 py-2 text-right">{pct(totalPersenDiolah)}</td>
+              </tr>
+            </tfoot>
+          )}
+        </table>
+      </div>
+    </section>
+  )
+}
+
+function PantauanRowView({ row, index }: { row: PantauanRow; index: number }) {
+  return (
+    <tr className="odd:bg-white even:bg-slate-50 hover:bg-primary-tint/50">
+      <td className="border border-slate-300 bg-slate-100 px-2 py-1.5 text-center font-semibold">{index + 1}</td>
+      <td className="border border-slate-300 bg-slate-100 px-3 py-1.5 font-semibold uppercase">{row.nama}</td>
+      <td className="border border-slate-300 bg-[#ffff68] px-2 py-1.5 text-right">{fmt(row.gabahDiterima)}</td>
+      <td className="border border-slate-300 bg-[#ffff68] px-2 py-1.5 text-right">{fmt(row.gabahAdministrasi)}</td>
+      <td className="border border-slate-300 bg-[#ffff68] px-2 py-1.5 text-right">{fmt(row.belumDiadministrasi)}</td>
+      <td className="border border-slate-300 bg-[#ffff68] px-2 py-1.5 text-right">{fmt(row.gabahSudahDiolah)}</td>
+      <td className="border border-slate-300 bg-[#ffff68] px-2 py-1.5 text-right">{fmt(row.stokGudangAdmAda)}</td>
+      <td className="border border-slate-300 bg-[#dbe8f5] px-2 py-1.5 text-right">{fmt(row.hgl)}</td>
+      <td className="border border-slate-300 bg-[#dbe8f5] px-2 py-1.5 text-right">{fmt(row.broken)}</td>
+      <td className="border border-slate-300 bg-[#dbe8f5] px-2 py-1.5 text-right">{fmt(row.menir)}</td>
+      <td className="border border-slate-300 bg-[#dbe8f5] px-2 py-1.5 text-right">{fmt(row.katul)}</td>
+      <td className="border border-slate-300 bg-[#8cff66] px-2 py-1.5 text-right font-semibold">{pct(row.rataRendemen)}</td>
+      <td className="border border-slate-300 bg-[#e7a13a] px-2 py-1.5 text-right">{fmt(row.realisasiPenerimaanHgb)}</td>
+      <td className="border border-slate-300 bg-[#e7a13a] px-2 py-1.5 text-right">{fmt(row.hglBelumAdministrasi)}</td>
+      <td className="border border-slate-300 bg-[#fff0b5] px-2 py-1.5 text-right font-semibold">{pct(row.persenDiolah)}</td>
+    </tr>
   )
 }
 
