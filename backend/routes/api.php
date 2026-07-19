@@ -52,8 +52,12 @@ Route::middleware('auth:sanctum')->group(function () {
     // sebelum GET /transaksi/{transaksi} (show) -- kalau tidak, show akan menelan seluruh
     // sisa path (mis. "/foto/foto_petani") sebagai bagian dari {transaksi} karena ia
     // dicocokkan lebih dulu (first-match-wins berdasar urutan registrasi).
+    Route::patch('/transaksi/{transaksi}/admin-rekap', [TransaksiController::class, 'adminUpdateRekap'])
+        ->middleware('role:admin');
     Route::get('/transaksi/{transaksi}/foto/{jenisFoto}', [FotoController::class, 'link']);
     Route::get('/transaksi/{transaksi}', [TransaksiController::class, 'show']);
+    Route::delete('/transaksi/{transaksi}', [TransaksiController::class, 'destroy'])
+        ->middleware('role:admin');
     Route::post('/transaksi', [TransaksiController::class, 'store'])
         ->middleware('role:jemput_pangan|makloon|admin');
     Route::patch('/transaksi/{transaksi}/jemput-pangan', [TransaksiController::class, 'jemputPangan'])

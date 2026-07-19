@@ -1,8 +1,12 @@
+import { useState, type ReactNode } from 'react'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { toast } from 'sonner'
 import FormHero from '../components/FormHero'
 import DataSpreadsheet, { type SheetColumn } from '../components/DataSpreadsheet'
 import { useAuth } from '../hooks/useAuth'
 import { useRekapTransaksi, type RekapTransaksi } from '../hooks/useRekapTransaksi'
-import { pesanKegagalan } from '../lib/api'
+import { useMakloonOptions } from '../hooks/useMakloonOptions'
+import api, { pesanKegagalan } from '../lib/api'
 
 /**
  * Rekap lintas tahap, kolomnya KUMULATIF sesuai role:
@@ -23,6 +27,25 @@ function num(v: string | null | undefined) {
 
 function tgl(v: string | null | undefined) {
   return v ? new Date(v).toLocaleDateString('id-ID') : null
+}
+
+function inputDate(v: string | null | undefined) {
+  if (!v) return ''
+  return String(v).slice(0, 10)
+}
+
+function field(v: string | number | null | undefined) {
+  return v === null || v === undefined ? '' : String(v)
+}
+
+function nullable(v: string) {
+  const clean = v.trim()
+  return clean === '' ? null : clean
+}
+
+function numeric(v: string) {
+  const clean = v.trim()
+  return clean === '' ? null : Number(clean)
 }
 
 const COLS_UMUM: SheetColumn<RekapTransaksi>[] = [
@@ -119,11 +142,134 @@ function kolomUntukRole(role: string): SheetColumn<RekapTransaksi>[] {
   return [...COLS_UMUM, ...stageCols]
 }
 
+type RekapEditForm = {
+  jp_id_pemasok: string
+  jp_poktan: string
+  jp_supir: string
+  jp_plat: string
+  jp_desa: string
+  jp_kecamatan: string
+  jp_kabupaten: string
+  jp_makloon_user_id: string
+  jp_tanggal_kirim: string
+  jp_kuantum: string
+  jp_jarak: string
+  mtjp_tanggal_bongkar: string
+  mtjp_kuantum_bongkar: string
+  mmpp_id_pemasok: string
+  mmpp_supir: string
+  mmpp_plat: string
+  mmpp_desa: string
+  mmpp_kecamatan: string
+  mmpp_kabupaten: string
+  mmpp_tanggal_bongkar: string
+  mmpp_kuantum: string
+  mmpp_jarak: string
+  ub_ka1: string
+  ub_ka2: string
+  ub_ka3: string
+  ub_hampa: string
+  ub_hijau: string
+  po_no: string
+  po_in: string
+  po_harga: string
+  po_spp: string
+  po_tanggal_bayar: string
+}
+
+function formDariRekap(row: RekapTransaksi): RekapEditForm {
+  return {
+    jp_id_pemasok: field(row.data_jemput_pangan?.id_pemasok),
+    jp_poktan: field(row.data_jemput_pangan?.nama_poktan_gapoktan),
+    jp_supir: field(row.data_jemput_pangan?.supir),
+    jp_plat: field(row.data_jemput_pangan?.plat_mobil),
+    jp_desa: field(row.data_jemput_pangan?.desa),
+    jp_kecamatan: field(row.data_jemput_pangan?.kecamatan),
+    jp_kabupaten: field(row.data_jemput_pangan?.kabupaten),
+    jp_makloon_user_id: field(row.data_jemput_pangan?.makloon_user_id),
+    jp_tanggal_kirim: inputDate(row.data_jemput_pangan?.tanggal_kirim),
+    jp_kuantum: field(row.data_jemput_pangan?.kuantum),
+    jp_jarak: field(row.data_jemput_pangan?.jarak_ke_makloon_km),
+    mtjp_tanggal_bongkar: inputDate(row.data_makloon_tjp?.tanggal_bongkar),
+    mtjp_kuantum_bongkar: field(row.data_makloon_tjp?.kuantum_bongkar),
+    mmpp_id_pemasok: field(row.data_makloon_mpp?.id_pemasok),
+    mmpp_supir: field(row.data_makloon_mpp?.supir),
+    mmpp_plat: field(row.data_makloon_mpp?.plat_mobil),
+    mmpp_desa: field(row.data_makloon_mpp?.desa),
+    mmpp_kecamatan: field(row.data_makloon_mpp?.kecamatan),
+    mmpp_kabupaten: field(row.data_makloon_mpp?.kabupaten),
+    mmpp_tanggal_bongkar: inputDate(row.data_makloon_mpp?.tanggal_bongkar),
+    mmpp_kuantum: field(row.data_makloon_mpp?.kuantum),
+    mmpp_jarak: field(row.data_makloon_mpp?.jarak_ke_makloon_km),
+    ub_ka1: field(row.data_ub_jastasma?.ka1),
+    ub_ka2: field(row.data_ub_jastasma?.ka2),
+    ub_ka3: field(row.data_ub_jastasma?.ka3),
+    ub_hampa: field(row.data_ub_jastasma?.hampa),
+    ub_hijau: field(row.data_ub_jastasma?.butir_hijau),
+    po_no: field(row.data_pengadaan?.no_po),
+    po_in: field(noIn(row)),
+    po_harga: field(row.data_pengadaan?.harga),
+    po_spp: field(row.data_pengadaan?.no_spp),
+    po_tanggal_bayar: inputDate(row.data_pengadaan?.data_keuangan?.tanggal_bayar),
+  }
+}
+
+function payloadDariForm(row: RekapTransaksi, form: RekapEditForm) {
+  return {
+    ...(row.data_jemput_pangan ? { data_jemput_pangan: {
+      id_pemasok: nullable(form.jp_id_pemasok),
+      nama_poktan_gapoktan: nullable(form.jp_poktan),
+      supir: nullable(form.jp_supir),
+      plat_mobil: nullable(form.jp_plat),
+      desa: nullable(form.jp_desa),
+      kecamatan: nullable(form.jp_kecamatan),
+      kabupaten: nullable(form.jp_kabupaten),
+      makloon_user_id: form.jp_makloon_user_id ? Number(form.jp_makloon_user_id) : null,
+      tanggal_kirim: nullable(form.jp_tanggal_kirim),
+      kuantum: numeric(form.jp_kuantum),
+      jarak_ke_makloon_km: numeric(form.jp_jarak),
+    } } : {}),
+    ...(row.data_makloon_tjp ? { data_makloon_tjp: {
+      tanggal_bongkar: nullable(form.mtjp_tanggal_bongkar),
+      kuantum_bongkar: numeric(form.mtjp_kuantum_bongkar),
+    } } : {}),
+    ...(row.data_makloon_mpp ? { data_makloon_mpp: {
+      id_pemasok: nullable(form.mmpp_id_pemasok),
+      supir: nullable(form.mmpp_supir),
+      plat_mobil: nullable(form.mmpp_plat),
+      desa: nullable(form.mmpp_desa),
+      kecamatan: nullable(form.mmpp_kecamatan),
+      kabupaten: nullable(form.mmpp_kabupaten),
+      tanggal_bongkar: nullable(form.mmpp_tanggal_bongkar),
+      kuantum: numeric(form.mmpp_kuantum),
+      jarak_ke_makloon_km: numeric(form.mmpp_jarak),
+    } } : {}),
+    ...(row.data_ub_jastasma ? { data_ub_jastasma: {
+      ka1: numeric(form.ub_ka1),
+      ka2: numeric(form.ub_ka2),
+      ka3: numeric(form.ub_ka3),
+      hampa: numeric(form.ub_hampa),
+      butir_hijau: numeric(form.ub_hijau),
+    } } : {}),
+    ...(row.data_pengadaan ? { data_pengadaan: {
+      no_po: nullable(form.po_no),
+      no_in: nullable(form.po_in),
+      harga: numeric(form.po_harga),
+      no_spp: nullable(form.po_spp),
+      tanggal_bayar: nullable(form.po_tanggal_bayar),
+    } } : {}),
+  }
+}
+
 export default function RekapTransaksiPage() {
   const { user } = useAuth()
   const role = user?.role.nama_role ?? ''
+  const queryClient = useQueryClient()
   const { data, isLoading, isError, error } = useRekapTransaksi()
+  const { data: makloonOptions = [] } = useMakloonOptions()
   const rows = data?.items ?? []
+  const [editing, setEditing] = useState<RekapTransaksi | null>(null)
+  const [editForm, setEditForm] = useState<RekapEditForm | null>(null)
 
   const columns = kolomUntukRole(role)
   const judul = JUDUL[role] ?? { title: 'Rekap Transaksi', badge: 'Rekap', sub: 'Rekap data transaksi lintas tahap.' }
@@ -131,6 +277,36 @@ export default function RekapTransaksiPage() {
   // Semua baris kini pasti terkunci (disaring backend), jadi kartu "terkunci" tak lagi
   // bermakna. Jumlah PO unik lebih informatif sekarang setelah kolom No. PO digabung.
   const totalPo = new Set(rows.map((r) => r.data_pengadaan?.no_po).filter(Boolean)).size
+
+  const updateMutation = useMutation({
+    mutationFn: ({ row, form }: { row: RekapTransaksi; form: RekapEditForm }) =>
+      api.patch(`/api/transaksi/${encodeURIComponent(row.id_transaksi)}/admin-rekap`, payloadDariForm(row, form)),
+    onSuccess: (_res, vars) => {
+      toast.success(`Transaksi ${vars.row.id_transaksi} diperbarui.`)
+      setEditing(null)
+      setEditForm(null)
+      queryClient.invalidateQueries({ queryKey: ['rekap-transaksi'] })
+      queryClient.invalidateQueries({ queryKey: ['transaksi-list'] })
+      queryClient.invalidateQueries({ queryKey: ['po-list'] })
+    },
+    onError: (err) => toast.error(pesanKegagalan(err)),
+  })
+
+  const deleteMutation = useMutation({
+    mutationFn: (row: RekapTransaksi) => api.delete(`/api/transaksi/${encodeURIComponent(row.id_transaksi)}`),
+    onSuccess: (_res, row) => {
+      toast.success(`Transaksi ${row.id_transaksi} dihapus.`)
+      queryClient.invalidateQueries({ queryKey: ['rekap-transaksi'] })
+      queryClient.invalidateQueries({ queryKey: ['transaksi-list'] })
+      queryClient.invalidateQueries({ queryKey: ['po-list'] })
+    },
+    onError: (err) => toast.error(pesanKegagalan(err)),
+  })
+
+  const mulaiEdit = (row: RekapTransaksi) => {
+    setEditing(row)
+    setEditForm(formDariRekap(row))
+  }
 
   return (
     <div className="min-h-screen bg-surface">
@@ -168,9 +344,187 @@ export default function RekapTransaksiPage() {
             errorMessage={pesanKegagalan(error)}
             emptyTitle="Belum ada transaksi"
             emptyCopy="Data muncul setelah transaksi dibuat pada alur TJP atau MPP."
+            renderRowActions={role === 'admin' ? (row) => (
+              <div className="flex justify-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => mulaiEdit(row)}
+                  className="rounded-lg border border-primary/20 bg-primary-tint px-3 py-1.5 text-xs font-bold text-primary transition-colors hover:border-primary hover:bg-primary hover:text-white"
+                >
+                  Edit
+                </button>
+                <button
+                  type="button"
+                  disabled={deleteMutation.isPending}
+                  onClick={() => {
+                    if (window.confirm(`Hapus transaksi ${row.id_transaksi}? Data tahap terkait ikut terhapus dari rekap.`)) {
+                      deleteMutation.mutate(row)
+                    }
+                  }}
+                  className="rounded-lg border border-danger/20 bg-danger-bg px-3 py-1.5 text-xs font-bold text-danger transition-colors hover:border-danger hover:bg-danger hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Hapus
+                </button>
+              </div>
+            ) : undefined}
           />
         </section>
       </div>
+
+      {editing && editForm && (
+        <RekapEditModal
+          row={editing}
+          form={editForm}
+          makloonOptions={makloonOptions}
+          isSaving={updateMutation.isPending}
+          onChange={(key, value) => setEditForm((prev) => prev ? { ...prev, [key]: value } : prev)}
+          onClose={() => {
+            setEditing(null)
+            setEditForm(null)
+          }}
+          onSubmit={() => updateMutation.mutate({ row: editing, form: editForm })}
+        />
+      )}
     </div>
+  )
+}
+
+type RekapEditModalProps = {
+  row: RekapTransaksi
+  form: RekapEditForm
+  makloonOptions: { id: number; nama_maklon: string; kecamatan: string | null; kabupaten: string | null }[]
+  isSaving: boolean
+  onChange: (key: keyof RekapEditForm, value: string) => void
+  onClose: () => void
+  onSubmit: () => void
+}
+
+function RekapEditModal({ row, form, makloonOptions, isSaving, onChange, onClose, onSubmit }: RekapEditModalProps) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-sm">
+      <form
+        className="flex max-h-[92vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-white/40 bg-white shadow-2xl"
+        onSubmit={(event) => {
+          event.preventDefault()
+          onSubmit()
+        }}
+      >
+        <div className="border-b border-border bg-gradient-to-r from-primary-dark via-primary to-primary-dark px-6 py-5 text-white">
+          <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+            <div>
+              <p className="text-[0.68rem] font-bold uppercase tracking-[0.2em] text-accent">Edit Rekap Admin</p>
+              <h2 className="mt-1 text-2xl font-extrabold">{row.id_transaksi}</h2>
+              <p className="mt-1 text-sm text-white/70">Koreksi data terkunci tanpa mengulang alur transaksi.</p>
+            </div>
+            <div className="flex gap-2">
+              <span className="rounded-lg border border-white/15 bg-white/10 px-3 py-1.5 text-xs font-bold">{row.skema}</span>
+              <span className="rounded-lg border border-white/15 bg-white/10 px-3 py-1.5 text-xs font-bold capitalize">{row.current_stage.replaceAll('_', ' ')}</span>
+            </div>
+          </div>
+        </div>
+
+        <div className="space-y-5 overflow-y-auto bg-surface px-6 py-5">
+          {row.data_jemput_pangan && (
+            <EditSection title="Jemput Pangan" badge="Data awal TJP">
+              <TextField label="ID Pemasok" value={form.jp_id_pemasok} onChange={(v) => onChange('jp_id_pemasok', v)} />
+              <TextField label="Poktan/Gapoktan" value={form.jp_poktan} onChange={(v) => onChange('jp_poktan', v)} />
+              <TextField label="Supir" value={form.jp_supir} onChange={(v) => onChange('jp_supir', v)} />
+              <TextField label="Plat Mobil" value={form.jp_plat} onChange={(v) => onChange('jp_plat', v)} />
+              <TextField label="Desa" value={form.jp_desa} onChange={(v) => onChange('jp_desa', v)} />
+              <TextField label="Kecamatan" value={form.jp_kecamatan} onChange={(v) => onChange('jp_kecamatan', v)} />
+              <TextField label="Kabupaten" value={form.jp_kabupaten} onChange={(v) => onChange('jp_kabupaten', v)} />
+              <label className="block">
+                <span className="label">Makloon</span>
+                <select className="input" value={form.jp_makloon_user_id} onChange={(e) => onChange('jp_makloon_user_id', e.target.value)}>
+                  <option value="">Pilih makloon</option>
+                  {makloonOptions.map((m) => (
+                    <option key={m.id} value={m.id}>{m.nama_maklon}{m.kabupaten ? ` - ${m.kabupaten}` : ''}</option>
+                  ))}
+                </select>
+              </label>
+              <TextField type="date" label="Tanggal Kirim" value={form.jp_tanggal_kirim} onChange={(v) => onChange('jp_tanggal_kirim', v)} />
+              <TextField type="number" label="Kuantum (kg)" value={form.jp_kuantum} onChange={(v) => onChange('jp_kuantum', v)} />
+              <TextField type="number" label="Jarak ke Makloon (km)" value={form.jp_jarak} onChange={(v) => onChange('jp_jarak', v)} />
+            </EditSection>
+          )}
+
+          {row.data_makloon_tjp && (
+            <EditSection title="Makloon TJP" badge="Bongkar makloon">
+              <TextField type="date" label="Tanggal Bongkar" value={form.mtjp_tanggal_bongkar} onChange={(v) => onChange('mtjp_tanggal_bongkar', v)} />
+              <TextField type="number" label="Kuantum Bongkar (kg)" value={form.mtjp_kuantum_bongkar} onChange={(v) => onChange('mtjp_kuantum_bongkar', v)} />
+            </EditSection>
+          )}
+
+          {row.data_makloon_mpp && (
+            <EditSection title="Makloon MPP" badge="Input makloon">
+              <TextField label="ID Pemasok" value={form.mmpp_id_pemasok} onChange={(v) => onChange('mmpp_id_pemasok', v)} />
+              <TextField label="Supir" value={form.mmpp_supir} onChange={(v) => onChange('mmpp_supir', v)} />
+              <TextField label="Plat Mobil" value={form.mmpp_plat} onChange={(v) => onChange('mmpp_plat', v)} />
+              <TextField label="Desa" value={form.mmpp_desa} onChange={(v) => onChange('mmpp_desa', v)} />
+              <TextField label="Kecamatan" value={form.mmpp_kecamatan} onChange={(v) => onChange('mmpp_kecamatan', v)} />
+              <TextField label="Kabupaten" value={form.mmpp_kabupaten} onChange={(v) => onChange('mmpp_kabupaten', v)} />
+              <TextField type="date" label="Tanggal Bongkar" value={form.mmpp_tanggal_bongkar} onChange={(v) => onChange('mmpp_tanggal_bongkar', v)} />
+              <TextField type="number" label="Kuantum (kg)" value={form.mmpp_kuantum} onChange={(v) => onChange('mmpp_kuantum', v)} />
+              <TextField type="number" label="Jarak ke Makloon (km)" value={form.mmpp_jarak} onChange={(v) => onChange('mmpp_jarak', v)} />
+            </EditSection>
+          )}
+
+          {row.data_ub_jastasma && (
+            <EditSection title="UB Jastasma" badge="Mutu gabah">
+              <TextField type="number" label="KA1" value={form.ub_ka1} onChange={(v) => onChange('ub_ka1', v)} />
+              <TextField type="number" label="KA2" value={form.ub_ka2} onChange={(v) => onChange('ub_ka2', v)} />
+              <TextField type="number" label="KA3" value={form.ub_ka3} onChange={(v) => onChange('ub_ka3', v)} />
+              <TextField type="number" label="Hampa" value={form.ub_hampa} onChange={(v) => onChange('ub_hampa', v)} />
+              <TextField type="number" label="Butir Hijau" value={form.ub_hijau} onChange={(v) => onChange('ub_hijau', v)} />
+            </EditSection>
+          )}
+
+          {row.data_pengadaan && (
+            <EditSection title="Pengadaan & Keuangan" badge="PO, IN, dan pembayaran">
+              <TextField label="No. PO" value={form.po_no} onChange={(v) => onChange('po_no', v)} />
+              <TextField label="No. IN" value={form.po_in} onChange={(v) => onChange('po_in', v)} />
+              <TextField type="number" label="Harga/kg" value={form.po_harga} onChange={(v) => onChange('po_harga', v)} />
+              <TextField label="No. SPP" value={form.po_spp} onChange={(v) => onChange('po_spp', v)} />
+              <TextField type="date" label="Tanggal Bayar" value={form.po_tanggal_bayar} onChange={(v) => onChange('po_tanggal_bayar', v)} />
+            </EditSection>
+          )}
+        </div>
+
+        <div className="flex flex-col-reverse gap-3 border-t border-border bg-white px-6 py-4 sm:flex-row sm:justify-end">
+          <button type="button" onClick={onClose} className="btn btn-ghost">Batal</button>
+          <button type="submit" disabled={isSaving} className="btn btn-primary">
+            {isSaving ? 'Menyimpan...' : 'Simpan Perubahan'}
+          </button>
+        </div>
+      </form>
+    </div>
+  )
+}
+
+function EditSection({ title, badge, children }: { title: string; badge: string; children: ReactNode }) {
+  return (
+    <section className="rounded-xl border border-border bg-white p-4 shadow-sm">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+        <h3 className="text-sm font-extrabold text-primary-dark">{title}</h3>
+        <span className="rounded-full bg-primary-tint px-3 py-1 text-[0.68rem] font-bold text-primary">{badge}</span>
+      </div>
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">{children}</div>
+    </section>
+  )
+}
+
+function TextField({ label, value, onChange, type = 'text' }: { label: string; value: string; onChange: (value: string) => void; type?: 'text' | 'number' | 'date' }) {
+  return (
+    <label className="block">
+      <span className="label">{label}</span>
+      <input
+        type={type}
+        step={type === 'number' ? '0.01' : undefined}
+        min={type === 'number' ? '0' : undefined}
+        className="input"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+      />
+    </label>
   )
 }

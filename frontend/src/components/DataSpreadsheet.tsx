@@ -33,6 +33,8 @@ type Props<T> = {
   isError?: boolean
   /** Pesan kegagalan dari server, bila ada. */
   errorMessage?: string | null
+  /** Kolom aksi khusus layar; tidak ikut ekspor CSV. */
+  renderRowActions?: (row: T) => React.ReactNode
 }
 
 /**
@@ -73,6 +75,7 @@ export default function DataSpreadsheet<T>({
   isLoading = false,
   isError = false,
   errorMessage = null,
+  renderRowActions,
 }: Props<T>) {
   const [q, setQ] = useState('')
   // key kolom -> daftar nilai yang dipilih. Kolom tanpa entri berarti tidak difilter.
@@ -257,6 +260,11 @@ export default function DataSpreadsheet<T>({
                     {c.label}
                   </th>
                 ))}
+                {renderRowActions && (
+                  <th className="sticky right-0 border-b border-l border-border bg-primary-tint px-3 py-2 text-center font-bold shadow-[-8px_0_12px_rgba(15,23,42,0.06)]">
+                    Aksi
+                  </th>
+                )}
               </tr>
             </thead>
             <tbody>
@@ -277,6 +285,11 @@ export default function DataSpreadsheet<T>({
                       </td>
                     )
                   })}
+                  {renderRowActions && (
+                    <td className="sticky right-0 border-b border-l border-border bg-inherit px-3 py-2 text-center shadow-[-8px_0_12px_rgba(15,23,42,0.05)]">
+                      {renderRowActions(row)}
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>
