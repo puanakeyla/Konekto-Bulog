@@ -490,6 +490,32 @@ Di `TransaksiController.php`, tambahkan `use App\Models\DataPengadaan;` pada daf
 
 Kolom bantu `urut_no_po` tidak bocor ke respons karena `TransaksiResource` memetakan field secara eksplisit.
 
+**Koreksi besar (ditemukan pemilik repo saat verifikasi Task 8).** Mengurutkan
+dengan `no_po` SALAH. `no_po` adalah teks bebas yang diketik pengguna — data
+nyata berisi `PO lala`, `jaja`, `PO1234`, `PO-DEMO-003` — sehingga urutan
+alfabetisnya tidak berhubungan dengan urutan ID, dan `id_transaksi` keluar
+teracak meski blok skemanya benar.
+
+Ganti kunci urut kedua menjadi **`id_transaksi` terkecil di antara anggota PO**,
+dengan `COALESCE` ke `id_transaksi` sendiri untuk transaksi tanpa PO:
+
+```php
+->orderByRaw('COALESCE((
+    SELECT MIN(pd2.transaksi_id)
+    FROM po_detail pd1
+    JOIN po_detail pd2 ON pd2.data_pengadaan_id = pd1.data_pengadaan_id
+    WHERE pd1.transaksi_id = transaksi.id_transaksi
+), transaksi.id_transaksi)')
+```
+
+Dengan kunci ini, `orderByRaw('urut_no_po IS NULL')`, `orderBy('urut_no_po')`,
+dan `selectSub($noPo, 'urut_no_po')` semuanya menjadi mati dan harus dihapus —
+transaksi tanpa PO sudah mendapat posisi ID wajarnya lewat `COALESCE`.
+
+Test urutannya wajib memakai fixture **anti-korelasi**: sebuah PO yang `no_po`-nya
+urut alfabetis berlawanan dengan urutan ID anggotanya. Tanpa itu test akan lulus
+di implementasi lama maupun baru dan tidak membuktikan apa pun.
+
 - [ ] **Step 4: Jalankan test untuk memastikan lulus**
 
 ```

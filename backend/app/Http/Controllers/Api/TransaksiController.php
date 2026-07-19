@@ -7,7 +7,6 @@ use App\Http\Resources\TransaksiResource;
 use App\Models\DataJemputPangan;
 use App\Models\DataMakloonMpp;
 use App\Models\DataMakloonTjp;
-use App\Models\DataPengadaan;
 use App\Models\DataUbJastasma;
 use App\Models\Role;
 use App\Models\Transaksi;
@@ -50,17 +49,8 @@ class TransaksiController extends Controller
     {
         $role = $request->user()->role->nama_role;
 
-        // No. PO transaksi ini (lewat po_detail). Dipakai sebagai kunci urut supaya
-        // baris-baris satu PO berdampingan — prasyarat sel gabungan di tabel frontend.
-        $noPo = DataPengadaan::query()
-            ->select('data_pengadaan.no_po')
-            ->join('po_detail', 'po_detail.data_pengadaan_id', '=', 'data_pengadaan.id')
-            ->whereColumn('po_detail.transaksi_id', 'transaksi.id_transaksi')
-            ->limit(1);
-
         $query = Transaksi::query()
             ->select('transaksi.*')
-            ->selectSub($noPo, 'urut_no_po')
             ->with([
                 'dataJemputPangan.makloon',
                 'dataMakloonMpp',
@@ -75,11 +65,22 @@ class TransaksiController extends Controller
             // alfabetis, sehingga 'MPP' < 'TJP' dan blok MPP malah nongol di depan. CASE
             // eksplisit ini menghasilkan urutan yang sama persis di kedua engine.
             ->orderByRaw("CASE skema WHEN 'TJP' THEN 0 WHEN 'MPP' THEN 1 ELSE 2 END")
-            // Transaksi tanpa PO ditaruh di akhir tiap blok skema; kalau tersebar di tengah,
-            // blok sel gabungan di frontend akan terpotong. Ekspresi `IS NULL` menghasilkan
-            // 0/1 baik di MySQL (dev) maupun SQLite (test).
-            ->orderByRaw('urut_no_po IS NULL')
-            ->orderBy('urut_no_po')
+            // Kunci urut satu PO = id_transaksi TERKECIL di antara anggotanya (lewat
+            // po_detail), BUKAN no_po. `no_po` adalah teks bebas yang diketik user ("PO lala",
+            // "jaja", "PO1234", dst) -- mengurutkannya secara alfabetis tidak punya hubungan
+            // dengan urutan id_transaksi, sehingga blok PO bisa muncul tidak berurutan walau
+            // id_transaksi-nya sendiri sudah urut (ini defect yang dilaporkan: "ID Transaksi
+            // belum urut tapi skemanya sudah"). Transaksi tanpa PO memakai id_transaksi-nya
+            // sendiri lewat COALESCE, jadi tidak perlu penanganan NULL terpisah. Baris-baris
+            // satu PO tetap berdampingan karena semua anggotanya memakai kunci yang sama --
+            // itu prasyarat sel gabungan di tabel frontend. JANGAN disederhanakan balik ke
+            // `orderBy('no_po')`.
+            ->orderByRaw('COALESCE((
+                SELECT MIN(pd2.transaksi_id)
+                FROM po_detail pd1
+                JOIN po_detail pd2 ON pd2.data_pengadaan_id = pd1.data_pengadaan_id
+                WHERE pd1.transaksi_id = transaksi.id_transaksi
+            ), transaksi.id_transaksi)')
             ->orderBy('id_transaksi');
 
         // Role Jemput Pangan hanya relevan dengan skema TJP (MPP tidak punya tahap JP).

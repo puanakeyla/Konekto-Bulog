@@ -54,8 +54,34 @@ Filter `skema = 'TJP'` untuk role `jemput_pangan` yang sudah ada tetap berlaku.
 
 ### Urutan
 
-`ORDER BY skema, no_po, id_transaksi` dengan `no_po` diambil lewat subquery
-`po_detail` → `data_pengadaan`.
+`ORDER BY skema, kunci_grup_po, id_transaksi`.
+
+`kunci_grup_po` adalah **`id_transaksi` terkecil di antara anggota PO** transaksi
+tersebut, diambil lewat `po_detail`; transaksi tanpa PO memakai `id_transaksi`-nya
+sendiri melalui `COALESCE`.
+
+Kunci ini **bukan** `no_po`. Mengurutkan dengan `no_po` pernah dicoba dan salah:
+nomor PO adalah teks bebas yang diketik pengguna — data nyata berisi `PO lala`,
+`jaja`, `PO1234`, `PO-DEMO-003` — sehingga urutan alfabetisnya tidak punya
+hubungan apa pun dengan urutan ID, dan `id_transaksi` keluar teracak. Dengan
+kunci ID-minimum, seluruh baris mengalir menurut ID sementara anggota satu PO
+tetap berdampingan.
+
+Konsekuensi yang diterima: PO yang menggabungkan transaksi berjauhan akan
+menarik anggotanya naik ke posisi anggota ber-ID terkecil, sehingga ada lompatan
+ID sesekali. Itu tak terhindarkan — sel gabungan menuntut baris satu PO
+bersebelahan.
+
+**Asumsi yang wajib dijaga: satu transaksi paling banyak menjadi anggota satu
+PO.** Kunci urut memakai `MIN(id_transaksi)` lewat `po_detail`; kalau sebuah
+transaksi punya dua baris `po_detail`, `MIN` dihitung lintas dua grup dan
+jaminan berdampingan runtuh untuk baris itu. Asumsi ini sempat bocor: PO yang
+lahir langsung berstatus `dibatalkan` tetap membuat baris `po_detail` padahal
+transaksinya sengaja ditahan di tahap Pengadaan agar bisa digabung ulang —
+sehingga setelah digabung ulang, transaksi itu jadi anggota dua PO. Sudah
+diperbaiki di `PoGroupingService::gabungkanPo()`: PO yang lahir batal tidak
+mencatat keanggotaan sama sekali, konsisten dengan jalur pembatalan menyusul di
+`PengadaanController::update()` yang memang menghapus baris-baris itu.
 
 Urutan skema harus ditulis eksplisit sebagai ekspresi `CASE` (TJP → 0, MPP → 1),
 bukan `ORDER BY skema` biasa. Kolomnya `enum('TJP','MPP')`: MySQL mengurutkan
@@ -69,9 +95,9 @@ yang berlawanan.
 - `id_transaksi` terakhir, urut string menaik (format `00001/07/2026/TJP`,
   jadi efektif urut nomor seri).
 
-Transaksi yang belum punya PO bernilai `no_po = NULL` dan ditempatkan **di akhir
-tiap blok skema**, tetap urut ID di antara sesamanya. Ini wajib: kalau baris
-tanpa PO tersebar di tengah, blok merge akan terpotong.
+Transaksi tanpa PO tidak perlu penanganan NULL terpisah: `COALESCE` memberi
+mereka `id_transaksi` sendiri sebagai kunci, sehingga mereka duduk di posisi ID
+yang wajar di antara grup-grup PO tanpa memotong blok merge mana pun.
 
 Catatan asumsi: kunci pengelompokan PO di `PoGroupingService` adalah
 (tanggal_bongkar, id_pemasok, makloon_user_id) dan **tidak** memeriksa `skema`.

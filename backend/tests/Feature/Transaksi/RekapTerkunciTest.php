@@ -117,19 +117,28 @@ class RekapTerkunciTest extends TestCase
         $this->assertNotContains($belumTerkunci->id_transaksi, $ids);
     }
 
-    public function test_urutan_rekap_adalah_skema_lalu_no_po_lalu_id_transaksi(): void
+    public function test_urutan_rekap_adalah_skema_lalu_kelompok_po_berdasar_id_minimum_lalu_id_transaksi(): void
     {
-        // Tiga TJP dan satu MPP, semuanya terkunci di tahap awal supaya lolos filter admin.
+        // Enam TJP dan satu MPP, semuanya terkunci di tahap awal supaya lolos filter admin.
         $tjpA = $this->buatTjpDenganJpTerkunci();
         $tjpB = $this->buatTjpDenganJpTerkunci();
+        $tjpMultiA = $this->buatTjpDenganJpTerkunci();
+        $tjpMultiB = $this->buatTjpDenganJpTerkunci();
         $tjpTanpaPo = $this->buatTjpDenganJpTerkunci();
         $mpp = $this->buatMppDenganMakloonTerkunci();
 
-        // tjpB sengaja diberi PO bernomor lebih kecil daripada tjpA supaya urutan PO
-        // benar-benar diuji, bukan kebetulan sama dengan urutan pembuatan.
-        $this->pasangPo('PO-001', [$tjpB->id_transaksi]);
-        $this->pasangPo('PO-002', [$tjpA->id_transaksi]);
-        $this->pasangPo('PO-003', [$mpp->id_transaksi]);
+        // no_po sengaja dipasang BERLAWANAN arah dengan urutan id_transaksi: "PO-900" (besar
+        // secara alfabetis) dipasangkan ke tjpA yang id-nya lebih kecil, "PO-100" (kecil
+        // secara alfabetis) dipasangkan ke tjpB yang id-nya lebih besar. Kalau pengurutan
+        // masih memakai no_po, tjpB akan nongol duluan walau id-nya lebih besar -- persis
+        // defect "ID Transaksi belum urut" yang dilaporkan.
+        $this->pasangPo('PO-900', [$tjpA->id_transaksi]);
+        $this->pasangPo('PO-100', [$tjpB->id_transaksi]);
+
+        // PO beranggota dua transaksi: membuktikan baris-barisnya tetap berdampingan
+        // (prasyarat sel gabungan di frontend) walau kunci urut sekarang id minimum
+        // dalam grup, bukan no_po itu sendiri.
+        $this->pasangPo('PO-500', [$tjpMultiA->id_transaksi, $tjpMultiB->id_transaksi]);
 
         Sanctum::actingAs($this->buatUser('admin'));
 
@@ -139,11 +148,19 @@ class RekapTerkunciTest extends TestCase
         $ids = collect($response->json('data'))->pluck('id_transaksi')->all();
 
         $this->assertSame([
-            $tjpB->id_transaksi,      // TJP, PO-001
-            $tjpA->id_transaksi,      // TJP, PO-002
-            $tjpTanpaPo->id_transaksi, // TJP, tanpa PO -> akhir blok TJP
-            $mpp->id_transaksi,       // MPP, PO-003
+            $tjpA->id_transaksi,       // TJP, PO-900 -- id terkecil di grupnya walau no_po "besar" alfabetis
+            $tjpB->id_transaksi,       // TJP, PO-100 -- no_po "kecil" alfabetis tapi id lebih besar dari tjpA
+            $tjpMultiA->id_transaksi,  // TJP, PO-500 (anggota pertama)
+            $tjpMultiB->id_transaksi,  // TJP, PO-500 (anggota kedua) -- berdampingan dengan tjpMultiA
+            $tjpTanpaPo->id_transaksi, // TJP, tanpa PO -> id sendiri jadi kunci urut
+            $mpp->id_transaksi,        // MPP
         ], $ids);
+
+        // Anggota PO-500 harus benar-benar berdampingan (selisih posisi 1), bukan cuma
+        // kebetulan cocok dengan urutan penuh di atas.
+        $posisiMultiA = array_search($tjpMultiA->id_transaksi, $ids);
+        $posisiMultiB = array_search($tjpMultiB->id_transaksi, $ids);
+        $this->assertSame(1, abs($posisiMultiA - $posisiMultiB));
     }
 
     /**

@@ -83,18 +83,26 @@ class PoGroupingService
             ]);
 
             foreach ($rows as $id => $row) {
+                // PO yang langsung dibatalkan tidak memajukan transaksi asalnya dan tidak
+                // mencatat keanggotaan sama sekali; transaksi tetap di tahap Pengadaan agar
+                // bisa digabung ulang. Meninggalkan baris po_detail di sini akan membuat
+                // transaksi itu jadi anggota DUA PO setelah digabung ulang, melanggar asumsi
+                // "satu transaksi paling banyak satu PO" yang dipakai pengurutan rekap
+                // (kunci grup = id_transaksi terkecil antar anggota PO) dan kolom No. PO.
+                // Jalur pembatalan menyusul di PengadaanController::update() juga menghapus
+                // baris-baris ini, jadi keduanya kini konsisten.
+                if ($status === 'dibatalkan') {
+                    continue;
+                }
+
                 PoDetail::create([
                     'data_pengadaan_id' => $dataPengadaan->id,
                     'transaksi_id' => $id,
                     'kuantum_kontribusi' => number_format((float) $row['kuantum'], 2, '.', ''),
                 ]);
 
-                // PO yang langsung dibatalkan tidak memajukan transaksi asalnya;
-                // transaksi tetap di tahap Pengadaan agar bisa digabung ulang.
-                if ($status !== 'dibatalkan') {
-                    $row['transaksi']->current_stage = 'keuangan';
-                    $row['transaksi']->save();
-                }
+                $row['transaksi']->current_stage = 'keuangan';
+                $row['transaksi']->save();
             }
 
             return $dataPengadaan->load('poDetail');

@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom'
 import FormHero from '../components/FormHero'
 import DataSpreadsheet, { type SheetColumn } from '../components/DataSpreadsheet'
 import { useOperasiList, sudahIsiHasil, type PermintaanOperasi } from '../hooks/useOperasiList'
+import { pesanKegagalan } from '../lib/api'
 
 function num(value: string | null) {
   if (value === null || value === '') return null
@@ -33,7 +34,7 @@ const columns: SheetColumn<PermintaanOperasi>[] = [
 ]
 
 export default function OperasiRekapPage() {
-  const { data, isLoading } = useOperasiList(1, 200)
+  const { data, isLoading, isError, error } = useOperasiList(1, 200)
   // Hanya batch yang sudah dikeluarkan Pengadaan dan hasil produksinya sudah diisi —
   // datanya tidak berubah lagi. Disaring di frontend, bukan di OperasiController::index(),
   // karena endpoint yang sama dipakai halaman input OperasiPage.
@@ -81,6 +82,8 @@ export default function OperasiRekapPage() {
             rowKey={(r) => r.id}
             namaFile="rekap-operasi"
             isLoading={isLoading}
+            isError={isError}
+            errorMessage={pesanKegagalan(error)}
             emptyTitle="Belum ada permintaan Operasi"
             emptyCopy="Data muncul setelah Operasi mengajukan pengeluaran stok."
           />

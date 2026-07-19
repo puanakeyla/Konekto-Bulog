@@ -6,6 +6,7 @@ use App\Models\DataJemputPangan;
 use App\Models\DataMakloonMpp;
 use App\Models\DataMakloonTjp;
 use App\Models\DataUbJastasma;
+use App\Models\PoDetail;
 use App\Models\Role;
 use App\Models\Transaksi;
 use App\Models\User;
@@ -69,6 +70,65 @@ class GabungkanPoTest extends TestCase
         $kontribusi = $po->poDetail->pluck('kuantum_kontribusi', 'transaksi_id');
         $this->assertSame('100.00', $kontribusi[$t1->id_transaksi]);
         $this->assertSame('50.00', $kontribusi[$t2->id_transaksi]);
+    }
+
+    /**
+     * PO yang lahir langsung berstatus 'dibatalkan' sengaja menahan transaksinya di tahap
+     * Pengadaan supaya bisa digabung ulang. Kalau baris po_detail-nya ikut ditinggalkan,
+     * transaksi itu akan jadi anggota DUA PO setelah digabung ulang — melanggar asumsi
+     * "satu transaksi paling banyak satu PO" yang dipakai pengurutan rekap (kunci grup =
+     * id_transaksi terkecil antar anggota PO) maupun kolom No. PO di tabel. Jalur
+     * pembatalan yang normal di PengadaanController::update() memang sudah menghapusnya.
+     */
+    public function test_gabungkan_po_yang_langsung_dibatalkan_tidak_meninggalkan_po_detail(): void
+    {
+        $t1 = $this->transaksiMppSampaiPengadaan('PEMASOK-B', '2026-07-11', 80);
+        $t2 = $this->transaksiMppSampaiPengadaan('PEMASOK-B', '2026-07-11', 20);
+
+        $po = app(PoGroupingService::class)->gabungkanPo(
+            [$t1->id_transaksi, $t2->id_transaksi],
+            'PO-BATAL-001',
+            $this->pengadaan,
+            null,
+            'dibatalkan'
+        );
+
+        $this->assertSame('dibatalkan', $po->status);
+        // Transaksi tetap di Pengadaan supaya bisa digabung ulang.
+        $this->assertSame('pengadaan', $t1->fresh()->current_stage);
+        $this->assertSame('pengadaan', $t2->fresh()->current_stage);
+
+        // Tapi keanggotaan PO-nya tidak boleh tertinggal.
+        $this->assertCount(0, PoDetail::where('data_pengadaan_id', $po->id)->get());
+        $this->assertCount(0, PoDetail::where('transaksi_id', $t1->id_transaksi)->get());
+        $this->assertCount(0, PoDetail::where('transaksi_id', $t2->id_transaksi)->get());
+    }
+
+    /**
+     * Konsekuensi langsung dari test di atas: setelah PO batal, transaksi bisa digabung
+     * ulang dan hanya menjadi anggota PO yang baru — bukan dua-duanya.
+     */
+    public function test_transaksi_dari_po_batal_hanya_jadi_anggota_po_penggantinya(): void
+    {
+        $t1 = $this->transaksiMppSampaiPengadaan('PEMASOK-C', '2026-07-12', 60);
+
+        app(PoGroupingService::class)->gabungkanPo(
+            [$t1->id_transaksi],
+            'PO-BATAL-002',
+            $this->pengadaan,
+            null,
+            'dibatalkan'
+        );
+
+        $poBaru = app(PoGroupingService::class)->gabungkanPo(
+            [$t1->id_transaksi],
+            'PO-GANTI-002',
+            $this->pengadaan
+        );
+
+        $detail = PoDetail::where('transaksi_id', $t1->id_transaksi)->get();
+        $this->assertCount(1, $detail);
+        $this->assertSame($poBaru->id, $detail->first()->data_pengadaan_id);
     }
 
     public function test_gabungkan_po_menolak_transaksi_dengan_kelompok_berbeda(): void

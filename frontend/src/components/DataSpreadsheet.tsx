@@ -25,6 +25,14 @@ type Props<T> = {
   emptyTitle?: string
   emptyCopy?: string
   isLoading?: boolean
+  /**
+   * Pengambilan data gagal. WAJIB dibedakan dari "belum ada data": tanpa ini,
+   * respons 403/500 tampil persis seperti tabel kosong dan pengguna mengira
+   * datanya memang belum ada, padahal aksesnya yang ditolak.
+   */
+  isError?: boolean
+  /** Pesan kegagalan dari server, bila ada. */
+  errorMessage?: string | null
 }
 
 /**
@@ -63,6 +71,8 @@ export default function DataSpreadsheet<T>({
   emptyTitle = 'Belum ada data',
   emptyCopy = 'Data akan muncul setelah proses berjalan.',
   isLoading = false,
+  isError = false,
+  errorMessage = null,
 }: Props<T>) {
   const [q, setQ] = useState('')
   // key kolom -> daftar nilai yang dipilih. Kolom tanpa entri berarti tidak difilter.
@@ -210,7 +220,21 @@ export default function DataSpreadsheet<T>({
 
       {isLoading && <div className="panel px-4 py-3 text-sm text-muted">Memuat data...</div>}
 
-      {!isLoading && filtered.length === 0 && (
+      {/*
+        Kegagalan diperiksa SEBELUM keadaan kosong. Kalau tidak, permintaan yang
+        ditolak akan jatuh ke cabang "Belum ada data" dan pengguna disesatkan:
+        tabel kosong terlihat sama persis, tanpa petunjuk bahwa ada yang salah.
+      */}
+      {!isLoading && isError && (
+        <div className="empty-state">
+          <div className="empty-title">Gagal memuat data</div>
+          <p className="empty-copy">
+            {errorMessage ?? 'Data tidak dapat diambil dari server. Coba muat ulang halaman; bila terus berulang, hubungi admin — bisa jadi akun Anda tidak punya akses ke data ini.'}
+          </p>
+        </div>
+      )}
+
+      {!isLoading && !isError && filtered.length === 0 && (
         <div className="empty-state">
           <div className="empty-title">{rows.length === 0 ? emptyTitle : 'Tidak ada baris yang cocok'}</div>
           <p className="empty-copy">
@@ -219,7 +243,7 @@ export default function DataSpreadsheet<T>({
         </div>
       )}
 
-      {!isLoading && filtered.length > 0 && (
+      {!isLoading && !isError && filtered.length > 0 && (
         <div className="max-h-[70vh] overflow-auto rounded-lg border border-border">
           <table className="w-full border-collapse text-[0.8125rem] whitespace-nowrap">
             <thead className="sticky top-0 z-10">

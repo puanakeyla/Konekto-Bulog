@@ -2,6 +2,7 @@ import FormHero from '../components/FormHero'
 import DataSpreadsheet, { type SheetColumn } from '../components/DataSpreadsheet'
 import { useAuth } from '../hooks/useAuth'
 import { useRekapTransaksi, type RekapTransaksi } from '../hooks/useRekapTransaksi'
+import { pesanKegagalan } from '../lib/api'
 
 /**
  * Rekap lintas tahap, kolomnya KUMULATIF sesuai role:
@@ -75,7 +76,10 @@ const COLS_PENGADAAN: SheetColumn<RekapTransaksi>[] = [
     label: 'Pengadaan · No. PO',
     value: (r) => r.data_pengadaan?.no_po ?? null,
     // Satu PO menaungi beberapa transaksi; sel digabung agar hubungan itu terlihat.
-    // Backend sudah mengurutkan skema -> no_po -> id, jadi barisnya pasti berdampingan.
+    // Penggabungan hanya benar kalau baris satu PO berdampingan. Itu dijamin backend:
+    // rekap() mengurutkan skema -> kunci grup PO -> id_transaksi, dengan kunci grup =
+    // id_transaksi TERKECIL di antara anggota PO (bukan no_po, yang teks bebas).
+    // Kalau urutan backend diubah, penggabungan di sini ikut rusak.
     mergeKey: (r) => r.data_pengadaan?.no_po ?? null,
     filterable: true,
   },
@@ -118,7 +122,7 @@ function kolomUntukRole(role: string): SheetColumn<RekapTransaksi>[] {
 export default function RekapTransaksiPage() {
   const { user } = useAuth()
   const role = user?.role.nama_role ?? ''
-  const { data, isLoading } = useRekapTransaksi()
+  const { data, isLoading, isError, error } = useRekapTransaksi()
   const rows = data?.items ?? []
 
   const columns = kolomUntukRole(role)
@@ -160,6 +164,8 @@ export default function RekapTransaksiPage() {
             rowKey={(r) => r.id_transaksi}
             namaFile={`rekap-${role || 'transaksi'}`}
             isLoading={isLoading}
+            isError={isError}
+            errorMessage={pesanKegagalan(error)}
             emptyTitle="Belum ada transaksi"
             emptyCopy="Data muncul setelah transaksi dibuat pada alur TJP atau MPP."
           />
