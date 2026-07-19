@@ -21,6 +21,7 @@ class AdminUserController extends Controller
     public function index(Request $request)
     {
         $users = User::with('role')
+            ->where('is_active', true)
             ->orderBy('username')
             ->paginate($request->integer('per_page', 20));
 
@@ -186,17 +187,24 @@ class AdminUserController extends Controller
 
     public function destroy(Request $request, User $user)
     {
+        $before = $user->only(['username', 'role_id', 'nama_maklon', 'is_active']);
+
+        $user->update(['is_active' => false]);
+
         $detail = [
             'target_user_id' => $user->id,
             'username' => $user->username,
             'role_id' => $user->role_id,
+            'before' => $before,
+            'after' => $user->fresh()->only(['username', 'role_id', 'nama_maklon', 'is_active']),
         ];
 
-        $this->auditLog->log($request->user(), 'admin_user_delete', null, $detail);
+        $this->auditLog->log($request->user(), 'admin_user_deactivate', null, $detail);
 
-        $user->delete();
-
-        return response()->noContent();
+        return response()->json([
+            'data' => new AdminUserResource($user->fresh('role')),
+            'message' => 'User dihapus dari daftar aktif. Riwayat transaksi tetap tersimpan.',
+        ]);
     }
 
     private function validateUser(Request $request, ?User $user = null): array

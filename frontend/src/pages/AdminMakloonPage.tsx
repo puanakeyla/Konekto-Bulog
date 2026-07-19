@@ -145,7 +145,7 @@ export default function AdminMakloonPage() {
         badge="Administrator"
       />
 
-      <div className="relative mx-auto -mt-16 max-w-6xl px-6 pb-16">
+      <div className="relative mx-auto -mt-16 max-w-6xl px-4 pb-16 sm:px-6">
         <div className="grid items-start gap-6 xl:grid-cols-[380px_minmax(0,1fr)]">
           <div className="grid content-start gap-6">
             <section className="panel panel-pad">
@@ -309,14 +309,14 @@ export default function AdminMakloonPage() {
             {deleteMutation.error && <div className="alert-danger rounded-none px-6 py-3">{errorMessage(deleteMutation.error)}</div>}
 
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[720px] table-fixed text-sm">
+              <table className="w-full min-w-[680px] table-fixed text-sm">
                 <thead className="bg-primary-tint text-left text-primary-dark">
                   <tr>
-                    <th className="w-[23%] px-4 py-3 text-xs font-bold uppercase tracking-wide">Nama Makloon</th>
-                    <th className="w-[27%] px-4 py-3 text-xs font-bold uppercase tracking-wide">Username</th>
-                    <th className="w-[25%] px-4 py-3 text-xs font-bold uppercase tracking-wide">Wilayah</th>
-                    <th className="w-[86px] px-3 py-3 text-xs font-bold uppercase tracking-wide">Status</th>
-                    <th className="w-[132px] px-4 py-3 text-right text-xs font-bold uppercase tracking-wide">Aksi</th>
+                    <th className="w-[21%] px-4 py-3 text-xs font-bold uppercase tracking-wide">Nama Makloon</th>
+                    <th className="w-[24%] px-4 py-3 text-xs font-bold uppercase tracking-wide">Username</th>
+                    <th className="w-[21%] px-4 py-3 text-xs font-bold uppercase tracking-wide">Wilayah</th>
+                    <th className="w-[82px] px-3 py-3 text-xs font-bold uppercase tracking-wide">Status</th>
+                    <th className="w-[148px] px-2 py-3 text-center text-xs font-bold uppercase tracking-wide">Aksi</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border bg-white">
@@ -340,21 +340,21 @@ export default function AdminMakloonPage() {
                           {target.is_active ? 'Aktif' : 'Nonaktif'}
                         </span>
                       </td>
-                      <td className="px-4 py-3">
-                        <div className="flex flex-nowrap justify-end gap-2 whitespace-nowrap">
+                      <td className="px-2 py-3">
+                        <div className="flex flex-nowrap justify-center gap-1.5 whitespace-nowrap">
                           <button
                             type="button"
-                            className="rounded-lg border border-primary/20 bg-primary-tint px-3 py-1.5 text-xs font-bold text-primary transition-colors hover:border-primary hover:bg-primary hover:text-white"
+                            className="rounded-lg border border-primary/20 bg-primary-tint px-2.5 py-1.5 text-xs font-bold text-primary transition-colors hover:border-primary hover:bg-primary hover:text-white"
                             onClick={() => startEdit(target)}
                           >
                             Edit
                           </button>
                           <button
                             type="button"
-                            className="rounded-lg border border-danger/20 bg-danger-bg px-3 py-1.5 text-xs font-bold text-danger transition-colors hover:border-danger hover:bg-danger hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+                            className="rounded-lg border border-danger/20 bg-danger-bg px-2.5 py-1.5 text-xs font-bold text-danger transition-colors hover:border-danger hover:bg-danger hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
                             disabled={deleteMutation.isPending}
                             onClick={() => {
-                              if (window.confirm(`Hapus makloon ${target.nama_maklon ?? target.username}?`)) {
+                              if (window.confirm(`Hapus makloon ${target.nama_maklon ?? target.username}? Riwayat transaksi tetap tersimpan.`)) {
                                 deleteMutation.mutate(target)
                               }
                             }}

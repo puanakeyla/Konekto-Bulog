@@ -271,7 +271,7 @@ export default function AdminUsersPage() {
                   <th className="px-5 py-3 text-xs font-bold uppercase tracking-wide">Role</th>
                   <th className="px-5 py-3 text-xs font-bold uppercase tracking-wide">Nama Makloon</th>
                   <th className="px-5 py-3 text-xs font-bold uppercase tracking-wide">Status</th>
-                  <th className="px-5 py-3 text-right text-xs font-bold uppercase tracking-wide">Aksi</th>
+                  <th className="px-5 py-3 text-center text-xs font-bold uppercase tracking-wide">Aksi</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border bg-white">
@@ -305,7 +305,7 @@ export default function AdminUsersPage() {
                       </span>
                     </td>
                     <td className="px-5 py-3">
-                      <div className="flex justify-end gap-2">
+                      <div className="flex justify-center gap-2">
                         <button
                           type="button"
                           className="rounded-lg border border-primary/20 bg-primary-tint px-3 py-1.5 text-xs font-bold text-primary transition-colors hover:border-primary hover:bg-primary hover:text-white"
@@ -318,7 +318,7 @@ export default function AdminUsersPage() {
                           className="rounded-lg border border-danger/20 bg-danger-bg px-3 py-1.5 text-xs font-bold text-danger transition-colors hover:border-danger hover:bg-danger hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
                           disabled={deleteMutation.isPending}
                           onClick={() => {
-                            if (window.confirm(`Hapus user ${target.username}?`)) {
+                            if (window.confirm(`Hapus user ${target.username}? Riwayat transaksi tetap tersimpan.`)) {
                               deleteMutation.mutate(target)
                             }
                           }}

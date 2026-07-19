@@ -22,6 +22,7 @@ class AdminMakloonController extends Controller
 
         $makloon = User::with('role')
             ->where('role_id', $this->makloonRoleId())
+            ->where('is_active', true)
             ->when($search !== '', function ($query) use ($search) {
                 $query->where(function ($query) use ($search) {
                     $query->where('username', 'like', "%{$search}%")
@@ -88,16 +89,23 @@ class AdminMakloonController extends Controller
     {
         $this->ensureMakloon($makloon);
 
+        $before = $makloon->only(['username', 'nama_maklon', 'kecamatan', 'kabupaten', 'is_active']);
+        $makloon->update(['is_active' => false]);
+
         $detail = [
             'target_user_id' => $makloon->id,
             'username' => $makloon->username,
             'nama_maklon' => $makloon->nama_maklon,
+            'before' => $before,
+            'after' => $makloon->fresh()->only(['username', 'nama_maklon', 'kecamatan', 'kabupaten', 'is_active']),
         ];
 
-        $this->auditLog->log($request->user(), 'admin_makloon_delete', null, $detail);
-        $makloon->delete();
+        $this->auditLog->log($request->user(), 'admin_makloon_deactivate', null, $detail);
 
-        return response()->noContent();
+        return response()->json([
+            'data' => new AdminUserResource($makloon->fresh('role')),
+            'message' => 'Makloon dihapus dari daftar aktif. Riwayat transaksi tetap tersimpan.',
+        ]);
     }
 
     private function validateMakloon(Request $request, ?User $makloon = null): array
