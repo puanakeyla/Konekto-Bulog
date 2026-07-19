@@ -1055,6 +1055,11 @@ Jalankan `php artisan serve` dari `backend/` dan `npm run dev` dari `frontend/`,
 
 1. **Rekap Transaksi (role makloon):** tidak ada kolom berjudul "Status" apa pun; baris yang tahap Makloon-nya belum dikunci tidak muncul; urutan TJP dulu lalu MPP, di dalamnya mengelompok per No. PO.
 2. **Rekap Transaksi (role pengadaan/keuangan):** kolom No. PO tampil sebagai sel gabungan yang merentang beberapa baris; kolom Harga/kg dan Total Kuantum tetap terisi di tiap baris.
+   Perhatikan khusus tampilan belangnya: zebra striping ada di `<tr>`, sedangkan sel
+   gabungan dipaksa `bg-white`. Sel gabungan yang kebetulan berjangkar di baris genap
+   akan tampil putih sementara sel tetangganya di baris yang sama bernuansa `surface`.
+   Nilai apakah itu terlihat wajar atau justru mengganggu — kalau mengganggu, ganti
+   latar sel gabungan agar mengikuti nuansa baris jangkarnya.
 3. **Filter kolom:** buka dropdown Skema, pilih `TJP`; tabel menyusut dan sel gabungan No. PO ikut menyusut tanpa merusak struktur tabel. Tekan "Bersihkan filter" dan pastikan tabel kembali utuh.
 4. **Ekspor CSV saat terfilter:** dengan filter Skema=TJP masih aktif, klik Ekspor CSV. Buka berkasnya dan pastikan (a) jumlah barisnya sama persis dengan yang terlihat di layar, (b) tidak ada kolom Status, (c) No. PO terisi di **tiap** baris, bukan dikosongkan pada baris lanjutan.
 5. **Rekap Operasi:** kolom Status hilang; batch yang masih menunggu Pengadaan tidak muncul; filter Gudang Penerima bekerja.

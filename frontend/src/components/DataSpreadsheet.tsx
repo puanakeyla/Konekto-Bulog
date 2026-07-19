@@ -9,6 +9,11 @@ export type SheetColumn<T> = ExportColumn<T> & {
   searchable?: boolean
   /** Beri dropdown filter berisi nilai unik kolom ini. */
   filterable?: boolean
+  /**
+   * Bila diisi, sel kolom ini digabung vertikal selama baris berurutan menghasilkan
+   * kunci yang sama. Baris bernilai null tidak pernah digabung.
+   */
+  mergeKey?: (row: T) => string | null
 }
 
 type Props<T> = {
@@ -20,6 +25,30 @@ type Props<T> = {
   emptyTitle?: string
   emptyCopy?: string
   isLoading?: boolean
+}
+
+/**
+ * Berapa baris yang harus digabung mulai dari tiap indeks. Nilai 0 berarti sel itu
+ * sudah tertutup rowSpan baris di atasnya dan tidak boleh dirender sama sekali.
+ * Dihitung dari daftar yang SUDAH tersaring, supaya sel gabungan ikut menyusut saat
+ * sebagian barisnya terfilter dan tidak meninggalkan rowSpan menggantung.
+ */
+function hitungRowSpan<T>(rows: T[], mergeKey: (row: T) => string | null): number[] {
+  const spans = new Array<number>(rows.length).fill(0)
+  let i = 0
+  while (i < rows.length) {
+    const kunci = mergeKey(rows[i])
+    if (kunci === null || kunci === '') {
+      spans[i] = 1
+      i += 1
+      continue
+    }
+    let j = i + 1
+    while (j < rows.length && mergeKey(rows[j]) === kunci) j += 1
+    spans[i] = j - i
+    i = j
+  }
+  return spans
 }
 
 /**
@@ -91,6 +120,15 @@ export default function DataSpreadsheet<T>({
       return cariCols.some((c) => String(c.value(row) ?? '').toLowerCase().includes(key))
     })
   }, [rows, columns, q, efektifFilters])
+
+  // key kolom -> rowSpan per baris, hanya untuk kolom yang punya mergeKey.
+  const rowSpans = useMemo(() => {
+    const hasil: Record<string, number[]> = {}
+    for (const c of columns) {
+      if (c.mergeKey) hasil[c.key] = hitungRowSpan(filtered, c.mergeKey)
+    }
+    return hasil
+  }, [filtered, columns])
 
   function toggleFilter(colKey: string, nilai: string) {
     setFilters((prev) => {
@@ -201,14 +239,20 @@ export default function DataSpreadsheet<T>({
               {filtered.map((row, i) => (
                 <tr key={rowKey(row)} className="odd:bg-white even:bg-surface hover:bg-primary-tint/40">
                   <td className="border-b border-r border-border px-3 py-2 text-right text-muted tabular-nums">{i + 1}</td>
-                  {columns.map((c) => (
-                    <td
-                      key={c.key}
-                      className={`border-b border-r border-border px-3 py-2 last:border-r-0 ${c.align === 'right' ? 'text-right tabular-nums' : 'text-left'}`}
-                    >
-                      {c.render ? c.render(row) : (c.value(row) ?? '-')}
-                    </td>
-                  ))}
+                  {columns.map((c) => {
+                    const span = rowSpans[c.key]?.[i]
+                    // span === 0: sel sudah tertutup rowSpan baris di atasnya.
+                    if (span === 0) return null
+                    return (
+                      <td
+                        key={c.key}
+                        rowSpan={span && span > 1 ? span : undefined}
+                        className={`border-b border-r border-border px-3 py-2 last:border-r-0 ${c.align === 'right' ? 'text-right tabular-nums' : 'text-left'} ${span && span > 1 ? 'align-middle bg-white font-semibold' : ''}`}
+                      >
+                        {c.render ? c.render(row) : (c.value(row) ?? '-')}
+                      </td>
+                    )
+                  })}
                 </tr>
               ))}
             </tbody>
