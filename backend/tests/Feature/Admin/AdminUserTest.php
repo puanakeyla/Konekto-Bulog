@@ -208,62 +208,11 @@ class AdminUserTest extends TestCase
         $this->assertDatabaseMissing('users', ['id' => $user->id]);
     }
 
-    public function test_admin_dapat_crud_makloon_dari_endpoint_khusus_admin(): void
-    {
-        Sanctum::actingAs($this->admin);
-
-        $create = $this->postJson('/api/admin/makloon', [
-            'username' => 'makloon_crud',
-            'password' => 'password123',
-            'password_confirmation' => 'password123',
-            'nama_maklon' => 'Makloon CRUD',
-            'kecamatan' => 'Metro Timur',
-            'kabupaten' => 'Kota Metro',
-            'is_active' => true,
-        ]);
-
-        $create->assertCreated()
-            ->assertJsonPath('data.username', 'makloon_crud')
-            ->assertJsonPath('data.role.nama_role', 'makloon')
-            ->assertJsonPath('data.nama_maklon', 'Makloon CRUD');
-
-        $id = $create->json('data.id');
-
-        $this->getJson('/api/admin/makloon?search=crud')
-            ->assertOk()
-            ->assertJsonPath('data.0.id', $id);
-
-        $this->patchJson("/api/admin/makloon/{$id}", [
-            'nama_maklon' => 'Makloon CRUD Update',
-            'kecamatan' => 'Metro Pusat',
-            'is_active' => false,
-        ])->assertOk()
-            ->assertJsonPath('data.nama_maklon', 'Makloon CRUD Update')
-            ->assertJsonPath('data.kecamatan', 'Metro Pusat')
-            ->assertJsonPath('data.is_active', false);
-
-        $this->deleteJson("/api/admin/makloon/{$id}")->assertNoContent();
-        $this->assertDatabaseMissing('users', ['id' => $id]);
-    }
-
-    public function test_endpoint_admin_makloon_menolak_user_bukan_makloon(): void
-    {
-        Sanctum::actingAs($this->admin);
-        $pengadaan = $this->buatUser('pengadaan');
-
-        $this->getJson("/api/admin/makloon/{$pengadaan->id}")->assertNotFound();
-        $this->patchJson("/api/admin/makloon/{$pengadaan->id}", [
-            'nama_maklon' => 'Tidak Boleh',
-        ])->assertNotFound();
-        $this->deleteJson("/api/admin/makloon/{$pengadaan->id}")->assertNotFound();
-    }
-
     public function test_non_admin_tidak_dapat_mengakses_admin_users(): void
     {
         Sanctum::actingAs($this->buatUser('pengadaan'));
 
         $this->getJson('/api/admin/users')->assertForbidden();
-        $this->getJson('/api/admin/makloon')->assertForbidden();
     }
 
     private function buatUser(string $role, array $attributes = []): User

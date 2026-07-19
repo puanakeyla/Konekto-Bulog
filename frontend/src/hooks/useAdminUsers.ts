@@ -29,18 +29,6 @@ export function useAdminUsers() {
   })
 }
 
-export function useAdminMakloon(search = '') {
-  return useQuery({
-    queryKey: ['admin-makloon', search],
-    queryFn: async () => {
-      const { data } = await api.get<{ data: AdminUser[] }>('/api/admin/makloon', {
-        params: { search: search || undefined },
-      })
-      return data.data
-    },
-  })
-}
-
 export function useAdminRoles() {
   return useQuery({
     queryKey: ['admin-roles'],

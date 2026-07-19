@@ -15,7 +15,6 @@ import OperasiPage from './pages/OperasiPage'
 import OperasiRekapPage from './pages/OperasiRekapPage'
 import GudangPage from './pages/GudangPage'
 import GudangRekapPage from './pages/GudangRekapPage'
-import AdminMakloonPage from './pages/AdminMakloonPage'
 import AdminUsersPage from './pages/AdminUsersPage'
 import MonitoringPage from './pages/MonitoringPage'
 import RekapTransaksiPage from './pages/RekapTransaksiPage'
@@ -61,7 +60,6 @@ function AppRoutes() {
         <Route path="/operasi/rekap" element={<OperasiRekapPage />} />
         <Route path="/gudang" element={<GudangPage />} />
         <Route path="/gudang/rekap" element={<GudangRekapPage />} />
-        <Route path="/admin/makloon" element={<AdminMakloonPage />} />
         <Route path="/admin/users" element={<AdminUsersPage />} />
         <Route path="/admin/audit-logs" element={<AdminAuditLogPage />} />
         <Route path="/monitoring" element={<MonitoringPage />} />

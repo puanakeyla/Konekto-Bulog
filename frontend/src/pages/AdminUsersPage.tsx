@@ -19,6 +19,13 @@ type UserForm = {
   is_active: boolean
 }
 
+type ImportResult = {
+  created: number
+  updated: number
+  errors: { baris: number; pesan: string }[]
+  default_password: string
+}
+
 const emptyForm: UserForm = {
   username: '',
   password: '',
@@ -45,6 +52,9 @@ export default function AdminUsersPage() {
 
   const [form, setForm] = useState<UserForm>(emptyForm)
   const [editing, setEditing] = useState<AdminUser | null>(null)
+  const [importFile, setImportFile] = useState<File | null>(null)
+  const [importInputKey, setImportInputKey] = useState(0)
+  const [importResult, setImportResult] = useState<ImportResult | null>(null)
 
   const selectedRole = useMemo(
     () => roles?.find((role) => String(role.id) === form.role_id),
@@ -84,6 +94,28 @@ export default function AdminUsersPage() {
     onSuccess: (_data, target) => {
       toast.success(`User ${target.username} dihapus.`)
       queryClient.invalidateQueries({ queryKey: ['admin-users'] })
+    },
+    onError: (err) => toast.error(errorMessage(err)),
+  })
+
+  const importMutation = useMutation({
+    mutationFn: async () => {
+      if (!importFile) throw new Error('Pilih file CSV atau Excel terlebih dahulu.')
+
+      const body = new FormData()
+      body.append('file', importFile)
+
+      const { data } = await api.post<{ data: ImportResult }>('/api/admin/users/import-makloon', body)
+
+      return data.data
+    },
+    onSuccess: (result) => {
+      setImportResult(result)
+      setImportFile(null)
+      setImportInputKey((prev) => prev + 1)
+      toast.success(`Import selesai: ${result.created} baru, ${result.updated} diperbarui.`)
+      queryClient.invalidateQueries({ queryKey: ['admin-users'] })
+      queryClient.invalidateQueries({ queryKey: ['makloon-options'] })
     },
     onError: (err) => toast.error(errorMessage(err)),
   })
@@ -250,6 +282,65 @@ export default function AdminUsersPage() {
               )}
             </div>
           </form>
+        </section>
+
+        <section className="panel panel-pad @container">
+          <div className="mb-4 flex flex-col gap-1">
+            <h2 className="section-title">Import Makloon</h2>
+            <p className="text-xs text-slate-500">
+              Upload CSV atau Excel dengan kolom nama_maklon, kecamatan, kabupaten. Kolom username dan password boleh dikosongkan.
+            </p>
+          </div>
+
+          {importMutation.error && (
+            <div className="alert-danger mb-4">
+              {errorMessage(importMutation.error)}
+            </div>
+          )}
+
+          {importResult && (
+            <div className="alert-warning mb-4">
+              Import terakhir: {importResult.created} makloon baru, {importResult.updated} makloon diperbarui. Password default makloon baru: {importResult.default_password}.
+              {importResult.errors.length > 0 && (
+                <ul className="mt-2 list-disc space-y-1 pl-5">
+                  {importResult.errors.slice(0, 5).map((item) => (
+                    <li key={`${item.baris}-${item.pesan}`}>Baris {item.baris}: {item.pesan}</li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
+
+          <form
+            className="grid gap-4 @md:grid-cols-[minmax(0,1fr)_auto] @md:items-end"
+            onSubmit={(event) => {
+              event.preventDefault()
+              importMutation.mutate()
+            }}
+          >
+            <label className="block">
+              <span className="label">File CSV/Excel Makloon</span>
+              <input
+                key={importInputKey}
+                required
+                type="file"
+                accept=".csv,.xlsx,text/csv,text/plain,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                className="input"
+                onChange={(event) => setImportFile(event.target.files?.[0] ?? null)}
+              />
+            </label>
+            <button
+              type="submit"
+              disabled={importMutation.isPending || !importFile}
+              className="btn btn-primary"
+            >
+              {importMutation.isPending ? 'Mengimport...' : 'Import File'}
+            </button>
+          </form>
+
+          <div className="mt-4 rounded-lg border border-border bg-primary-tint/30 p-3 text-xs text-slate-600">
+            Contoh: nama_maklon,kecamatan,kabupaten.
+          </div>
         </section>
 
         <section className="panel overflow-hidden">

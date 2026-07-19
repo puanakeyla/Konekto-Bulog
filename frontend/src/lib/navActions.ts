@@ -8,10 +8,8 @@ export function buildActions(role: string): NavAction[] {
   if (role === 'admin') {
     return [
       { to: '/admin/users', label: 'Kelola User' },
-      { to: '/admin/makloon', label: 'Kelola Makloon' },
       { to: '/monitoring', label: 'Monitoring' },
       { to: '/rekap', label: 'Rekap Data' },
-      { to: '/pengadaan', label: 'Keputusan Stok' },
       { to: '/operasi/rekap', label: 'Rekap Operasi' },
       { to: '/gudang/rekap', label: 'Rekap Gudang' },
       { to: '/admin/audit-logs', label: 'Audit Log' },
