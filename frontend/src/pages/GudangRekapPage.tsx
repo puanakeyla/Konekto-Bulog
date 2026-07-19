@@ -14,7 +14,7 @@ function tanggal(value: string | null | undefined) {
 
 const columns: SheetColumn<PermintaanOperasi>[] = [
   { key: 'tgl_masuk', label: 'Tanggal Masuk', value: (r) => tanggal(r.data_gudang?.tanggal_masuk) },
-  { key: 'gudang', label: 'Nama Gudang', value: (r) => r.data_gudang?.nama_gudang ?? null },
+  { key: 'gudang', label: 'Nama Gudang', value: (r) => r.data_gudang?.nama_gudang ?? null, filterable: true },
   { key: 'no_out', label: 'No. OUT', value: (r) => r.no_out },
   { key: 'no_mo', label: 'No. MO', value: (r) => r.no_mo },
   { key: 'no_tm_gudang', label: 'No. TM', value: (r) => r.data_gudang?.no_tm ?? r.no_tm },
@@ -54,7 +54,7 @@ export default function GudangRekapPage() {
         eyebrow="Perum Bulog Kanwil Lampung"
         badge="Rekap Gudang"
         title="Rekap Penerimaan Gudang"
-        subtitle="Seluruh batch hasil produksi yang sudah diterima gudang. Tabel dapat dicari dan diekspor ke CSV (Excel/Google Sheets)."
+        subtitle="Seluruh batch hasil produksi yang sudah diterima gudang. Tabel dapat dicari, disaring per kolom, dan diekspor ke CSV (Excel/Google Sheets)."
       />
 
       <div className="relative mx-auto -mt-16 max-w-6xl space-y-6 px-6 pb-16">

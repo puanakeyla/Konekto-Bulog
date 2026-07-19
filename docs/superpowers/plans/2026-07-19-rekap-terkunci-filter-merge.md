@@ -915,6 +915,13 @@ Harapan: bersih. Bila `tsc` melaporkan `StatusBadge`/`STATUS_LABEL`/`StageStatus
 
 Hapus blok `STATUS_LABEL` (baris 6-10) dan entri kolom `status` (baris 25).
 
+**Koreksi (ditemukan saat review Task 6).** Hapus juga entri kolom
+`catatan_pengembalian` ("Catatan Pengembalian"). Setelah Step 3 menyaring baris
+menjadi hanya batch `dikeluarkan`, kolom itu dijamin selalu kosong: field-nya
+hanya terisi saat batch berstatus `dikembalikan`, dan justru dikosongkan pada
+transisi ke `dikeluarkan`. Membiarkannya berarti satu kolom hampa di layar dan
+di setiap file CSV.
+
 - [ ] **Step 2: Tandai kolom filter**
 
 Ubah entri kolom `gudang`:

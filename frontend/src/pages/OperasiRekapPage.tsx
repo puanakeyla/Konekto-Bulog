@@ -1,13 +1,7 @@
 import { Link } from 'react-router-dom'
 import FormHero from '../components/FormHero'
 import DataSpreadsheet, { type SheetColumn } from '../components/DataSpreadsheet'
-import { useOperasiList, type PermintaanOperasi } from '../hooks/useOperasiList'
-
-const STATUS_LABEL: Record<string, string> = {
-  menunggu_pengadaan: 'Menunggu Pengadaan',
-  dikeluarkan: 'Dikeluarkan',
-  dikembalikan: 'Dikembalikan',
-}
+import { useOperasiList, sudahIsiHasil, type PermintaanOperasi } from '../hooks/useOperasiList'
 
 function num(value: string | null) {
   if (value === null || value === '') return null
@@ -22,7 +16,6 @@ const columns: SheetColumn<PermintaanOperasi>[] = [
   { key: 'tanggal', label: 'Tanggal Ajuan', value: (r) => tanggal(r.created_at) },
   { key: 'pengaju', label: 'Diajukan Oleh', value: (r) => r.creator?.username ?? null },
   { key: 'gabah', label: 'Gabah Diolah (kg)', value: (r) => num(r.gabah_diolah_kg), align: 'right' },
-  { key: 'status', label: 'Status', value: (r) => STATUS_LABEL[r.status_out] ?? r.status_out },
   { key: 'no_out', label: 'No. OUT', value: (r) => r.no_out },
   { key: 'kuantum_out', label: 'Kuantum OUT (kg)', value: (r) => num(r.kuantum_out), align: 'right' },
   { key: 'no_mo', label: 'No. MO', value: (r) => r.no_mo },
@@ -32,14 +25,19 @@ const columns: SheetColumn<PermintaanOperasi>[] = [
   { key: 'menir', label: 'Menir (kg)', value: (r) => num(r.menir_kg), align: 'right' },
   { key: 'katul', label: 'Katul (kg)', value: (r) => num(r.katul_kg), align: 'right' },
   { key: 'rendemen', label: 'Rendemen (%)', value: (r) => num(r.rendemen_persen), align: 'right' },
-  { key: 'catatan', label: 'Catatan Pengembalian', value: (r) => r.catatan_pengembalian },
-  { key: 'gudang', label: 'Gudang Penerima', value: (r) => r.data_gudang?.nama_gudang ?? null },
+  // Catatan Pengembalian dihapus: hanya terisi saat status_out === 'dikembalikan',
+  // tapi baris di halaman ini selalu status_out === 'dikeluarkan' (lihat sudahIsiHasil),
+  // jadi kolomnya selalu kosong.
+  { key: 'gudang', label: 'Gudang Penerima', value: (r) => r.data_gudang?.nama_gudang ?? null, filterable: true },
   { key: 'tgl_masuk', label: 'Tanggal Masuk Gudang', value: (r) => tanggal(r.data_gudang?.tanggal_masuk) },
 ]
 
 export default function OperasiRekapPage() {
   const { data, isLoading } = useOperasiList(1, 200)
-  const rows = data?.items ?? []
+  // Hanya batch yang sudah dikeluarkan Pengadaan dan hasil produksinya sudah diisi —
+  // datanya tidak berubah lagi. Disaring di frontend, bukan di OperasiController::index(),
+  // karena endpoint yang sama dipakai halaman input OperasiPage.
+  const rows = (data?.items ?? []).filter(sudahIsiHasil)
 
   const totalGabah = rows.reduce((s, r) => s + Number(r.gabah_diolah_kg || 0), 0)
   const totalHgl = rows.reduce((s, r) => s + Number(r.hgl_kg || 0), 0)
@@ -57,12 +55,12 @@ export default function OperasiRekapPage() {
         eyebrow="Perum Bulog Kanwil Lampung"
         badge="Rekap Operasi"
         title="Rekap Hasil Operasi"
-        subtitle="Seluruh permintaan pengeluaran stok beserta hasil produksinya. Tabel dapat dicari dan diekspor ke CSV (Excel/Google Sheets)."
+        subtitle="Batch yang sudah dikeluarkan dan hasil produksinya sudah diisi. Tabel dapat dicari, disaring per kolom, dan diekspor ke CSV (Excel/Google Sheets)."
       />
 
       <div className="relative mx-auto -mt-16 max-w-6xl space-y-6 px-6 pb-16">
         <div className="stats-grid">
-          <div className="stat-card"><div className="stat-label">Total batch</div><div className="stat-value">{rows.length}</div></div>
+          <div className="stat-card"><div className="stat-label">Batch selesai</div><div className="stat-value">{rows.length}</div></div>
           <div className="stat-card"><div className="stat-label">Gabah diolah (kg)</div><div className="stat-value">{fmt(totalGabah)}</div></div>
           <div className="stat-card"><div className="stat-label">Total HGL (kg)</div><div className="stat-value">{fmt(totalHgl)}</div></div>
           <div className="stat-card"><div className="stat-label">Rerata rendemen</div><div className="stat-value">{fmt(rerataRendemen)}%</div></div>
