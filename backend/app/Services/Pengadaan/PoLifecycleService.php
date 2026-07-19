@@ -21,10 +21,6 @@ class PoLifecycleService
         return DB::transaction(function () use ($dataPengadaan, $statusBayar, $tanggalBayar, $noSpp) {
             $dataPengadaan = DataPengadaan::whereKey($dataPengadaan->id)->lockForUpdate()->firstOrFail();
 
-            if ($dataPengadaan->status !== 'lengkap') {
-                abort(422, 'PO belum lengkap (semua nomor IN harus terisi) sebelum bisa diproses pembayaran.');
-            }
-
             if ($dataPengadaan->review_status !== 'diterima') {
                 abort(422, 'Data Pengadaan belum diterima Keuangan.');
             }
@@ -44,6 +40,10 @@ class PoLifecycleService
             $dataKeuangan->status_bayar = $statusBayar;
             $dataKeuangan->tanggal_bayar = $tanggalBayar;
             $this->resetReview($dataKeuangan);
+            if ($statusBayar === 'dibayarkan') {
+                $dataKeuangan->review_status = 'diterima';
+                $dataKeuangan->reviewed_at = now();
+            }
             $dataKeuangan->save();
 
             if ($statusBayar === 'dibayarkan' && ($statusSebelumnya !== 'dibayarkan' || $dataKeuangan->wasChanged('review_status'))) {

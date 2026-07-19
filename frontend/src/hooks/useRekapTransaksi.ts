@@ -14,6 +14,7 @@ export type RekapJemputPangan = StageBase & {
   desa: string | null
   kecamatan: string | null
   kabupaten: string | null
+  makloon_user_id?: number | null
   tanggal_kirim: string | null
   /** Disembunyikan untuk role tertentu (FieldVisibility) -> bisa undefined. */
   kuantum?: string | null

@@ -34,6 +34,7 @@ export type PoItem = {
   status: 'proses' | 'lengkap' | 'dibatalkan'
   review_status?: ReviewStatus | null
   catatan_penolakan?: string | null
+  current_stage?: string[]
   po_detail: PoDetailItem[]
   data_keuangan: DataKeuangan | null
 }

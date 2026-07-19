@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import api from '../lib/api'
+import { pesanKegagalan } from '../lib/api'
 import { apiErrorMessage } from '../lib/apiError'
 import { useAuth } from '../hooks/useAuth'
 import { uploadSemuaFoto } from '../lib/uploadFoto'
@@ -271,7 +272,7 @@ export default function TransaksiDetailPage() {
   const [progressUb, setProgressUb] = useState<Record<string, number>>({})
   const [fotoUbGagal, setFotoUbGagal] = useState<string[]>([])
 
-  const { data: transaksi, isLoading } = useQuery({
+  const { data: transaksi, isLoading, isError, error } = useQuery({
     queryKey: ['transaksi', id],
     queryFn: async () => {
       const { data } = await api.get<{ data: TransaksiDetail }>(`/api/transaksi/${encodeURIComponent(id!)}`)
@@ -409,7 +410,27 @@ export default function TransaksiDetailPage() {
     onError: (err) => toast.error(apiErrorMessage(err, 'Gagal menyimpan data UB Jastasma.')),
   })
 
-  if (isLoading || !transaksi) return <SkeletonTimeline />
+  if (isLoading) return <SkeletonTimeline />
+
+  if (isError || !transaksi) {
+    return (
+      <div className="min-h-screen bg-surface">
+        <FormHero
+          title="Detail transaksi tidak bisa dimuat"
+          subtitle={pesanKegagalan(error) ?? 'Data transaksi tidak ditemukan atau server belum mengembalikan detail transaksi.'}
+          eyebrow="Perum Bulog Kanwil Lampung"
+          badge="Gagal memuat"
+        />
+        <div className="relative mx-auto -mt-16 w-full max-w-[46rem] px-6 pb-16">
+          <div className="panel panel-pad">
+            <div className="alert-danger">
+              {apiErrorMessage(error, 'Gagal memuat detail transaksi. Coba muat ulang halaman atau kembali ke daftar transaksi.')}
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   const role = user?.role.nama_role
   const activeStages = stagesFor(transaksi.skema)
@@ -428,20 +449,20 @@ export default function TransaksiDetailPage() {
   const po = transaksi.data_pengadaan
   const isPengadaanRole = role === 'pengadaan' || role === 'admin'
   const isKeuanganRole = role === 'keuangan' || role === 'admin'
-  const poRejected = !!po && po.status === 'lengkap' && po.review_status === 'ditolak'
-  const poFillingIn = !!po && (po.status === 'proses' || poRejected) // fase Pengadaan mengisi No. IN
-  const poWaitingReview = !!po && po.status === 'lengkap' && po.review_status === 'menunggu_review'
-  const poAccepted = !!po && po.status === 'lengkap' && po.review_status === 'diterima'
+  const poRejected = !!po && po.review_status === 'ditolak'
+  const poFillingIn = !!po && transaksi.current_stage === 'pengadaan' && (po.status === 'proses' || poRejected) // fase Pengadaan mengisi/memperbaiki PO
+  const poWaitingReview = !!po && transaksi.current_stage === 'keuangan' && po.review_status === 'menunggu_review'
+  const poAccepted = !!po && po.review_status === 'diterima'
   const poPaid = po?.data_keuangan?.status_bayar === 'dibayarkan'
   // Pengadaan: gabung PO (belum ada PO) lalu isi No. IN (PO 'proses'/ditolak).
   const showCombine = !po && transaksi.current_stage === 'pengadaan' && !pendingData && isPengadaanRole
   const showIsiIn = poFillingIn && isPengadaanRole
   const pengadaanCurrent = showCombine || poFillingIn
-  const pengadaanComplete = poWaitingReview || poAccepted || poPaid
+  const pengadaanComplete = !!po && !poFillingIn
   // Keuangan: review data Pengadaan lalu pembayaran.
   const showKeuanganReview = poWaitingReview && isKeuanganRole
   const showBayar = poAccepted && !poPaid && isKeuanganRole
-  const keuanganCurrent = poWaitingReview || (poAccepted && !poPaid)
+  const keuanganCurrent = transaksi.current_stage === 'keuangan' && (poWaitingReview || (poAccepted && !poPaid))
   const keuanganComplete = poPaid
 
   const jemputPanganError = (simpanJemputPangan.error as { response?: { data?: { message?: string } } } | null)?.response?.data?.message
@@ -458,7 +479,7 @@ export default function TransaksiDetailPage() {
   }).length
   const totalStages = activeStages.length
   const progressPct = totalStages > 0 ? Math.round((completedCount / totalStages) * 100) : 0
-  const activeStageLabel = poFillingIn ? 'Pengadaan' : (STAGES.find((stage) => stage.id === transaksi.current_stage)?.label ?? transaksi.current_stage)
+  const activeStageLabel = STAGES.find((stage) => stage.id === transaksi.current_stage)?.label ?? transaksi.current_stage
   const allDone = completedCount === totalStages
 
   return (

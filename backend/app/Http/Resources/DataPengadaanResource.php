@@ -22,6 +22,13 @@ class DataPengadaanResource extends JsonResource
         $keuanganRecord = $this->resource->relationLoaded('dataKeuangan') ? $this->dataKeuangan : null;
 
         return array_merge($data, [
+            'po_detail' => $poDetails->map(fn ($detail) => [
+                'id' => $detail->id,
+                'data_pengadaan_id' => $detail->data_pengadaan_id,
+                'transaksi_id' => $detail->transaksi_id,
+                'kuantum_kontribusi' => $detail->kuantum_kontribusi,
+                'no_in' => $detail->no_in,
+            ])->values()->all(),
             'current_stage' => $poDetails->map(fn ($detail) => $detail->transaksi?->current_stage)->filter()->unique()->values()->all(),
             'review_timeline' => [
                 'pengadaan' => $this->reviewSummary($this->resource),

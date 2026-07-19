@@ -3,18 +3,22 @@ import { usePoList } from '../hooks/usePoList'
 import { SkeletonPoCards } from '../components/Skeleton'
 import FormHero from '../components/FormHero'
 import { formatMoney } from '../lib/poFormat'
+import { pesanKegagalan } from '../lib/api'
+import { apiErrorMessage } from '../lib/apiError'
 import PembayaranForm from '../components/pengadaan/PembayaranForm'
 import PoReviewCard from '../components/pengadaan/PoReviewCard'
 
 export default function KeuanganPage() {
   const [page, setPage] = useState(1)
-  const { data: poResult, isLoading } = usePoList(page)
+  const { data: poResult, isLoading, isError, error } = usePoList(page)
   const poList = poResult?.items ?? []
   const meta = poResult?.meta
-  // Alur Keuangan: PO 'lengkap' dari Pengadaan lebih dulu ditinjau (Terima/Tolak). Setelah
-  // diterima (review_status = 'diterima') baru bisa diisi pembayaran.
-  const perluReview = poList.filter((po) => po.status === 'lengkap' && po.review_status === 'menunggu_review')
-  const siapBayar = poList.filter((po) => po.status === 'lengkap' && po.review_status === 'diterima' && po.data_keuangan?.status_bayar !== 'dibayarkan')
+  // Keuangan hanya boleh memproses PO yang transaksi anggotanya memang sedang di tahap
+  // keuangan. Tanpa guard ini, data lama yang sudah maju ke Operasi tetapi review_status
+  // PO-nya tertinggal "menunggu_review" masih muncul sebagai antrean palsu.
+  const poTahapKeuangan = poList.filter((po) => po.current_stage?.includes('keuangan'))
+  const perluReview = poTahapKeuangan.filter((po) => po.review_status === 'menunggu_review')
+  const siapBayar = poTahapKeuangan.filter((po) => po.review_status === 'diterima' && po.data_keuangan?.status_bayar !== 'dibayarkan')
   const sudahDibayar = poList.filter((po) => po.data_keuangan?.status_bayar === 'dibayarkan').length
   const totalTagihan = siapBayar.reduce((sum, po) => sum + Number(po.total_harga || 0), 0)
 
@@ -41,11 +45,12 @@ export default function KeuanganPage() {
             </div>
 
             {isLoading && <SkeletonPoCards />}
-            {!isLoading && perluReview.length === 0 && (
+            {isError && <LoadError error={error} fallback="Gagal memuat PO yang menunggu persetujuan." />}
+            {!isLoading && !isError && perluReview.length === 0 && (
               <div className="empty-state"><div className="empty-title">Tidak ada PO yang menunggu persetujuan</div><p className="empty-copy">PO muncul di sini setelah Pengadaan mengisi seluruh nomor IN.</p></div>
             )}
 
-            <div className="space-y-4">{perluReview.map((po) => <PoReviewCard key={po.id} po={po} reviewLabel="Pengadaan" />)}</div>
+            {!isError && <div className="space-y-4">{perluReview.map((po) => <PoReviewCard key={po.id} po={po} reviewLabel="Pengadaan" />)}</div>}
           </section>
 
           <section className="panel panel-pad">
@@ -55,14 +60,23 @@ export default function KeuanganPage() {
             </div>
 
             {isLoading && <SkeletonPoCards />}
-            {!isLoading && siapBayar.length === 0 && (
+            {isError && <LoadError error={error} fallback="Gagal memuat PO yang siap dibayar." />}
+            {!isLoading && !isError && siapBayar.length === 0 && (
               <div className="empty-state"><div className="empty-title">Tidak ada PO yang menunggu pembayaran</div><p className="empty-copy">PO siap dibayar setelah data Pengadaan diterima.</p></div>
             )}
 
-            <div className="space-y-4">{siapBayar.map((po) => <PembayaranForm key={po.id} po={po} />)}</div>
-            {meta && meta.last_page > 1 && <PaginationBar meta={meta} page={page} setPage={setPage} />}
+            {!isError && <div className="space-y-4">{siapBayar.map((po) => <PembayaranForm key={po.id} po={po} />)}</div>}
+            {!isError && meta && meta.last_page > 1 && <PaginationBar meta={meta} page={page} setPage={setPage} />}
           </section>
       </div>
+    </div>
+  )
+}
+
+function LoadError({ error, fallback }: { error: unknown; fallback: string }) {
+  return (
+    <div className="alert-danger">
+      {pesanKegagalan(error) ?? apiErrorMessage(error, fallback)}
     </div>
   )
 }
