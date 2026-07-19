@@ -11,6 +11,7 @@ use App\Models\DataUbJastasma;
 use App\Models\Role;
 use App\Models\Transaksi;
 use App\Services\Transaksi\TransaksiStageService;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 
@@ -62,9 +63,49 @@ class TransaksiController extends Controller
             $query->where('skema', 'TJP');
         }
 
+        $this->terapkanFilterTerkunci($query, $role);
+
         $transaksi = $query->paginate($request->integer('per_page', 100));
 
         return TransaksiResource::collection($transaksi);
+    }
+
+    /**
+     * Hanya data terkunci yang boleh masuk rekap. "Terkunci" = sudah disimpan dan sudah
+     * diterima role berikutnya, sehingga tidak bisa diubah lagi kecuali oleh admin —
+     * persis kondisi yang ditolak TransaksiStageService::submitStage().
+     *
+     * Tahap per transaksi memakai kolom `status`; tahap level PO (pengadaan/keuangan)
+     * memakai `review_status` karena datanya milik PO gabungan, bukan satu transaksi.
+     * Admin memakai aturan paling longgar (tahap awal saja) karena justru admin yang
+     * bertugas memperbaiki transaksi bermasalah di tahap-tahap lanjut.
+     */
+    private function terapkanFilterTerkunci(Builder $query, string $role): void
+    {
+        match ($role) {
+            'jemput_pangan' => $query->whereHas('dataJemputPangan',
+                fn (Builder $q) => $q->where('status', 'diterima')),
+            'ub_jastasma' => $query->whereHas('dataUbJastasma',
+                fn (Builder $q) => $q->where('status', 'diterima')),
+            'makloon' => $query->where(function (Builder $q) {
+                $q->where(fn (Builder $t) => $t->where('skema', 'TJP')
+                    ->whereHas('dataMakloonTjp', fn (Builder $m) => $m->where('status', 'diterima')))
+                    ->orWhere(fn (Builder $t) => $t->where('skema', 'MPP')
+                        ->whereHas('dataMakloonMpp', fn (Builder $m) => $m->where('status', 'diterima')));
+            }),
+            'pengadaan' => $query->whereHas('poDetail.dataPengadaan',
+                fn (Builder $q) => $q->where('review_status', 'diterima')),
+            'keuangan' => $query->whereHas('poDetail.dataPengadaan.dataKeuangan',
+                fn (Builder $q) => $q->where('review_status', 'diterima')),
+            // Tahap awal: Jemput Pangan untuk TJP, Makloon untuk MPP (lihat TransaksiStages::sequence()).
+            'admin' => $query->where(function (Builder $q) {
+                $q->where(fn (Builder $t) => $t->where('skema', 'TJP')
+                    ->whereHas('dataJemputPangan', fn (Builder $m) => $m->where('status', 'diterima')))
+                    ->orWhere(fn (Builder $t) => $t->where('skema', 'MPP')
+                        ->whereHas('dataMakloonMpp', fn (Builder $m) => $m->where('status', 'diterima')));
+            }),
+            default => null,
+        };
     }
 
     public function show(Request $request, Transaksi $transaksi)
