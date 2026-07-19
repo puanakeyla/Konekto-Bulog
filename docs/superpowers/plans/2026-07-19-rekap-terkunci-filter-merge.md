@@ -590,6 +590,25 @@ Ganti blok `const [q, setQ] = useState('')` beserta `const filtered = useMemo(..
   const adaFilterAktif = Object.values(filters).some((v) => v.length > 0)
 ```
 
+**Koreksi terhadap kode di atas (ditemukan saat review Task 3).** Kode itu punya
+bug: `filters` tidak pernah direkonsiliasi dengan `opsiFilter`. Bila `rows`
+berubah dan nilai yang sedang dipilih hilang dari data baru, centangnya lenyap
+dari dropdown tapi filternya tetap berlaku — tabel menyusut atau kosong, badge
+tetap berhitung, dan tak ada centang yang tampak.
+
+Perbaikannya **diturunkan, bukan disinkronkan**: tambahkan memo `efektifFilters`
+yang mengiriskan tiap pilihan tersimpan dengan nilai yang benar-benar ada di
+`opsiFilter`, lalu pakai satu nilai turunan itu untuk ketiga konsumennya —
+predikat penyaring baris, angka pada badge `<summary>`, dan `adaFilterAktif`.
+State `filters` sendiri tidak boleh disentuh, supaya nilai yang muncul kembali
+di refetch berikutnya otomatis aktif lagi. **Jangan** memakai `useEffect` yang
+memangkas `filters`.
+
+Penting: kolom yang irisannya kosong harus jatuh dari daftar filter aktif
+(`.filter(([, v]) => v.length > 0)`), sehingga irisan kosong berarti "kolom ini
+tidak disaring", bukan "tidak ada yang cocok". Terbalik di sini akan
+mengosongkan tabel.
+
 - [ ] **Step 3: Render bar filter**
 
 Sisipkan blok berikut tepat setelah `</div>` penutup baris toolbar (yang berisi kotak pencarian dan tombol Ekspor CSV), sebelum `{isLoading && ...}`:
