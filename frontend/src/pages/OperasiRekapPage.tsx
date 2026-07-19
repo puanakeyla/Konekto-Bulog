@@ -26,11 +26,8 @@ const columns: SheetColumn<PermintaanOperasi>[] = [
   { key: 'menir', label: 'Menir (kg)', value: (r) => num(r.menir_kg), align: 'right' },
   { key: 'katul', label: 'Katul (kg)', value: (r) => num(r.katul_kg), align: 'right' },
   { key: 'rendemen', label: 'Rendemen (%)', value: (r) => num(r.rendemen_persen), align: 'right' },
-  // Catatan Pengembalian dihapus: hanya terisi saat status_out === 'dikembalikan',
-  // tapi baris di halaman ini selalu status_out === 'dikeluarkan' (lihat sudahIsiHasil),
-  // jadi kolomnya selalu kosong.
-  { key: 'gudang', label: 'Gudang Penerima', value: (r) => r.data_gudang?.nama_gudang ?? null, filterable: true },
-  { key: 'tgl_masuk', label: 'Tanggal Masuk Gudang', value: (r) => tanggal(r.data_gudang?.tanggal_masuk) },
+  // Kolom Gudang dihapus: Gudang kini modul mandiri (rekap sendiri di /gudang/rekap),
+  // tidak lagi terhubung ke permintaan Operasi.
 ]
 
 export default function OperasiRekapPage() {

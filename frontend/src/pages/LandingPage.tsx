@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
-import logoSergab from '../assets/logo-sergab.png'
+import logoSergab from '../assets/logo-sergab.svg'
 
 // Halaman publik murni informasional (Bagian 7.3) -- TANPA data transaksi.
 // Sebaran tahap & daftar makloon adalah fitur halaman internal (MonitoringPage),
@@ -48,96 +48,64 @@ function Eyebrow({ children, tone = 'light' }: { children: ReactNode; tone?: 'li
   )
 }
 
-// Tahap yang tampil di mockup preview aplikasi (mini timeline TJP).
-const previewStages = [
-  { label: 'Jemput Pangan', state: 'done' as const },
-  { label: 'Makloon', state: 'current' as const },
-  { label: 'UB Jastasma', state: 'todo' as const },
-  { label: 'Pengadaan', state: 'todo' as const },
-]
-
-// Grafis hero: mockup jendela aplikasi (bukan ilustrasi abstrak) supaya pengunjung
-// langsung melihat tampilan layar yang dipakai tiap role -- pita navy + timeline.
-function AppPreview() {
+// Grafis hero: ilustrasi ikatan padi (Serap Gabah) -- bulir emas di atas latar navy,
+// senada logomark & aksen brand, menggantikan mockup aplikasi.
+function HeroPadi() {
   return (
-    <div className="relative">
-      {/* halo emas lembut di belakang jendela */}
-      <div aria-hidden className="pointer-events-none absolute -inset-6 rounded-[2rem] bg-accent/10 blur-2xl" />
+    <div className="relative mx-auto w-full max-w-[420px]">
+      <div aria-hidden className="pointer-events-none absolute inset-0 rounded-full bg-accent/10 blur-3xl" />
+      <svg viewBox="0 0 420 460" className="relative w-full" role="img" aria-label="Ilustrasi ikatan padi">
+        <defs>
+          <radialGradient id="padi-halo" cx="0.5" cy="0.45" r="0.55">
+            <stop offset="0" stopColor="#D9A441" stopOpacity="0.35" />
+            <stop offset="1" stopColor="#D9A441" stopOpacity="0" />
+          </radialGradient>
+          <linearGradient id="padi-grain" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stopColor="#F0C46A" />
+            <stop offset="1" stopColor="#D9A441" />
+          </linearGradient>
+          <g id="padi-ear">
+            <path d="M0 0 C -3 -40 -3 -95 0 -150" fill="none" stroke="#D9A441" strokeWidth="3" strokeLinecap="round" />
+            <g fill="url(#padi-grain)">
+              <ellipse cx="0" cy="-160" rx="5.4" ry="10.4" />
+              <ellipse cx="-8.6" cy="-142" rx="5" ry="9.6" transform="rotate(-34 -8.6 -142)" />
+              <ellipse cx="8.6" cy="-142" rx="5" ry="9.6" transform="rotate(34 8.6 -142)" />
+              <ellipse cx="-9" cy="-119" rx="5" ry="9.6" transform="rotate(-34 -9 -119)" />
+              <ellipse cx="9" cy="-119" rx="5" ry="9.6" transform="rotate(34 9 -119)" />
+              <ellipse cx="-9.4" cy="-96" rx="4.8" ry="9.2" transform="rotate(-34 -9.4 -96)" />
+              <ellipse cx="9.4" cy="-96" rx="4.8" ry="9.2" transform="rotate(34 9.4 -96)" />
+              <ellipse cx="-9.4" cy="-73" rx="4.6" ry="8.8" transform="rotate(-34 -9.4 -73)" />
+              <ellipse cx="9.4" cy="-73" rx="4.6" ry="8.8" transform="rotate(34 9.4 -73)" />
+            </g>
+          </g>
+        </defs>
 
-      <div className="relative overflow-hidden rounded-2xl border border-white/10 shadow-2xl shadow-black/40 ring-1 ring-black/5">
-        {/* Top bar aplikasi (meniru AppNav navy) */}
-        <div className="flex items-center gap-3 bg-primary-dark px-4 py-3">
-          <div className="flex gap-1.5">
-            <span className="h-2.5 w-2.5 rounded-full bg-white/20" />
-            <span className="h-2.5 w-2.5 rounded-full bg-white/20" />
-            <span className="h-2.5 w-2.5 rounded-full bg-accent/70" />
-          </div>
-          <span className="text-xs font-bold tracking-tight text-white">
-            SerGab<span className="text-accent">.</span>
-          </span>
-          <span className="ml-auto flex items-center gap-1.5 rounded-full border border-white/15 bg-white/10 px-2.5 py-1 text-[0.625rem] font-semibold text-white">
-            <span className="h-1.5 w-1.5 rounded-full bg-accent" />
-            Jemput Pangan
-          </span>
-        </div>
+        {/* halo + cincin dekoratif senada hero */}
+        <circle cx="210" cy="220" r="175" fill="url(#padi-halo)" />
+        <circle cx="210" cy="220" r="176" fill="none" stroke="#ffffff" strokeOpacity="0.10" />
+        <circle cx="210" cy="220" r="128" fill="none" stroke="#ffffff" strokeOpacity="0.08" />
 
-        {/* Body: satu kartu timeline aplikasi */}
-        <div className="bg-surface p-4">
-          <div className="rounded-xl border border-border bg-white p-4 shadow-sm">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-[0.8125rem] font-bold text-primary-dark">00001/07/2026/TJP</p>
-                <p className="text-[0.625rem] text-slate-500">Alur TJP &middot; Serap gabah</p>
-              </div>
-              <span className="rounded-md bg-accent px-2 py-1 text-[0.625rem] font-bold text-primary-dark">
-                Giliran Anda
-              </span>
-            </div>
+        {/* butir mengambang untuk suasana */}
+        <g fill="#D9A441" opacity="0.5">
+          <ellipse cx="86" cy="150" rx="4" ry="8" transform="rotate(-20 86 150)" />
+          <ellipse cx="338" cy="128" rx="4" ry="8" transform="rotate(24 338 128)" />
+          <ellipse cx="356" cy="250" rx="3.4" ry="7" transform="rotate(30 356 250)" />
+          <ellipse cx="70" cy="270" rx="3.4" ry="7" transform="rotate(-28 70 270)" />
+        </g>
 
-            {/* Progress alur */}
-            <div className="mt-3">
-              <div className="flex items-center justify-between text-[0.625rem] font-semibold text-slate-500">
-                <span>Progres alur</span>
-                <span className="text-primary">1 / 4 tahap</span>
-              </div>
-              <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-primary-tint">
-                <div className="h-full w-1/4 rounded-full bg-gradient-to-r from-accent to-primary" />
-              </div>
-            </div>
+        {/* ikatan padi menyebar dari pangkal */}
+        <g>
+          <use href="#padi-ear" transform="translate(210 392) rotate(-34)" opacity="0.85" />
+          <use href="#padi-ear" transform="translate(210 392) rotate(-17)" opacity="0.95" />
+          <use href="#padi-ear" transform="translate(210 392) rotate(0)" />
+          <use href="#padi-ear" transform="translate(210 392) rotate(17)" opacity="0.95" />
+          <use href="#padi-ear" transform="translate(210 392) rotate(34)" opacity="0.85" />
+        </g>
 
-            {/* Mini timeline */}
-            <div className="relative mt-4 space-y-3 before:absolute before:left-[0.6875rem] before:top-2 before:h-[calc(100%-1rem)] before:w-px before:bg-border">
-              {previewStages.map((stage) => (
-                <div key={stage.label} className="relative flex items-center gap-3 pl-8">
-                  <span
-                    className={`absolute left-0 grid h-[1.375rem] w-[1.375rem] place-items-center rounded-full border text-[0.625rem] font-bold ${
-                      stage.state === 'done'
-                        ? 'border-success bg-success text-white'
-                        : stage.state === 'current'
-                          ? 'border-accent bg-white text-accent ring-4 ring-accent/15'
-                          : 'border-border bg-white text-slate-300'
-                    }`}
-                  >
-                    {stage.state === 'done' ? '✓' : stage.state === 'current' ? '•' : ''}
-                  </span>
-                  <span
-                    className={`text-xs font-semibold ${
-                      stage.state === 'todo' ? 'text-slate-400' : 'text-primary-dark'
-                    }`}
-                  >
-                    {stage.label}
-                  </span>
-                  {stage.state === 'current' && (
-                    <span className="ml-auto rounded bg-primary-tint px-1.5 py-0.5 text-[0.5625rem] font-bold text-primary">
-                      sedang berjalan
-                    </span>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      </div>
+        {/* pengikat */}
+        <path d="M188 388 q22 14 44 0" fill="none" stroke="#D9A441" strokeWidth="9" strokeLinecap="round" />
+        <path d="M186 400 q24 15 48 0" fill="none" stroke="#B9862E" strokeWidth="7" strokeLinecap="round" />
+      </svg>
     </div>
   )
 }
@@ -189,7 +157,7 @@ export default function LandingPage() {
                 <span className="rounded-full border border-white/15 bg-white/10 px-4 py-1.5 text-xs font-semibold text-white">MPP</span>
               </div>
             </div>
-            <AppPreview />
+            <HeroPadi />
           </div>
         </section>
 

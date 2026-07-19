@@ -4,15 +4,6 @@ import type { PaginationMeta } from './useTransaksiList'
 
 export type StatusOut = 'menunggu_pengadaan' | 'dikeluarkan' | 'dikembalikan'
 
-export type GudangBatch = {
-  id: number
-  permintaan_operasi_id: number
-  tanggal_masuk: string
-  nama_gudang: string
-  realisasi_hgl: string | null
-  no_tm: string
-}
-
 /** Satu permintaan pengeluaran stok dari Operasi (modul mandiri, lepas dari PO/IN). */
 export type PermintaanOperasi = {
   id: number
@@ -32,7 +23,6 @@ export type PermintaanOperasi = {
   created_at: string
   creator?: { id: number; username: string } | null
   reviewer?: { id: number; username: string } | null
-  data_gudang: GudangBatch | null
 }
 
 /** Hasil produksi sudah diisi Operasi (siap diterima Gudang). */

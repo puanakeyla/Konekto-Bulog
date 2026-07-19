@@ -58,7 +58,7 @@ class PengadaanController extends Controller
             'transaksi_ids' => ['required', 'array', 'min:1'],
             'transaksi_ids.*' => ['required', 'string', Rule::exists('transaksi', 'id_transaksi')],
             'no_po' => ['required', 'string', 'max:255', 'unique:data_pengadaan,no_po'],
-            'harga' => ['nullable', 'numeric', 'min:0'],
+            'harga' => ['nullable', 'numeric', 'min:0', 'max:9999999999999.99'],
             'status' => ['sometimes', Rule::in(['proses', 'lengkap', 'dibatalkan'])],
         ]);
 
@@ -82,7 +82,7 @@ class PengadaanController extends Controller
     public function update(Request $request, DataPengadaan $dataPengadaan)
     {
         $validated = $request->validate([
-            'harga' => ['sometimes', 'numeric', 'min:0'],
+            'harga' => ['sometimes', 'numeric', 'min:0', 'max:9999999999999.99'],
             'status' => ['sometimes', Rule::in(['proses', 'lengkap', 'dibatalkan'])],
         ]);
 

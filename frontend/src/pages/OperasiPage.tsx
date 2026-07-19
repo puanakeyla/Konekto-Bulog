@@ -68,6 +68,12 @@ export default function OperasiPage() {
           {menunggu.map((item) => <RingkasCard key={item.id} item={item} badge="Menunggu Pengadaan" tone="warning" />)}
         </Section>
 
+        {selesai.length > 0 && (
+          <Section title="Batch Selesai (Hasil Terisi)" desc="Perbaiki No. MO, No. TM, HGL, Broken, Menir, atau Katul bila ada salah input." count={selesai.length} tone="success">
+            {selesai.map((item) => <SelesaiCard key={item.id} item={item} />)}
+          </Section>
+        )}
+
         {/* Riwayat/hasil lengkap dipindah ke halaman rekap terpisah (tabel + ekspor). */}
         <Link to="/operasi/rekap" className="panel flex items-center justify-between gap-4 px-5 py-4 transition-colors hover:border-primary/40">
           <div>
@@ -222,10 +228,46 @@ function DikembalikanCard({ item }: { item: PermintaanOperasi }) {
   )
 }
 
-// Setelah No. OUT keluar: Operasi mengisi hasil produksi. Rendemen dihitung otomatis backend.
-function HasilForm({ item }: { item: PermintaanOperasi }) {
+// Kartu batch yang hasilnya sudah terisi. Bisa dibuka untuk memperbaiki hasil produksi
+// (No. MO, No. TM, HGL, Broken, Menir, Katul).
+function SelesaiCard({ item }: { item: PermintaanOperasi }) {
+  const [editing, setEditing] = useState(false)
+
+  if (editing) return <HasilForm item={item} mode="edit" onDone={() => setEditing(false)} />
+
+  return (
+    <div className="po-card">
+      <CardHeader item={item} badge="Selesai" tone="success" />
+      <div className="grid gap-2 text-sm sm:grid-cols-2">
+        <Info label="No. MO" value={item.no_mo} />
+        <Info label="No. TM" value={item.no_tm} />
+        <Info label="HGL (kg)" value={formatNumber(item.hgl_kg)} />
+        <Info label="Broken (kg)" value={formatNumber(item.broken_kg)} />
+        <Info label="Menir (kg)" value={formatNumber(item.menir_kg)} />
+        <Info label="Katul (kg)" value={formatNumber(item.katul_kg)} />
+        <Info label="Rendemen" value={item.rendemen_persen ? `${item.rendemen_persen}%` : '-'} />
+      </div>
+      <div className="mt-4 flex justify-end">
+        <button type="button" onClick={() => setEditing(true)} className="btn btn-ghost border border-border bg-white">Edit Hasil</button>
+      </div>
+    </div>
+  )
+}
+
+// Setelah No. OUT keluar: Operasi mengisi hasil produksi (mode 'create'), atau memperbaiki
+// hasil yang sudah terisi (mode 'edit'). Rendemen dihitung otomatis backend.
+function HasilForm({ item, mode = 'create', onDone }: { item: PermintaanOperasi; mode?: 'create' | 'edit'; onDone?: () => void }) {
   const queryClient = useQueryClient()
-  const [form, setForm] = useState({ no_mo: '', no_tm: '', hgl_kg: '', broken_kg: '', menir_kg: '', katul_kg: '' })
+  const isEdit = mode === 'edit'
+  const str = (v: string | null) => (v != null && v !== '' ? String(Number(v)) : '')
+  const [form, setForm] = useState({
+    no_mo: isEdit ? (item.no_mo ?? '') : '',
+    no_tm: isEdit ? (item.no_tm ?? '') : '',
+    hgl_kg: isEdit ? str(item.hgl_kg) : '',
+    broken_kg: isEdit ? str(item.broken_kg) : '',
+    menir_kg: isEdit ? str(item.menir_kg) : '',
+    katul_kg: isEdit ? str(item.katul_kg) : '',
+  })
   const [confirm, setConfirm] = useState(false)
 
   const set = (key: keyof typeof form, value: string) => setForm((prev) => ({ ...prev, [key]: value }))
@@ -244,7 +286,8 @@ function HasilForm({ item }: { item: PermintaanOperasi }) {
     onSuccess: () => {
       setConfirm(false)
       queryClient.invalidateQueries({ queryKey: ['operasi-list'] })
-      toast.success('Hasil produksi tersimpan, batch siap diterima Gudang.')
+      toast.success(isEdit ? 'Hasil produksi diperbarui.' : 'Hasil produksi tersimpan.')
+      onDone?.()
     },
     onError: (err) => toast.error(apiErrorMessage(err, 'Gagal menyimpan hasil produksi.')),
   })
@@ -256,7 +299,7 @@ function HasilForm({ item }: { item: PermintaanOperasi }) {
 
   return (
     <form className="po-card @container" onSubmit={(e) => { e.preventDefault(); setConfirm(true) }}>
-      <CardHeader item={item} badge="Siap diproses" tone="accent" />
+      <CardHeader item={item} badge={isEdit ? 'Edit hasil' : 'Siap diproses'} tone={isEdit ? 'success' : 'accent'} />
       {errorMessage && <div className="alert-danger mb-3">{errorMessage}</div>}
       <div className="grid gap-4 @md:grid-cols-2">
         <Field label="No. MO"><input required className="input" value={form.no_mo} onChange={(e) => set('no_mo', e.target.value)} /></Field>
@@ -271,16 +314,19 @@ function HasilForm({ item }: { item: PermintaanOperasi }) {
           Rendemen otomatis = HGL ÷ {formatNumber(item.gabah_diolah_kg)} kg
           {rendemenPreview && <span className="ml-1 font-bold text-primary">= {rendemenPreview}%</span>}
         </p>
-        <button type="submit" disabled={!valid || mutation.isPending} className="btn btn-primary">
-          {mutation.isPending ? 'Menyimpan...' : 'Simpan Hasil Produksi'}
-        </button>
+        <div className="flex gap-2">
+          {isEdit && <button type="button" onClick={onDone} className="btn btn-ghost">Batal</button>}
+          <button type="submit" disabled={!valid || mutation.isPending} className="btn btn-primary">
+            {mutation.isPending ? 'Menyimpan...' : isEdit ? 'Perbarui Hasil' : 'Simpan Hasil Produksi'}
+          </button>
+        </div>
       </div>
 
       <ConfirmDialog
         open={confirm}
-        title="Simpan hasil produksi?"
-        description={<>Hasil produksi batch <strong>No. OUT {item.no_out}</strong> akan disimpan dan diteruskan ke <strong>Gudang</strong>. Lanjutkan?</>}
-        confirmLabel="Simpan Hasil"
+        title={isEdit ? 'Perbarui hasil produksi?' : 'Simpan hasil produksi?'}
+        description={<>Hasil produksi batch <strong>No. OUT {item.no_out}</strong> akan {isEdit ? 'diperbarui' : 'disimpan'}. Lanjutkan?</>}
+        confirmLabel={isEdit ? 'Perbarui Hasil' : 'Simpan Hasil'}
         loading={mutation.isPending}
         error={errorMessage}
         onCancel={() => setConfirm(false)}

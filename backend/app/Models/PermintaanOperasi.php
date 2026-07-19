@@ -4,12 +4,11 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Database\Eloquent\Relations\HasOne;
 
 /**
  * Permintaan pengeluaran stok oleh Operasi (modul mandiri, lepas dari PO/IN).
  * Alur: menunggu_pengadaan -> (Pengadaan) dikeluarkan + No. OUT / dikembalikan
- *       -> (Operasi) isi hasil produksi -> (Gudang) terima batch.
+ *       -> (Operasi) isi hasil produksi. Gudang kini modul mandiri terpisah (tidak terkait).
  */
 class PermintaanOperasi extends Model
 {
@@ -41,11 +40,6 @@ class PermintaanOperasi extends Model
     public function reviewer(): BelongsTo
     {
         return $this->belongsTo(User::class, 'reviewed_by');
-    }
-
-    public function dataGudang(): HasOne
-    {
-        return $this->hasOne(DataGudang::class);
     }
 
     protected function casts(): array

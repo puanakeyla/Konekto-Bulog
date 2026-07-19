@@ -180,12 +180,12 @@ class TransaksiController extends Controller
             'data_jemput_pangan.kabupaten' => ['nullable', 'string', 'max:255'],
             'data_jemput_pangan.makloon_user_id' => ['nullable', 'integer', Rule::exists('users', 'id')],
             'data_jemput_pangan.tanggal_kirim' => ['nullable', 'date'],
-            'data_jemput_pangan.kuantum' => ['nullable', 'numeric', 'min:0'],
-            'data_jemput_pangan.jarak_ke_makloon_km' => ['nullable', 'numeric', 'min:0'],
+            'data_jemput_pangan.kuantum' => ['nullable', 'numeric', 'min:0', 'max:9999999999999.99'],
+            'data_jemput_pangan.jarak_ke_makloon_km' => ['nullable', 'numeric', 'min:0', 'max:99999999.99'],
 
             'data_makloon_tjp' => ['sometimes', 'array'],
             'data_makloon_tjp.tanggal_bongkar' => ['nullable', 'date'],
-            'data_makloon_tjp.kuantum_bongkar' => ['nullable', 'numeric', 'min:0'],
+            'data_makloon_tjp.kuantum_bongkar' => ['nullable', 'numeric', 'min:0', 'max:9999999999999.99'],
 
             'data_makloon_mpp' => ['sometimes', 'array'],
             'data_makloon_mpp.id_pemasok' => ['nullable', 'string', 'max:255'],
@@ -195,8 +195,8 @@ class TransaksiController extends Controller
             'data_makloon_mpp.kecamatan' => ['nullable', 'string', 'max:255'],
             'data_makloon_mpp.kabupaten' => ['nullable', 'string', 'max:255'],
             'data_makloon_mpp.tanggal_bongkar' => ['nullable', 'date'],
-            'data_makloon_mpp.kuantum' => ['nullable', 'numeric', 'min:0'],
-            'data_makloon_mpp.jarak_ke_makloon_km' => ['nullable', 'numeric', 'min:0'],
+            'data_makloon_mpp.kuantum' => ['nullable', 'numeric', 'min:0', 'max:9999999999999.99'],
+            'data_makloon_mpp.jarak_ke_makloon_km' => ['nullable', 'numeric', 'min:0', 'max:99999999.99'],
 
             'data_ub_jastasma' => ['sometimes', 'array'],
             'data_ub_jastasma.ka1' => ['nullable', 'numeric', 'min:0', 'max:100'],
@@ -208,7 +208,7 @@ class TransaksiController extends Controller
             'data_pengadaan' => ['sometimes', 'array'],
             'data_pengadaan.no_po' => ['nullable', 'string', 'max:255'],
             'data_pengadaan.no_in' => ['nullable', 'string', 'max:255'],
-            'data_pengadaan.harga' => ['nullable', 'numeric', 'min:0'],
+            'data_pengadaan.harga' => ['nullable', 'numeric', 'min:0', 'max:9999999999999.99'],
             'data_pengadaan.no_spp' => ['nullable', 'string', 'max:255'],
             'data_pengadaan.tanggal_bayar' => ['nullable', 'date'],
         ]);
@@ -351,8 +351,8 @@ class TransaksiController extends Controller
             'kabupaten' => ['required', 'string', 'max:255'],
             'makloon_user_id' => ['required', Rule::exists('users', 'id')->where('role_id', $makloonRoleId)],
             'tanggal_kirim' => ['required', 'date'],
-            'kuantum' => ['required', 'numeric', 'min:0'],
-            'jarak_ke_makloon_km' => ['required', 'numeric', 'min:0'],
+            'kuantum' => ['required', 'numeric', 'min:0', 'max:9999999999999.99'],
+            'jarak_ke_makloon_km' => ['required', 'numeric', 'min:0', 'max:99999999.99'],
         ]);
 
         $record = $this->service->submitStage($transaksi, $request->user(), 'jemput_pangan', DataJemputPangan::class, $data);
@@ -365,7 +365,7 @@ class TransaksiController extends Controller
         if ($transaksi->skema === 'TJP') {
             $data = $request->validate([
                 'tanggal_bongkar' => ['required', 'date'],
-                'kuantum_bongkar' => ['required', 'numeric', 'min:0'],
+                'kuantum_bongkar' => ['required', 'numeric', 'min:0', 'max:9999999999999.99'],
             ]);
             $model = DataMakloonTjp::class;
         } else {
@@ -377,8 +377,8 @@ class TransaksiController extends Controller
                 'kecamatan' => ['required', 'string', 'max:255'],
                 'kabupaten' => ['required', 'string', 'max:255'],
                 'tanggal_bongkar' => ['required', 'date'],
-                'kuantum' => ['required', 'numeric', 'min:0'],
-                'jarak_ke_makloon_km' => ['required', 'numeric', 'min:0'],
+                'kuantum' => ['required', 'numeric', 'min:0', 'max:9999999999999.99'],
+                'jarak_ke_makloon_km' => ['required', 'numeric', 'min:0', 'max:99999999.99'],
             ]);
             $model = DataMakloonMpp::class;
         }

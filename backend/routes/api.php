@@ -5,6 +5,7 @@ use App\Http\Controllers\Api\AuditLogController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\FotoController;
 use App\Http\Controllers\Api\FotoStreamController;
+use App\Http\Controllers\Api\GudangController;
 use App\Http\Controllers\Api\MakloonOptionController;
 use App\Http\Controllers\Api\MonitoringController;
 use App\Http\Controllers\Api\OperasiController;
@@ -96,6 +97,15 @@ Route::middleware('auth:sanctum')->group(function () {
         ->middleware('role:pengadaan|admin');
     Route::post('/operasi/{permintaanOperasi}/hasil', [OperasiController::class, 'hasil'])
         ->middleware('role:operasi|admin');
-    Route::post('/operasi/{permintaanOperasi}/gudang', [OperasiController::class, 'gudang'])
+
+    // Modul Gudang mandiri (lepas dari Operasi): Gudang mencatat penerimaan sendiri
+    // (Tanggal Masuk, Nama Gudang, Kuantum Realisasi HGL, No. TM) dengan rekap sendiri.
+    Route::get('/gudang', [GudangController::class, 'index'])
+        ->middleware('role:gudang|admin');
+    Route::post('/gudang', [GudangController::class, 'store'])
+        ->middleware('role:gudang|admin');
+    Route::patch('/gudang/{dataGudang}', [GudangController::class, 'update'])
+        ->middleware('role:gudang|admin');
+    Route::delete('/gudang/{dataGudang}', [GudangController::class, 'destroy'])
         ->middleware('role:gudang|admin');
 });

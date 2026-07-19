@@ -1,17 +1,8 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="SerGab Lampung">
-  <defs>
-    <linearGradient id="sg-navy" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#283D73"/>
-      <stop offset="1" stop-color="#1D2D56"/>
-    </linearGradient>
-  </defs>
-  <rect width="64" height="64" rx="15" fill="url(#sg-navy)"/>
-  <g fill="#D9A441">
-    <!-- batang padi -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 182 64" width="182" height="64" role="img" aria-label="SerGab Lampung">
+  <!-- bulir padi emas (tanpa wadah, untuk latar navy) -->
+  <g fill="#D9A441" transform="translate(-2 0)">
     <path d="M32 55 C30.4 43 30.4 28 32 16.5" fill="none" stroke="#D9A441" stroke-width="2.6" stroke-linecap="round"/>
-    <!-- daun -->
     <path d="M31 43.5 C22 43.5 16.6 48.5 15 55 C23 54 29.6 50.6 32 45.2 Z"/>
-    <!-- bulir gabah -->
     <ellipse cx="32" cy="12.6" rx="3" ry="5.4"/>
     <ellipse cx="27.4" cy="21" rx="2.9" ry="5.2" transform="rotate(-36 27.4 21)"/>
     <ellipse cx="36.6" cy="21" rx="2.9" ry="5.2" transform="rotate(36 36.6 21)"/>
@@ -20,4 +11,5 @@
     <ellipse cx="28.1" cy="39" rx="2.7" ry="4.9" transform="rotate(-36 28.1 39)"/>
     <ellipse cx="35.9" cy="39" rx="2.7" ry="4.9" transform="rotate(36 35.9 39)"/>
   </g>
+  <text x="54" y="43" font-family="'Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="31" font-weight="800" letter-spacing="-0.6" fill="#FFFFFF">SerGab<tspan fill="#D9A441">.</tspan></text>
 </svg>

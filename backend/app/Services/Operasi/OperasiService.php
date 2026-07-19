@@ -2,7 +2,6 @@
 
 namespace App\Services\Operasi;
 
-use App\Models\DataGudang;
 use App\Models\PermintaanOperasi;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
@@ -10,7 +9,7 @@ use Illuminate\Support\Facades\DB;
 /**
  * Modul Operasi mandiri: Operasi mengajukan permintaan pengeluaran stok (jumlah gabah bebas),
  * Pengadaan memutuskan (dikeluarkan + No. OUT / dikembalikan + catatan), lalu setelah OUT keluar
- * Operasi mengisi hasil produksi, dan Gudang menerima batch tersebut. Lepas dari PO/IN & timeline.
+ * Operasi mengisi hasil produksi. Lepas dari PO/IN & timeline. Gudang modul mandiri terpisah.
  */
 class OperasiService
 {
@@ -127,24 +126,5 @@ class OperasiService
         ]);
 
         return $permintaan->fresh();
-    }
-
-    /** Gudang mencatat penerimaan hasil produksi untuk satu batch permintaan Operasi. */
-    public function terimaGudang(PermintaanOperasi $permintaan, array $data): DataGudang
-    {
-        if ($permintaan->status_out !== 'dikeluarkan' || $permintaan->no_mo === null) {
-            abort(422, 'Hasil produksi Operasi belum lengkap untuk permintaan ini.');
-        }
-        if ($permintaan->dataGudang()->exists()) {
-            abort(422, 'Batch ini sudah diterima Gudang.');
-        }
-
-        return DataGudang::create([
-            'permintaan_operasi_id' => $permintaan->id,
-            'tanggal_masuk' => $data['tanggal_masuk'],
-            'nama_gudang' => $data['nama_gudang'],
-            'realisasi_hgl' => $data['realisasi_hgl'] ?? null,
-            'no_tm' => $data['no_tm'],
-        ]);
     }
 }

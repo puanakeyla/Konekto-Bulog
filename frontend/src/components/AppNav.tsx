@@ -1,7 +1,7 @@
 import { Link, NavLink } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 import { buildActions } from '../lib/navActions'
-import logoSergab from '../assets/logo-sergab.png'
+import logoSergab from '../assets/logo-sergab.svg'
 
 // Nama role internal -> label ramah untuk ditampilkan di navbar.
 const roleLabels: Record<string, string> = {

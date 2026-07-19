@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 import { useRekapTransaksi, type RekapTransaksi } from '../hooks/useRekapTransaksi'
 import { useOperasiList, type PermintaanOperasi } from '../hooks/useOperasiList'
+import { useGudangList } from '../hooks/useGudang'
 import { useTransaksiList, type TransaksiListItem } from '../hooks/useTransaksiList'
 import { SkeletonMakloonGroups, SkeletonTable } from '../components/Skeleton'
 
@@ -145,7 +146,9 @@ function operasiTotals(items: PermintaanOperasi[]): OperasiTotals {
       katul: acc.katul + num(item.katul_kg),
       rendemenBobot: acc.rendemenBobot + (item.rendemen_persen !== null ? num(item.rendemen_persen) * num(item.gabah_diolah_kg) : 0),
       gabahRendemen: acc.gabahRendemen + (item.rendemen_persen !== null ? num(item.gabah_diolah_kg) : 0),
-      realisasiPenerimaanHgb: acc.realisasiPenerimaanHgb + num(item.data_gudang?.realisasi_hgl),
+      // Realisasi HGL kini dari modul Gudang mandiri (di-inject dari list gudang), bukan
+      // dari data_gudang per permintaan Operasi yang sudah tidak ada.
+      realisasiPenerimaanHgb: 0,
     }),
     { gabahDiolah: 0, hgl: 0, broken: 0, menir: 0, katul: 0, rendemenBobot: 0, gabahRendemen: 0, realisasiPenerimaanHgb: 0 },
   )
@@ -236,10 +239,13 @@ export default function DashboardPage() {
   const { data: transaksiPage, isLoading } = useTransaksiList(page)
   const { data: rekapPage } = useRekapTransaksi(1, 200)
   const { data: operasiPage } = useOperasiList(1, 500)
+  const { data: gudangPage } = useGudangList(1, 500)
   const [skemaFilter, setSkemaFilter] = useState<SkemaFilter>('semua')
   const transaksi = transaksiPage?.items ?? []
   const rekapTransaksi = rekapPage?.items ?? []
   const operasiTransaksi = operasiPage?.items ?? []
+  // Realisasi HGL total dari modul Gudang mandiri (menggantikan sumber lama data_gudang per Operasi).
+  const realisasiGudangTotal = (gudangPage?.items ?? []).reduce((sum, g) => sum + num(g.realisasi_hgl), 0)
   const meta = transaksiPage?.meta
   const filteredTransaksi = useMemo(
     () => transaksi.filter((item) => skemaFilter === 'semua' || item.skema === skemaFilter),
@@ -287,7 +293,10 @@ export default function DashboardPage() {
         { label: 'Selesai', value: selesai, sub: 'sudah rampung', tone: 'success' as const, icon: ICONS.selesai },
         { label: 'Makloon terhubung', value: makloonTerhubung, sub: 'mitra pada daftar', tone: 'accent' as const, icon: ICONS.makloon },
       ]
-  const pantauan = useMemo(() => pantauanRows(rekapTransaksi, operasiTotals(operasiTransaksi)), [operasiTransaksi, rekapTransaksi])
+  const pantauan = useMemo(
+    () => pantauanRows(rekapTransaksi, { ...operasiTotals(operasiTransaksi), realisasiPenerimaanHgb: realisasiGudangTotal }),
+    [operasiTransaksi, rekapTransaksi, realisasiGudangTotal],
+  )
 
   const now = new Date()
   const jam = now.getHours()

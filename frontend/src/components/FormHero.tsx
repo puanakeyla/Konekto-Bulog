@@ -32,6 +32,22 @@ export default function FormHero({
       />
       <div aria-hidden className="pointer-events-none absolute -right-24 -top-24 h-72 w-72 rounded-full bg-accent/15 blur-3xl" />
       <div aria-hidden className="pointer-events-none absolute -left-28 bottom-0 h-64 w-64 rounded-full bg-primary/50 blur-3xl" />
+      {/* cincin dekoratif + motif bulir padi samar di kanan */}
+      <div aria-hidden className="pointer-events-none absolute -right-8 top-2 hidden h-64 w-64 rounded-full border border-white/5 md:block" />
+      <div aria-hidden className="pointer-events-none absolute right-10 top-14 hidden h-40 w-40 rounded-full border border-white/5 md:block" />
+      <svg aria-hidden viewBox="0 0 64 64" className="pointer-events-none absolute right-12 top-1/2 hidden h-44 w-44 -translate-y-1/2 opacity-[0.09] lg:block">
+        <g fill="#D9A441">
+          <path d="M32 55 C30.4 43 30.4 28 32 16.5" fill="none" stroke="#D9A441" strokeWidth="2.6" strokeLinecap="round" />
+          <path d="M31 43.5 C22 43.5 16.6 48.5 15 55 C23 54 29.6 50.6 32 45.2 Z" />
+          <ellipse cx="32" cy="12.6" rx="3" ry="5.4" />
+          <ellipse cx="27.4" cy="21" rx="2.9" ry="5.2" transform="rotate(-36 27.4 21)" />
+          <ellipse cx="36.6" cy="21" rx="2.9" ry="5.2" transform="rotate(36 36.6 21)" />
+          <ellipse cx="27.4" cy="30" rx="2.9" ry="5.2" transform="rotate(-36 27.4 30)" />
+          <ellipse cx="36.6" cy="30" rx="2.9" ry="5.2" transform="rotate(36 36.6 30)" />
+          <ellipse cx="28.1" cy="39" rx="2.7" ry="4.9" transform="rotate(-36 28.1 39)" />
+          <ellipse cx="35.9" cy="39" rx="2.7" ry="4.9" transform="rotate(36 35.9 39)" />
+        </g>
+      </svg>
 
       <div className={`relative mx-auto ${widthClass} px-6 pb-24 pt-7`}>
         <Link
@@ -60,7 +76,8 @@ export default function FormHero({
           {title}
           <span className="text-accent">.</span>
         </h1>
-        {subtitle && <p className="mt-3 max-w-2xl text-sm leading-6 text-white/70">{subtitle}</p>}
+        <div aria-hidden className="mt-3.5 h-1 w-14 rounded-full bg-accent" />
+        {subtitle && <p className="mt-3.5 max-w-2xl text-sm leading-6 text-white/70">{subtitle}</p>}
       </div>
     </section>
   )

@@ -103,31 +103,6 @@ class OperasiStandaloneTest extends TestCase
         $this->service->isiHasil($permintaan, ['no_mo' => 'MO-1', 'no_tm' => 'TM-1']);
     }
 
-    public function test_gudang_menerima_batch_setelah_hasil_terisi(): void
-    {
-        $permintaan = $this->service->ajukan($this->operasi, 1000);
-        $this->service->putuskan($permintaan, 'dikeluarkan', 'OUT-G', null, null, $this->pengadaan);
-        $this->service->isiHasil($permintaan->fresh(), ['no_mo' => 'MO-1', 'no_tm' => 'TM-1', 'hgl_kg' => 600]);
-
-        $gudang = $this->service->terimaGudang($permintaan->fresh(), [
-            'tanggal_masuk' => '2026-07-18', 'nama_gudang' => 'Gudang A', 'no_tm' => 'TM-1',
-        ]);
-
-        $this->assertSame('Gudang A', $gudang->nama_gudang);
-        $this->assertSame($permintaan->id, $gudang->permintaan_operasi_id);
-    }
-
-    public function test_gudang_ditolak_jika_hasil_belum_terisi(): void
-    {
-        $permintaan = $this->service->ajukan($this->operasi, 1000);
-        $this->service->putuskan($permintaan, 'dikeluarkan', 'OUT-G2', null, null, $this->pengadaan);
-
-        $this->expectException(HttpException::class);
-        $this->service->terimaGudang($permintaan->fresh(), [
-            'tanggal_masuk' => '2026-07-18', 'nama_gudang' => 'Gudang A', 'no_tm' => 'TM-1',
-        ]);
-    }
-
     // ---------- HTTP ----------
 
     public function test_post_permintaan_via_http_sukses(): void
@@ -190,6 +165,42 @@ class OperasiStandaloneTest extends TestCase
         $response->assertOk();
         $this->assertCount(2, $response->json('data'));
         $response->assertJsonPath('meta.total', 2);
+    }
+
+    public function test_isi_hasil_menolak_angka_kelewat_besar_dengan_422(): void
+    {
+        // Regresi: dulu nilai raksasa lolos validasi lalu ditolak MySQL (SQLSTATE 22003)
+        // sebagai error 500. Sekarang harus jadi 422 yang rapi.
+        $permintaan = $this->service->ajukan($this->operasi, 1000);
+        $this->service->putuskan($permintaan, 'dikeluarkan', 'OUT-BIG', null, null, $this->pengadaan);
+
+        Sanctum::actingAs($this->operasi);
+
+        $response = $this->postJson("/api/operasi/{$permintaan->id}/hasil", [
+            'no_mo' => 'MO-1',
+            'no_tm' => 'TM-1',
+            'hgl_kg' => 24345454334, // jauh melebihi gabah diolah (1000) & kapasitas kolom
+        ]);
+
+        $response->assertStatus(422);
+        $response->assertJsonValidationErrors('hgl_kg');
+    }
+
+    public function test_operasi_dapat_memperbaiki_hasil_yang_sudah_terisi(): void
+    {
+        $permintaan = $this->service->ajukan($this->operasi, 1000);
+        $this->service->putuskan($permintaan, 'dikeluarkan', 'OUT-EDIT', null, null, $this->pengadaan);
+        $this->service->isiHasil($permintaan->fresh(), ['no_mo' => 'MO-1', 'no_tm' => 'TM-1', 'hgl_kg' => 600]);
+
+        Sanctum::actingAs($this->operasi);
+
+        $response = $this->postJson("/api/operasi/{$permintaan->id}/hasil", [
+            'no_mo' => 'MO-2', 'no_tm' => 'TM-2', 'hgl_kg' => 700,
+        ]);
+
+        $response->assertOk();
+        $response->assertJsonPath('data.no_mo', 'MO-2');
+        $response->assertJsonPath('data.rendemen_persen', '70.00'); // 700/1000*100
     }
 
     private function buatUser(string $role): User

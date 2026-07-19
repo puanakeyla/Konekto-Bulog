@@ -13,7 +13,7 @@ class OperasiController extends Controller
 
     public function index(Request $request)
     {
-        $page = PermintaanOperasi::with(['dataGudang', 'creator', 'reviewer'])
+        $page = PermintaanOperasi::with(['creator', 'reviewer'])
             ->orderByDesc('created_at')
             ->paginate($request->integer('per_page', 20));
 
@@ -33,7 +33,7 @@ class OperasiController extends Controller
     public function store(Request $request)
     {
         $validated = $request->validate([
-            'gabah_diolah_kg' => ['required', 'numeric', 'min:0.01'],
+            'gabah_diolah_kg' => ['required', 'numeric', 'min:0.01', 'max:9999999999.99'],
         ]);
 
         $permintaan = $this->service->ajukan($request->user(), (float) $validated['gabah_diolah_kg']);
@@ -44,7 +44,7 @@ class OperasiController extends Controller
     public function update(Request $request, PermintaanOperasi $permintaanOperasi)
     {
         $validated = $request->validate([
-            'gabah_diolah_kg' => ['required', 'numeric', 'min:0.01'],
+            'gabah_diolah_kg' => ['required', 'numeric', 'min:0.01', 'max:9999999999.99'],
         ]);
 
         $permintaan = $this->service->ajukanUlang($permintaanOperasi, (float) $validated['gabah_diolah_kg']);
@@ -57,7 +57,7 @@ class OperasiController extends Controller
         $validated = $request->validate([
             'keputusan' => ['required', 'in:dikeluarkan,dikembalikan'],
             'no_out' => ['nullable', 'required_if:keputusan,dikeluarkan', 'string', 'max:255'],
-            'kuantum_out' => ['nullable', 'numeric', 'min:0'],
+            'kuantum_out' => ['nullable', 'numeric', 'min:0', 'max:9999999999.99'],
             'catatan' => ['nullable', 'required_if:keputusan,dikembalikan', 'string', 'max:1000'],
         ]);
 
@@ -75,32 +75,27 @@ class OperasiController extends Controller
 
     public function hasil(Request $request, PermintaanOperasi $permintaanOperasi)
     {
+        // Batas atas kolom decimal(12,2) di DB. Tanpa ini, nilai kelewat besar lolos
+        // validasi lalu ditolak MySQL (SQLSTATE 22003) sebagai error 500, bukan 422.
+        $maxDesimal = 9999999999.99;
+        // HGL (beras giling) tidak mungkin melebihi gabah yang diolah -> jaga agar
+        // rendemen (HGL/gabah*100) tetap <= 100 dan tidak meluap kolom decimal(5,2).
+        $maxHgl = min((float) $permintaanOperasi->gabah_diolah_kg, $maxDesimal);
+
         $validated = $request->validate([
             'no_mo' => ['required', 'string', 'max:255'],
             'no_tm' => ['required', 'string', 'max:255'],
-            'hgl_kg' => ['nullable', 'numeric', 'min:0'],
-            'broken_kg' => ['nullable', 'numeric', 'min:0'],
-            'menir_kg' => ['nullable', 'numeric', 'min:0'],
-            'katul_kg' => ['nullable', 'numeric', 'min:0'],
+            'hgl_kg' => ['nullable', 'numeric', 'min:0', "max:{$maxHgl}"],
+            'broken_kg' => ['nullable', 'numeric', 'min:0', "max:{$maxDesimal}"],
+            'menir_kg' => ['nullable', 'numeric', 'min:0', "max:{$maxDesimal}"],
+            'katul_kg' => ['nullable', 'numeric', 'min:0', "max:{$maxDesimal}"],
             'rendemen_persen' => ['nullable', 'numeric', 'min:0', 'max:100'],
+        ], [
+            'hgl_kg.max' => 'HGL tidak boleh melebihi gabah yang diolah ('.rtrim(rtrim(number_format((float) $permintaanOperasi->gabah_diolah_kg, 2, '.', ''), '0'), '.').' kg).',
         ]);
 
         $permintaan = $this->service->isiHasil($permintaanOperasi, $validated);
 
         return response()->json(['data' => $permintaan]);
-    }
-
-    public function gudang(Request $request, PermintaanOperasi $permintaanOperasi)
-    {
-        $validated = $request->validate([
-            'tanggal_masuk' => ['required', 'date'],
-            'nama_gudang' => ['required', 'string', 'max:255'],
-            'realisasi_hgl' => ['nullable', 'numeric', 'min:0'],
-            'no_tm' => ['required', 'string', 'max:255'],
-        ]);
-
-        $gudang = $this->service->terimaGudang($permintaanOperasi, $validated);
-
-        return response()->json(['data' => $gudang], 201);
     }
 }
