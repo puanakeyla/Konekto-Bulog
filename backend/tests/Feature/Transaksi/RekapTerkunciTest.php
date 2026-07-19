@@ -3,9 +3,12 @@
 namespace Tests\Feature\Transaksi;
 
 use App\Models\DataJemputPangan;
+use App\Models\DataKeuangan;
 use App\Models\DataMakloonMpp;
 use App\Models\DataMakloonTjp;
+use App\Models\DataPengadaan;
 use App\Models\DataUbJastasma;
+use App\Models\PoDetail;
 use App\Models\Role;
 use App\Models\Transaksi;
 use App\Models\User;
@@ -112,6 +115,117 @@ class RekapTerkunciTest extends TestCase
 
         $this->assertContains($terkunci->id_transaksi, $ids);
         $this->assertNotContains($belumTerkunci->id_transaksi, $ids);
+    }
+
+    public function test_urutan_rekap_adalah_skema_lalu_no_po_lalu_id_transaksi(): void
+    {
+        // Tiga TJP dan satu MPP, semuanya terkunci di tahap awal supaya lolos filter admin.
+        $tjpA = $this->buatTjpDenganJpTerkunci();
+        $tjpB = $this->buatTjpDenganJpTerkunci();
+        $tjpTanpaPo = $this->buatTjpDenganJpTerkunci();
+        $mpp = $this->buatMppDenganMakloonTerkunci();
+
+        // tjpB sengaja diberi PO bernomor lebih kecil daripada tjpA supaya urutan PO
+        // benar-benar diuji, bukan kebetulan sama dengan urutan pembuatan.
+        $this->pasangPo('PO-001', [$tjpB->id_transaksi]);
+        $this->pasangPo('PO-002', [$tjpA->id_transaksi]);
+        $this->pasangPo('PO-003', [$mpp->id_transaksi]);
+
+        Sanctum::actingAs($this->buatUser('admin'));
+
+        $response = $this->getJson('/api/transaksi/rekap');
+
+        $response->assertOk();
+        $ids = collect($response->json('data'))->pluck('id_transaksi')->all();
+
+        $this->assertSame([
+            $tjpB->id_transaksi,      // TJP, PO-001
+            $tjpA->id_transaksi,      // TJP, PO-002
+            $tjpTanpaPo->id_transaksi, // TJP, tanpa PO -> akhir blok TJP
+            $mpp->id_transaksi,       // MPP, PO-003
+        ], $ids);
+    }
+
+    /**
+     * Buat PO minimal lalu kaitkan transaksi-transaksi ke dalamnya lewat po_detail.
+     * `$reviewStatus` mengendalikan apakah tahap Pengadaan dianggap terkunci.
+     */
+    private function pasangPo(string $noPo, array $transaksiIds, string $reviewStatus = 'menunggu_review'): DataPengadaan
+    {
+        $dataPengadaan = DataPengadaan::create([
+            'tanggal_bongkar' => '2026-07-10',
+            'id_pemasok' => 'PEMASOK-PO',
+            'makloon_user_id' => $this->makloon->id,
+            'total_kuantum' => '100.00',
+            'harga' => '6500.00',
+            'total_harga' => '650000.00',
+            'no_po' => $noPo,
+            'status' => 'proses',
+            'review_status' => $reviewStatus,
+        ]);
+
+        foreach ($transaksiIds as $id) {
+            PoDetail::create([
+                'data_pengadaan_id' => $dataPengadaan->id,
+                'transaksi_id' => $id,
+                'kuantum_kontribusi' => '100.00',
+            ]);
+        }
+
+        return $dataPengadaan;
+    }
+
+    public function test_pengadaan_hanya_melihat_transaksi_yang_po_nya_sudah_diterima_keuangan(): void
+    {
+        $poDiterima = $this->buatTjpDenganJpTerkunci();
+        $poMenunggu = $this->buatTjpDenganJpTerkunci();
+        $tanpaPo = $this->buatTjpDenganJpTerkunci();
+
+        $this->pasangPo('PO-100', [$poDiterima->id_transaksi], 'diterima');
+        $this->pasangPo('PO-200', [$poMenunggu->id_transaksi], 'menunggu_review');
+
+        Sanctum::actingAs($this->buatUser('pengadaan'));
+
+        $response = $this->getJson('/api/transaksi/rekap');
+
+        $response->assertOk();
+        $ids = collect($response->json('data'))->pluck('id_transaksi')->all();
+
+        $this->assertContains($poDiterima->id_transaksi, $ids);
+        $this->assertNotContains($poMenunggu->id_transaksi, $ids);
+        $this->assertNotContains($tanpaPo->id_transaksi, $ids);
+    }
+
+    public function test_keuangan_hanya_melihat_transaksi_yang_pembayarannya_sudah_diterima_operasi(): void
+    {
+        $bayarDiterima = $this->buatTjpDenganJpTerkunci();
+        $bayarMenunggu = $this->buatTjpDenganJpTerkunci();
+
+        $poDiterima = $this->pasangPo('PO-300', [$bayarDiterima->id_transaksi], 'diterima');
+        $poMenunggu = $this->pasangPo('PO-400', [$bayarMenunggu->id_transaksi], 'diterima');
+
+        DataKeuangan::create([
+            'data_pengadaan_id' => $poDiterima->id,
+            'status_bayar' => 'dibayarkan',
+            'tanggal_bayar' => '2026-07-15',
+            'review_status' => 'diterima',
+        ]);
+        DataKeuangan::create([
+            'data_pengadaan_id' => $poMenunggu->id,
+            'status_bayar' => 'dibayarkan',
+            'tanggal_bayar' => '2026-07-15',
+            'review_status' => 'menunggu_review',
+        ]);
+
+        Sanctum::actingAs($this->buatUser('keuangan'));
+
+        $response = $this->getJson('/api/transaksi/rekap');
+
+        $response->assertOk();
+        $ids = collect($response->json('data'))->pluck('id_transaksi')->all();
+
+        $this->assertContains($bayarDiterima->id_transaksi, $ids);
+        $this->assertNotContains($bayarMenunggu->id_transaksi, $ids);
     }
 
     /** TJP dengan tahap Jemput Pangan sudah diterima Makloon (= terkunci). */

@@ -475,7 +475,11 @@ Di `TransaksiController.php`, tambahkan `use App\Models\DataPengadaan;` pada daf
                 'poDetail.dataPengadaan.dataKeuangan',
                 'creator',
             ])
-            ->orderBy('skema')
+            // JANGAN pakai orderBy('skema') biasa: kolomnya enum('TJP','MPP'), dan MySQL
+            // mengurutkan enum berdasarkan indeks deklarasi (TJP, MPP) sementara Laravel
+            // merender enum sebagai teks di SQLite sehingga urut alfabetis (MPP, TJP) —
+            // dev dan test akan berbeda hasil. CASE membuat urutannya eksplisit.
+            ->orderByRaw("CASE skema WHEN 'TJP' THEN 0 WHEN 'MPP' THEN 1 ELSE 2 END")
             // Transaksi tanpa PO ditaruh di akhir tiap blok skema; kalau tersebar di tengah,
             // blok sel gabungan di frontend akan terpotong. Ekspresi `IS NULL` menghasilkan
             // 0/1 baik di MySQL (dev) maupun SQLite (test).

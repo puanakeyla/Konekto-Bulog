@@ -57,6 +57,13 @@ Filter `skema = 'TJP'` untuk role `jemput_pangan` yang sudah ada tetap berlaku.
 `ORDER BY skema, no_po, id_transaksi` dengan `no_po` diambil lewat subquery
 `po_detail` → `data_pengadaan`.
 
+Urutan skema harus ditulis eksplisit sebagai ekspresi `CASE` (TJP → 0, MPP → 1),
+bukan `ORDER BY skema` biasa. Kolomnya `enum('TJP','MPP')`: MySQL mengurutkan
+enum berdasarkan indeks deklarasi sehingga menghasilkan TJP lalu MPP, sedangkan
+Laravel merender enum sebagai teks di SQLite sehingga urutannya alfabetis — MPP
+lalu TJP. Tanpa `CASE`, lingkungan dev dan lingkungan test menghasilkan urutan
+yang berlawanan.
+
 - `skema` lebih dulu agar TJP dan MPP tetap jadi blok terpisah.
 - `no_po` di tengah agar baris satu PO berdampingan — prasyarat sel gabungan.
 - `id_transaksi` terakhir, urut string menaik (format `00001/07/2026/TJP`,

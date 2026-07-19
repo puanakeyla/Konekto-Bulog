@@ -7,6 +7,7 @@ use App\Http\Resources\TransaksiResource;
 use App\Models\DataJemputPangan;
 use App\Models\DataMakloonMpp;
 use App\Models\DataMakloonTjp;
+use App\Models\DataPengadaan;
 use App\Models\DataUbJastasma;
 use App\Models\Role;
 use App\Models\Transaksi;
@@ -49,14 +50,37 @@ class TransaksiController extends Controller
     {
         $role = $request->user()->role->nama_role;
 
-        $query = Transaksi::with([
-            'dataJemputPangan.makloon',
-            'dataMakloonMpp',
-            'dataMakloonTjp',
-            'dataUbJastasma',
-            'poDetail.dataPengadaan.dataKeuangan',
-            'creator',
-        ])->orderByDesc('created_at');
+        // No. PO transaksi ini (lewat po_detail). Dipakai sebagai kunci urut supaya
+        // baris-baris satu PO berdampingan — prasyarat sel gabungan di tabel frontend.
+        $noPo = DataPengadaan::query()
+            ->select('data_pengadaan.no_po')
+            ->join('po_detail', 'po_detail.data_pengadaan_id', '=', 'data_pengadaan.id')
+            ->whereColumn('po_detail.transaksi_id', 'transaksi.id_transaksi')
+            ->limit(1);
+
+        $query = Transaksi::query()
+            ->select('transaksi.*')
+            ->selectSub($noPo, 'urut_no_po')
+            ->with([
+                'dataJemputPangan.makloon',
+                'dataMakloonMpp',
+                'dataMakloonTjp',
+                'dataUbJastasma',
+                'poDetail.dataPengadaan.dataKeuangan',
+                'creator',
+            ])
+            // Urutan blok skema: TJP dulu, baru MPP. TIDAK memakai orderBy('skema') biasa --
+            // kolom `skema` adalah ENUM di MySQL (urut sesuai deklarasi ['TJP', 'MPP']),
+            // tapi di SQLite (test) ENUM cuma jadi TEXT + CHECK constraint yang diurutkan
+            // alfabetis, sehingga 'MPP' < 'TJP' dan blok MPP malah nongol di depan. CASE
+            // eksplisit ini menghasilkan urutan yang sama persis di kedua engine.
+            ->orderByRaw("CASE skema WHEN 'TJP' THEN 0 WHEN 'MPP' THEN 1 ELSE 2 END")
+            // Transaksi tanpa PO ditaruh di akhir tiap blok skema; kalau tersebar di tengah,
+            // blok sel gabungan di frontend akan terpotong. Ekspresi `IS NULL` menghasilkan
+            // 0/1 baik di MySQL (dev) maupun SQLite (test).
+            ->orderByRaw('urut_no_po IS NULL')
+            ->orderBy('urut_no_po')
+            ->orderBy('id_transaksi');
 
         // Role Jemput Pangan hanya relevan dengan skema TJP (MPP tidak punya tahap JP).
         if ($role === 'jemput_pangan') {
