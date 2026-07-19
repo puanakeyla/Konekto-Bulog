@@ -184,30 +184,32 @@ export default function DashboardPage() {
               </div>
               <p className="mt-5 max-w-xl text-sm leading-6 text-white/70">{roleSubtitle}</p>
 
-              {actions.length > 0 && (
-                <div className="mt-7 flex flex-wrap gap-2.5">
-                  {actions.map((a) => (
-                    <NavLink
-                      key={a.to}
-                      to={a.to}
-                      className={({ isActive }) =>
-                        'rounded-lg px-5 py-2.5 text-sm font-semibold transition-all ' +
-                        (isActive
-                          ? 'bg-accent text-primary-dark shadow-sm hover:bg-white hover:shadow-md'
-                          : 'border border-white/15 bg-white/10 text-white hover:bg-white/20')
-                      }
-                    >
-                      {a.label}
-                    </NavLink>
-                  ))}
-                </div>
-              )}
             </div>
 
             {/* Ilustrasi panen gabah -- hanya tampil di layar lebar untuk mengisi ruang. */}
             <div aria-hidden className="relative hidden lg:block">
               <DashboardGrafis />
             </div>
+
+            {actions.length > 0 && (
+              <div className="grid gap-2.5 sm:grid-cols-2 md:grid-cols-3 lg:col-span-2 lg:grid-cols-4 xl:grid-cols-6">
+                {actions.map((a) => (
+                  <NavLink
+                    key={a.to}
+                    to={a.to}
+                    end={a.to === '/operasi' || a.to === '/gudang'}
+                    className={({ isActive }) =>
+                      'inline-flex min-h-10 items-center justify-center rounded-lg px-4 py-2.5 text-center text-sm font-semibold leading-snug transition-all ' +
+                      (isActive
+                        ? 'border border-accent bg-accent text-primary-dark shadow-sm'
+                        : 'border border-white/15 bg-white/10 text-white hover:border-accent/80 hover:bg-white/20')
+                    }
+                  >
+                    {a.label}
+                  </NavLink>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       </section>

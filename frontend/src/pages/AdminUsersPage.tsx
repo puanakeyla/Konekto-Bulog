@@ -45,9 +45,6 @@ export default function AdminUsersPage() {
 
   const [form, setForm] = useState<UserForm>(emptyForm)
   const [editing, setEditing] = useState<AdminUser | null>(null)
-  const [resetUser, setResetUser] = useState<AdminUser | null>(null)
-  const [resetPassword, setResetPassword] = useState('')
-  const [resetConfirmation, setResetConfirmation] = useState('')
 
   const selectedRole = useMemo(
     () => roles?.find((role) => String(role.id) === form.role_id),
@@ -82,35 +79,11 @@ export default function AdminUsersPage() {
     onError: (err) => toast.error(errorMessage(err)),
   })
 
-  const deactivateMutation = useMutation({
-    mutationFn: (target: AdminUser) => api.patch(`/api/admin/users/${target.id}/deactivate`),
-    onSuccess: (_data, target) => {
-      toast.success(`User ${target.username} dinonaktifkan.`)
-      queryClient.invalidateQueries({ queryKey: ['admin-users'] })
-    },
-    onError: (err) => toast.error(errorMessage(err)),
-  })
-
   const deleteMutation = useMutation({
     mutationFn: (target: AdminUser) => api.delete(`/api/admin/users/${target.id}`),
     onSuccess: (_data, target) => {
       toast.success(`User ${target.username} dihapus.`)
       queryClient.invalidateQueries({ queryKey: ['admin-users'] })
-    },
-    onError: (err) => toast.error(errorMessage(err)),
-  })
-
-  const resetMutation = useMutation({
-    mutationFn: () =>
-      api.patch(`/api/admin/users/${resetUser?.id}/reset-password`, {
-        password: resetPassword,
-        password_confirmation: resetConfirmation,
-      }),
-    onSuccess: () => {
-      toast.success(`Password ${resetUser?.username} direset.`)
-      setResetUser(null)
-      setResetPassword('')
-      setResetConfirmation('')
     },
     onError: (err) => toast.error(errorMessage(err)),
   })
@@ -280,146 +253,87 @@ export default function AdminUsersPage() {
         </section>
 
         <section className="panel overflow-hidden">
-          <div className="p-6 border-b border-border">
+          <div className="border-b border-border bg-white px-6 py-5">
             <h2 className="section-title">Daftar User</h2>
           </div>
 
-          {(deactivateMutation.error || deleteMutation.error) && (
+          {deleteMutation.error && (
             <div className="alert-danger rounded-none px-6 py-3">
-              {errorMessage(deactivateMutation.error || deleteMutation.error)}
+              {errorMessage(deleteMutation.error)}
             </div>
           )}
 
-          <table className="w-full text-sm">
-            <thead className="bg-primary-tint text-primary-dark text-left">
-              <tr>
-                <th className="px-4 py-2">Username</th>
-                <th className="px-4 py-2">Role</th>
-                <th className="px-4 py-2">Nama Makloon</th>
-                <th className="px-4 py-2">Status</th>
-                <th className="px-4 py-2 text-right">Aksi</th>
-              </tr>
-            </thead>
-            <tbody>
-              {loadingUsers && Array.from({ length: 4 }, (_, i) => (
-                <tr key={i} className="border-t border-border">
-                  <td className="px-4 py-3" colSpan={5}><Skeleton className="h-4 w-full" /></td>
-                </tr>
-              ))}
-              {!loadingUsers && users?.length === 0 && (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[760px] text-sm">
+              <thead className="bg-primary-tint text-left text-primary-dark">
                 <tr>
-                  <td className="px-4 py-3 text-gray-400" colSpan={5}>
-                    Belum ada user.
-                  </td>
+                  <th className="px-5 py-3 text-xs font-bold uppercase tracking-wide">Username</th>
+                  <th className="px-5 py-3 text-xs font-bold uppercase tracking-wide">Role</th>
+                  <th className="px-5 py-3 text-xs font-bold uppercase tracking-wide">Nama Makloon</th>
+                  <th className="px-5 py-3 text-xs font-bold uppercase tracking-wide">Status</th>
+                  <th className="px-5 py-3 text-right text-xs font-bold uppercase tracking-wide">Aksi</th>
                 </tr>
-              )}
-              {users?.map((target) => (
-                <tr key={target.id} className="border-t border-border">
-                  <td className="px-4 py-2 font-medium text-primary-dark">{target.username}</td>
-                  <td className="px-4 py-2">{target.role.nama_role}</td>
-                  <td className="px-4 py-2">{target.nama_maklon ?? '-'}</td>
-                  <td className="px-4 py-2">
-                    <span
-                      className={
-                        target.is_active
-                          ? 'text-success bg-success-bg rounded px-2 py-1 text-xs'
-                          : 'text-danger bg-danger-bg rounded px-2 py-1 text-xs'
-                      }
-                    >
-                      {target.is_active ? 'Aktif' : 'Nonaktif'}
-                    </span>
-                  </td>
-                  <td className="px-4 py-2">
-                    <div className="flex justify-end gap-2">
-                      <button className="text-primary font-medium" onClick={() => startEdit(target)}>
-                        Edit
-                      </button>
-                      <button className="text-primary-dark" onClick={() => setResetUser(target)}>
-                        Reset
-                      </button>
-                      <button
-                        className="text-warning"
-                        disabled={!target.is_active || deactivateMutation.isPending}
-                        onClick={() => deactivateMutation.mutate(target)}
+              </thead>
+              <tbody className="divide-y divide-border bg-white">
+                {loadingUsers && Array.from({ length: 4 }, (_, i) => (
+                  <tr key={i}>
+                    <td className="px-5 py-4" colSpan={5}><Skeleton className="h-4 w-full" /></td>
+                  </tr>
+                ))}
+                {!loadingUsers && users?.length === 0 && (
+                  <tr>
+                    <td className="px-5 py-4 text-gray-400" colSpan={5}>
+                      Belum ada user.
+                    </td>
+                  </tr>
+                )}
+                {users?.map((target) => (
+                  <tr key={target.id} className="transition-colors hover:bg-surface">
+                    <td className="px-5 py-3 font-semibold text-primary-dark">{target.username}</td>
+                    <td className="px-5 py-3 capitalize text-gray-600">{target.role.nama_role.replaceAll('_', ' ')}</td>
+                    <td className="px-5 py-3 text-gray-600">{target.nama_maklon ?? '-'}</td>
+                    <td className="px-5 py-3">
+                      <span
+                        className={
+                          'inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ' +
+                          (target.is_active
+                            ? 'bg-success-bg text-success'
+                            : 'bg-danger-bg text-danger')
+                        }
                       >
-                        Nonaktifkan
-                      </button>
-                      <button
-                        className="text-danger"
-                        disabled={deleteMutation.isPending}
-                        onClick={() => {
-                          if (window.confirm(`Hapus user ${target.username}?`)) {
-                            deleteMutation.mutate(target)
-                          }
-                        }}
-                      >
-                        Hapus
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                        {target.is_active ? 'Aktif' : 'Nonaktif'}
+                      </span>
+                    </td>
+                    <td className="px-5 py-3">
+                      <div className="flex justify-end gap-2">
+                        <button
+                          type="button"
+                          className="rounded-lg border border-primary/20 bg-primary-tint px-3 py-1.5 text-xs font-bold text-primary transition-colors hover:border-primary hover:bg-primary hover:text-white"
+                          onClick={() => startEdit(target)}
+                        >
+                          Edit
+                        </button>
+                        <button
+                          type="button"
+                          className="rounded-lg border border-danger/20 bg-danger-bg px-3 py-1.5 text-xs font-bold text-danger transition-colors hover:border-danger hover:bg-danger hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+                          disabled={deleteMutation.isPending}
+                          onClick={() => {
+                            if (window.confirm(`Hapus user ${target.username}?`)) {
+                              deleteMutation.mutate(target)
+                            }
+                          }}
+                        >
+                          Hapus
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </section>
       </div>
-
-      {resetUser && (
-        <div className="fixed inset-0 bg-black/30 flex items-center justify-center p-4">
-          <form
-            className="panel panel-pad w-full max-w-md"
-            onSubmit={(event) => {
-              event.preventDefault()
-              resetMutation.mutate()
-            }}
-          >
-            <h2 className="page-title mb-4">
-              Reset Password {resetUser.username}
-            </h2>
-            {resetMutation.error && (
-              <div className="alert-danger mb-4">
-                {errorMessage(resetMutation.error)}
-              </div>
-            )}
-            <label className="block mb-3">
-              <span className="label">Password Baru</span>
-              <input
-                required
-                type="password"
-                className="input"
-                value={resetPassword}
-                onChange={(event) => setResetPassword(event.target.value)}
-              />
-            </label>
-            <label className="block mb-4">
-              <span className="label">Konfirmasi Password</span>
-              <input
-                required
-                type="password"
-                className="input"
-                value={resetConfirmation}
-                onChange={(event) => setResetConfirmation(event.target.value)}
-              />
-            </label>
-            <div className="flex justify-end gap-3">
-              <button
-                type="button"
-                className="btn btn-ghost"
-                onClick={() => setResetUser(null)}
-              >
-                Batal
-              </button>
-              <button
-                type="submit"
-                disabled={resetMutation.isPending}
-                className="btn btn-primary"
-              >
-                {resetMutation.isPending ? 'Menyimpan...' : 'Reset Password'}
-              </button>
-            </div>
-          </form>
-        </div>
-      )}
       </div>
     </div>
   )

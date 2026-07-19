@@ -141,12 +141,12 @@ export default function AdminMakloonPage() {
     <div className="min-h-screen bg-surface">
       <FormHero
         title="Admin Makloon"
-        subtitle="Tambah, ubah, nonaktifkan, dan hapus akun makloon."
+        subtitle="Tambah, ubah, dan hapus akun makloon."
         badge="Administrator"
       />
 
-      <div className="relative mx-auto -mt-16 max-w-[1500px] px-6 pb-16">
-        <div className="grid gap-6 xl:grid-cols-[380px_minmax(0,1fr)]">
+      <div className="relative mx-auto -mt-16 max-w-6xl px-6 pb-16">
+        <div className="grid items-start gap-6 xl:grid-cols-[380px_minmax(0,1fr)]">
           <div className="grid content-start gap-6">
             <section className="panel panel-pad">
               <h2 className="section-title mb-4">Tambah Makloon</h2>
@@ -230,7 +230,7 @@ export default function AdminMakloonPage() {
               </form>
             </section>
 
-          <section className="panel panel-pad @container">
+            <section className="panel panel-pad @container">
             <div className="mb-4 flex flex-col gap-1">
               <h2 className="section-title">Import Makloon</h2>
               <p className="text-xs text-slate-500">
@@ -287,11 +287,11 @@ export default function AdminMakloonPage() {
             <div className="mt-4 rounded-lg border border-border bg-primary-tint/30 p-3 text-xs text-slate-600">
               Contoh: nama_maklon,kecamatan,kabupaten.
             </div>
-          </section>
+            </section>
           </div>
 
           <section className="panel overflow-hidden">
-            <div className="border-b border-border p-6">
+            <div className="border-b border-border bg-white px-6 py-5">
               <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
                 <div>
                   <h2 className="section-title">Daftar Makloon</h2>
@@ -309,42 +309,49 @@ export default function AdminMakloonPage() {
             {deleteMutation.error && <div className="alert-danger rounded-none px-6 py-3">{errorMessage(deleteMutation.error)}</div>}
 
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[900px] text-sm">
+              <table className="w-full min-w-[720px] table-fixed text-sm">
                 <thead className="bg-primary-tint text-left text-primary-dark">
                   <tr>
-                    <th className="px-4 py-2">Nama Makloon</th>
-                    <th className="px-4 py-2">Username</th>
-                    <th className="px-4 py-2">Wilayah</th>
-                    <th className="px-4 py-2">Status</th>
-                    <th className="px-4 py-2 text-right">Aksi</th>
+                    <th className="w-[23%] px-4 py-3 text-xs font-bold uppercase tracking-wide">Nama Makloon</th>
+                    <th className="w-[27%] px-4 py-3 text-xs font-bold uppercase tracking-wide">Username</th>
+                    <th className="w-[25%] px-4 py-3 text-xs font-bold uppercase tracking-wide">Wilayah</th>
+                    <th className="w-[86px] px-3 py-3 text-xs font-bold uppercase tracking-wide">Status</th>
+                    <th className="w-[132px] px-4 py-3 text-right text-xs font-bold uppercase tracking-wide">Aksi</th>
                   </tr>
                 </thead>
-                <tbody>
+                <tbody className="divide-y divide-border bg-white">
                   {isLoading && Array.from({ length: 4 }, (_, i) => (
-                    <tr key={i} className="border-t border-border">
-                      <td className="px-4 py-3" colSpan={5}><Skeleton className="h-4 w-full" /></td>
+                    <tr key={i}>
+                      <td className="px-4 py-4" colSpan={5}><Skeleton className="h-4 w-full" /></td>
                     </tr>
                   ))}
                   {!isLoading && makloon?.length === 0 && (
                     <tr>
-                      <td className="px-4 py-3 text-gray-400" colSpan={5}>Belum ada makloon.</td>
+                      <td className="px-4 py-4 text-gray-400" colSpan={5}>Belum ada makloon.</td>
                     </tr>
                   )}
                   {makloon?.map((target) => (
-                    <tr key={target.id} className="border-t border-border">
-                      <td className="px-4 py-2 font-medium text-primary-dark">{target.nama_maklon ?? '-'}</td>
-                      <td className="px-4 py-2">{target.username}</td>
-                      <td className="px-4 py-2">{[target.kecamatan, target.kabupaten].filter(Boolean).join(', ') || '-'}</td>
-                      <td className="px-4 py-2">
-                        <span className={target.is_active ? 'rounded bg-success-bg px-2 py-1 text-xs text-success' : 'rounded bg-danger-bg px-2 py-1 text-xs text-danger'}>
+                    <tr key={target.id} className="transition-colors hover:bg-surface">
+                      <td className="px-4 py-3 font-semibold leading-snug text-primary-dark">{target.nama_maklon ?? '-'}</td>
+                      <td className="break-all px-4 py-3 text-gray-600">{target.username}</td>
+                      <td className="px-4 py-3 leading-snug text-gray-600">{[target.kecamatan, target.kabupaten].filter(Boolean).join(', ') || '-'}</td>
+                      <td className="px-3 py-3">
+                        <span className={target.is_active ? 'inline-flex rounded-full bg-success-bg px-2.5 py-1 text-xs font-semibold text-success' : 'inline-flex rounded-full bg-danger-bg px-2.5 py-1 text-xs font-semibold text-danger'}>
                           {target.is_active ? 'Aktif' : 'Nonaktif'}
                         </span>
                       </td>
-                      <td className="px-4 py-2">
-                        <div className="flex justify-end gap-3">
-                          <button className="font-medium text-primary" onClick={() => startEdit(target)}>Edit</button>
+                      <td className="px-4 py-3">
+                        <div className="flex flex-nowrap justify-end gap-2 whitespace-nowrap">
                           <button
-                            className="font-medium text-danger"
+                            type="button"
+                            className="rounded-lg border border-primary/20 bg-primary-tint px-3 py-1.5 text-xs font-bold text-primary transition-colors hover:border-primary hover:bg-primary hover:text-white"
+                            onClick={() => startEdit(target)}
+                          >
+                            Edit
+                          </button>
+                          <button
+                            type="button"
+                            className="rounded-lg border border-danger/20 bg-danger-bg px-3 py-1.5 text-xs font-bold text-danger transition-colors hover:border-danger hover:bg-danger hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
                             disabled={deleteMutation.isPending}
                             onClick={() => {
                               if (window.confirm(`Hapus makloon ${target.nama_maklon ?? target.username}?`)) {
