@@ -127,11 +127,13 @@ class TransaksiController extends Controller
             }),
             'pengadaan' => $query->whereHas('poDetail.dataPengadaan',
                 fn (Builder $q) => $q->where('review_status', 'diterima')),
-            // Keuangan selesai/terkunci ketika pembayaran sudah dicatat. Modul Operasi
-            // sekarang berdiri sendiri, jadi tidak ada lagi review tahap berikutnya yang
-            // mengubah data_keuangan.review_status menjadi "diterima".
+            // Keuangan terkunci ketika pembayaran sudah difinalisasi. updatePembayaran()
+            // menandai data_keuangan.review_status = 'diterima' bersamaan saat status_bayar
+            // jadi 'dibayarkan', jadi 'diterima' itulah penanda final (konsisten dengan
+            // filter 'pengadaan' di atas). Memakai status_bayar saja akan ikut menampilkan
+            // baris pembayaran yang belum difinalisasi.
             'keuangan' => $query->whereHas('poDetail.dataPengadaan.dataKeuangan',
-                fn (Builder $q) => $q->where('status_bayar', 'dibayarkan')),
+                fn (Builder $q) => $q->where('review_status', 'diterima')),
             // Tahap awal: Jemput Pangan untuk TJP, Makloon untuk MPP (lihat TransaksiStages::sequence()).
             'admin' => $query->where(function (Builder $q) {
                 $q->where(fn (Builder $t) => $t->where('skema', 'TJP')

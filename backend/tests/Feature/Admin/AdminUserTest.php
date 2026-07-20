@@ -204,8 +204,13 @@ class AdminUserTest extends TestCase
             ->assertOk()
             ->assertJsonPath('data.is_active', false);
 
-        $this->deleteJson("/api/admin/users/{$user->id}")->assertNoContent();
-        $this->assertDatabaseMissing('users', ['id' => $user->id]);
+        // "Hapus" = soft delete (nonaktifkan permanen dari daftar aktif). Baris user sengaja
+        // dipertahankan supaya FK riwayat transaksi (created_by, locked_by, reviewed_by, dst)
+        // tidak putus — lihat AdminUserController::destroy().
+        $this->deleteJson("/api/admin/users/{$user->id}")
+            ->assertOk()
+            ->assertJsonPath('data.is_active', false);
+        $this->assertDatabaseHas('users', ['id' => $user->id, 'is_active' => false]);
     }
 
     public function test_non_admin_tidak_dapat_mengakses_admin_users(): void
