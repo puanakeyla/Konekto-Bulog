@@ -22,7 +22,8 @@ export function buildActions(role: string): NavAction[] {
   }
 
   if (role === 'keuangan') actions.push({ to: '/keuangan', label: 'Pembayaran PO' })
-  // Menu modul Pengolahan (ub_jastasma/operasi/pengadaan/gudang) ditambahkan di Task 9-11.
+  if (role === 'ub_jastasma') actions.push({ to: '/pengolahan', label: 'Pengolahan' })
+  // Menu Pengolahan untuk operasi/pengadaan/gudang ditambahkan di Task 10-11.
 
   return actions
 }

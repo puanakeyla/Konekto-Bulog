@@ -10,6 +10,7 @@ import TransaksiJemputPanganPage from './pages/TransaksiJemputPanganPage'
 import TransaksiDetailPage from './pages/TransaksiDetailPage'
 import TransaksiMakloonBaruPage from './pages/TransaksiMakloonBaruPage'
 import KeuanganPage from './pages/KeuanganPage'
+import PengolahanUbJastasmaPage from './pages/PengolahanUbJastasmaPage'
 import AdminUsersPage from './pages/AdminUsersPage'
 import MonitoringPage from './pages/MonitoringPage'
 import RekapTransaksiPage from './pages/RekapTransaksiPage'
@@ -50,6 +51,7 @@ function AppRoutes() {
         <Route path="/transaksi/:id/makloon" element={<RedirectToTransaksiDetail />} />
         <Route path="/transaksi/baru-mpp" element={<TransaksiMakloonBaruPage />} />
         <Route path="/keuangan" element={<KeuanganPage />} />
+        <Route path="/pengolahan" element={<PengolahanUbJastasmaPage />} />
         <Route path="/admin/users" element={<AdminUsersPage />} />
         <Route path="/admin/audit-logs" element={<AdminAuditLogPage />} />
         <Route path="/monitoring" element={<MonitoringPage />} />
