@@ -18,6 +18,7 @@ class User extends Authenticatable
         'password',
         'role_id',
         'nama_maklon',
+        'nama_gudang',
         'kecamatan',
         'kabupaten',
         'is_active',

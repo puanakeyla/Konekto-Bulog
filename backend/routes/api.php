@@ -5,6 +5,7 @@ use App\Http\Controllers\Api\AuditLogController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\FotoController;
 use App\Http\Controllers\Api\FotoStreamController;
+use App\Http\Controllers\Api\GudangOptionController;
 use App\Http\Controllers\Api\MakloonOptionController;
 use App\Http\Controllers\Api\MonitoringController;
 use App\Http\Controllers\Api\PengadaanController;
@@ -24,6 +25,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/me', [AuthController::class, 'me']);
 
     Route::get('/makloon-options', [MakloonOptionController::class, 'index']);
+    Route::get('/gudang-options', [GudangOptionController::class, 'index']);
 
     Route::prefix('monitoring')->group(function () {
         Route::get('/sebaran-tahap', [MonitoringController::class, 'sebaranTahap']);
