@@ -10,8 +10,6 @@ export function buildActions(role: string): NavAction[] {
       { to: '/admin/users', label: 'Kelola User' },
       { to: '/monitoring', label: 'Monitoring' },
       { to: '/rekap', label: 'Rekap Data' },
-      { to: '/operasi/rekap', label: 'Rekap Operasi' },
-      { to: '/gudang/rekap', label: 'Rekap Gudang' },
       { to: '/admin/audit-logs', label: 'Audit Log' },
     ]
   }
@@ -23,10 +21,8 @@ export function buildActions(role: string): NavAction[] {
     actions.push({ to: '/rekap', label: 'Rekap Data' })
   }
 
-  if (role === 'pengadaan') actions.push({ to: '/pengadaan', label: 'Keputusan Stok' })
   if (role === 'keuangan') actions.push({ to: '/keuangan', label: 'Pembayaran PO' })
-  if (role === 'operasi') actions.push({ to: '/operasi', label: 'Input Operasi' }, { to: '/operasi/rekap', label: 'Rekap Operasi' })
-  if (role === 'gudang') actions.push({ to: '/gudang', label: 'Penerimaan Gudang' }, { to: '/gudang/rekap', label: 'Rekap Gudang' })
+  // Menu modul Pengolahan (ub_jastasma/operasi/pengadaan/gudang) ditambahkan di Task 9-11.
 
   return actions
 }

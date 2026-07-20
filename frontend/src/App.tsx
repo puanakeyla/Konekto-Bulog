@@ -9,12 +9,7 @@ import DashboardPage from './pages/DashboardPage'
 import TransaksiJemputPanganPage from './pages/TransaksiJemputPanganPage'
 import TransaksiDetailPage from './pages/TransaksiDetailPage'
 import TransaksiMakloonBaruPage from './pages/TransaksiMakloonBaruPage'
-import PengadaanPage from './pages/PengadaanPage'
 import KeuanganPage from './pages/KeuanganPage'
-import OperasiPage from './pages/OperasiPage'
-import OperasiRekapPage from './pages/OperasiRekapPage'
-import GudangPage from './pages/GudangPage'
-import GudangRekapPage from './pages/GudangRekapPage'
 import AdminUsersPage from './pages/AdminUsersPage'
 import MonitoringPage from './pages/MonitoringPage'
 import RekapTransaksiPage from './pages/RekapTransaksiPage'
@@ -54,12 +49,7 @@ function AppRoutes() {
         <Route path="/transaksi/:id/ub-jastasma" element={<RedirectToTransaksiDetail />} />
         <Route path="/transaksi/:id/makloon" element={<RedirectToTransaksiDetail />} />
         <Route path="/transaksi/baru-mpp" element={<TransaksiMakloonBaruPage />} />
-        <Route path="/pengadaan" element={<PengadaanPage />} />
         <Route path="/keuangan" element={<KeuanganPage />} />
-        <Route path="/operasi" element={<OperasiPage />} />
-        <Route path="/operasi/rekap" element={<OperasiRekapPage />} />
-        <Route path="/gudang" element={<GudangPage />} />
-        <Route path="/gudang/rekap" element={<GudangRekapPage />} />
         <Route path="/admin/users" element={<AdminUsersPage />} />
         <Route path="/admin/audit-logs" element={<AdminAuditLogPage />} />
         <Route path="/monitoring" element={<MonitoringPage />} />

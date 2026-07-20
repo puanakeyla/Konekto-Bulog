@@ -9,7 +9,7 @@ import ConfirmDialog from '../ConfirmDialog'
 
 // Kunci pengelompokan PO: transaksi hanya boleh digabung bila pemasok, tanggal bongkar, dan
 // kuantum berasal dari sumber yang konsisten (MPP dari data makloon MPP, TJP dari jemput pangan +
-// bongkar TJP). Sama persis dengan logika lama di PengadaanPage.
+// bongkar TJP). Penggabungan PO dilakukan dari timeline transaksi (TransaksiDetailPage).
 function groupKeyOf(t: TransaksiListItem) {
   if (t.data_makloon_mpp) {
     return {

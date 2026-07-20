@@ -2,8 +2,6 @@ import { useMemo, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 import { useRekapTransaksi, type RekapTransaksi } from '../hooks/useRekapTransaksi'
-import { useOperasiList, type PermintaanOperasi } from '../hooks/useOperasiList'
-import { useGudangList } from '../hooks/useGudang'
 import { useTransaksiList, type TransaksiListItem } from '../hooks/useTransaksiList'
 import { SkeletonMakloonGroups, SkeletonTable } from '../components/Skeleton'
 
@@ -136,32 +134,18 @@ function kuantumMakloon(row: RekapTransaksi) {
   return num(row.data_makloon_tjp?.kuantum_bongkar ?? row.data_makloon_mpp?.kuantum)
 }
 
-function operasiTotals(items: PermintaanOperasi[]): OperasiTotals {
-  const totals = items.reduce(
-    (acc, item) => ({
-      gabahDiolah: acc.gabahDiolah + (item.no_mo ? num(item.gabah_diolah_kg) : 0),
-      hgl: acc.hgl + num(item.hgl_kg),
-      broken: acc.broken + num(item.broken_kg),
-      menir: acc.menir + num(item.menir_kg),
-      katul: acc.katul + num(item.katul_kg),
-      rendemenBobot: acc.rendemenBobot + (item.rendemen_persen !== null ? num(item.rendemen_persen) * num(item.gabah_diolah_kg) : 0),
-      gabahRendemen: acc.gabahRendemen + (item.rendemen_persen !== null ? num(item.gabah_diolah_kg) : 0),
-      // Realisasi HGL kini dari modul Gudang mandiri (di-inject dari list gudang), bukan
-      // dari data_gudang per permintaan Operasi yang sudah tidak ada.
-      realisasiPenerimaanHgb: 0,
-    }),
-    { gabahDiolah: 0, hgl: 0, broken: 0, menir: 0, katul: 0, rendemenBobot: 0, gabahRendemen: 0, realisasiPenerimaanHgb: 0 },
-  )
-
-  return {
-    gabahDiolah: totals.gabahDiolah,
-    hgl: totals.hgl,
-    broken: totals.broken,
-    menir: totals.menir,
-    katul: totals.katul,
-    rendemenPersen: totals.gabahRendemen > 0 ? totals.rendemenBobot / totals.gabahRendemen : (totals.gabahDiolah > 0 ? (totals.hgl / totals.gabahDiolah) * 100 : 0),
-    realisasiPenerimaanHgb: totals.realisasiPenerimaanHgb,
-  }
+// Kolom "Hasil Olah" & "Realisasi HGB" pada Pantauan Admin dulunya diisi dari modul
+// Operasi/Gudang lama. Modul itu diganti alur Pengolahan (pengolahan/mo); rewiring tabel
+// pantauan ke sumber baru belum tercakup rencana ini, jadi sementara diisi nol.
+// TODO(pengolahan): hitung hasil olah & realisasi dari data mo/pengolahan.
+const HASIL_OLAH_KOSONG: OperasiTotals = {
+  gabahDiolah: 0,
+  hgl: 0,
+  broken: 0,
+  menir: 0,
+  katul: 0,
+  rendemenPersen: 0,
+  realisasiPenerimaanHgb: 0,
 }
 
 function pantauanRows(rows: RekapTransaksi[], hasilOperasi: OperasiTotals): PantauanRow[] {
@@ -238,14 +222,9 @@ export default function DashboardPage() {
   const [page, setPage] = useState(1)
   const { data: transaksiPage, isLoading } = useTransaksiList(page)
   const { data: rekapPage } = useRekapTransaksi(1, 200)
-  const { data: operasiPage } = useOperasiList(1, 500)
-  const { data: gudangPage } = useGudangList(1, 500)
   const [skemaFilter, setSkemaFilter] = useState<SkemaFilter>('semua')
   const transaksi = transaksiPage?.items ?? []
   const rekapTransaksi = rekapPage?.items ?? []
-  const operasiTransaksi = operasiPage?.items ?? []
-  // Realisasi HGL total dari modul Gudang mandiri (menggantikan sumber lama data_gudang per Operasi).
-  const realisasiGudangTotal = (gudangPage?.items ?? []).reduce((sum, g) => sum + num(g.realisasi_hgl), 0)
   const meta = transaksiPage?.meta
   const filteredTransaksi = useMemo(
     () => transaksi.filter((item) => skemaFilter === 'semua' || item.skema === skemaFilter),
@@ -294,8 +273,8 @@ export default function DashboardPage() {
         { label: 'Makloon terhubung', value: makloonTerhubung, sub: 'mitra pada daftar', tone: 'accent' as const, icon: ICONS.makloon },
       ]
   const pantauan = useMemo(
-    () => pantauanRows(rekapTransaksi, { ...operasiTotals(operasiTransaksi), realisasiPenerimaanHgb: realisasiGudangTotal }),
-    [operasiTransaksi, rekapTransaksi, realisasiGudangTotal],
+    () => pantauanRows(rekapTransaksi, HASIL_OLAH_KOSONG),
+    [rekapTransaksi],
   )
 
   const now = new Date()
