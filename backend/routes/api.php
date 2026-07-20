@@ -7,8 +7,10 @@ use App\Http\Controllers\Api\FotoController;
 use App\Http\Controllers\Api\FotoStreamController;
 use App\Http\Controllers\Api\GudangOptionController;
 use App\Http\Controllers\Api\MakloonOptionController;
+use App\Http\Controllers\Api\MoController;
 use App\Http\Controllers\Api\MonitoringController;
 use App\Http\Controllers\Api\PengadaanController;
+use App\Http\Controllers\Api\PengolahanController;
 use App\Http\Controllers\Api\TransaksiController;
 use Illuminate\Support\Facades\Route;
 
@@ -84,4 +86,33 @@ Route::middleware('auth:sanctum')->group(function () {
         ->middleware('role:pengadaan|keuangan|operasi|gudang|admin');
     Route::post('/po/{dataPengadaan}/tolak', [PengadaanController::class, 'tolakPo'])
         ->middleware('role:pengadaan|keuangan|operasi|gudang|admin');
+
+    // Modul Pengolahan: UB Jastasma buat pengolahan (per LHPK) -> Operasi review/tolak ->
+    // Operasi gabung jadi MO -> Pengadaan keputusan OUT -> Operasi kirim gudang -> Gudang terima.
+    Route::get('/pengolahan', [PengolahanController::class, 'index'])
+        ->middleware('role:ub_jastasma|operasi|pengadaan|gudang|admin');
+    // 'kuantum-in' didaftarkan sebelum route parameter agar tak tertelan route-model-binding.
+    Route::get('/pengolahan/kuantum-in', [PengolahanController::class, 'kuantumIn'])
+        ->middleware('role:ub_jastasma|admin');
+    Route::post('/pengolahan', [PengolahanController::class, 'store'])
+        ->middleware('role:ub_jastasma|admin');
+    Route::patch('/pengolahan/{pengolahan}', [PengolahanController::class, 'update'])
+        ->middleware('role:ub_jastasma|admin');
+    Route::post('/pengolahan/{pengolahan}/tolak', [PengolahanController::class, 'tolak'])
+        ->middleware('role:operasi|admin');
+
+    Route::post('/mo/gabungkan', [MoController::class, 'gabungkan'])
+        ->middleware('role:operasi|admin');
+    Route::get('/mo', [MoController::class, 'index'])
+        ->middleware('role:operasi|pengadaan|gudang|admin');
+    Route::get('/mo/{mo}', [MoController::class, 'show'])
+        ->middleware('role:operasi|pengadaan|gudang|admin');
+    Route::patch('/mo/{mo}/out', [MoController::class, 'out'])
+        ->middleware('role:pengadaan|admin');
+    Route::patch('/mo/{mo}/kirim-gudang', [MoController::class, 'kirimGudang'])
+        ->middleware('role:operasi|admin');
+    Route::post('/mo/{mo}/terima', [MoController::class, 'terima'])
+        ->middleware('role:gudang|admin');
+    Route::post('/mo/{mo}/tolak', [MoController::class, 'tolak'])
+        ->middleware('role:gudang|admin');
 });
