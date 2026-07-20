@@ -66,7 +66,7 @@ class PoLifecycleTest extends TestCase
         $this->lifecycleService->updatePembayaran($po, 'dibayarkan', '2026-07-12', 'SPP-001');
     }
 
-    public function test_pembayaran_sukses_set_no_spp_dan_memajukan_current_stage_ke_operasi(): void
+    public function test_pembayaran_sukses_set_no_spp_dan_menyelesaikan_transaksi(): void
     {
         [$po, $transaksiIds] = $this->buatPoLengkap(2);
 
@@ -76,22 +76,27 @@ class PoLifecycleTest extends TestCase
         $this->assertSame('2026-07-12', $dataKeuangan->tanggal_bayar->format('Y-m-d'));
         $this->assertSame('SPP-001', $po->fresh()->no_spp);
 
+        // Keuangan adalah tahap terakhir: pembayaran penuh menandai transaksi selesai,
+        // current_stage tetap di 'keuangan' (tidak ada tahap Operasi/Gudang di timeline lagi).
         foreach ($transaksiIds as $id) {
-            $this->assertSame('operasi', Transaksi::find($id)->current_stage);
+            $transaksi = Transaksi::find($id);
+            $this->assertSame('selesai', $transaksi->status_keseluruhan);
+            $this->assertSame('keuangan', $transaksi->current_stage);
         }
     }
 
-    public function test_pembayaran_tidak_memajukan_stage_dua_kali_jika_dipanggil_ulang(): void
+    public function test_pembayaran_ulang_setelah_selesai_ditolak_guard(): void
     {
         [$po, $transaksiIds] = $this->buatPoLengkap(1);
 
         $this->bayarPo($po, '2026-07-12', 'SPP-002');
-        Transaksi::whereIn('id_transaksi', $transaksiIds)->update(['current_stage' => 'gudang']);
+        $this->assertSame('selesai', Transaksi::find($transaksiIds[0])->status_keseluruhan);
 
-        // panggil ulang dengan status yang sama - tidak boleh menimpa current_stage yang sudah maju lebih jauh
+        // Data Keuangan yang sudah 'diterima' tidak bisa dibayar ulang: guard di
+        // updatePembayaran menolaknya, jadi status selesai tetap final (tidak ada
+        // efek samping ganda seperti dobel-advance stage di skema lama).
+        $this->expectException(HttpException::class);
         $this->lifecycleService->updatePembayaran($po->fresh(), 'dibayarkan', '2026-07-12', null);
-
-        $this->assertSame('gudang', Transaksi::find($transaksiIds[0])->current_stage);
     }
 
     public function test_patch_pembayaran_via_http_ditolak_untuk_role_selain_keuangan(): void

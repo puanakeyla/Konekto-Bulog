@@ -11,10 +11,10 @@ use Illuminate\Support\Facades\DB;
 class PoLifecycleService
 {
     /**
-     * Keuangan -> Operasi -> Pengadaan approve OUT -> Gudang. Pembayaran di level PO, sedangkan Operasi & Gudang
-     * per IN (satu data_operasi per po_detail, satu data_gudang per data_operasi).
-     * current_stage tiap transaksi terkait (lewat po_detail) baru dimajukan begitu SELURUH
-     * IN pada PO tuntas di milestone tersebut, mirip pola isiNomorIn().
+     * Pembayaran PO oleh Keuangan (level PO). Keuangan adalah tahap TERAKHIR timeline transaksi
+     * (TJP/MPP berhenti di Keuangan). Begitu PO dibayar penuh, seluruh transaksi anggotanya
+     * ditandai status_keseluruhan = 'selesai'. Operasi & Gudang bukan kelanjutan timeline ini —
+     * keduanya kini bagian dari modul Pengolahan terpisah.
      */
     public function updatePembayaran(DataPengadaan $dataPengadaan, string $statusBayar, ?string $tanggalBayar, ?string $noSpp): DataKeuangan
     {
@@ -47,18 +47,22 @@ class PoLifecycleService
             $dataKeuangan->save();
 
             if ($statusBayar === 'dibayarkan' && ($statusSebelumnya !== 'dibayarkan' || $dataKeuangan->wasChanged('review_status'))) {
-                $this->majukanTahapTransaksi($dataPengadaan->id, 'operasi');
+                $this->selesaikanTransaksi($dataPengadaan->id);
             }
 
             return $dataKeuangan;
         });
     }
 
-    private function majukanTahapTransaksi(int $dataPengadaanId, string $stageBerikutnya): void
+    /**
+     * Pembayaran penuh = akhir timeline transaksi. Seluruh transaksi anggota PO ditandai selesai;
+     * current_stage dibiarkan di 'keuangan' (tahap terakhir) dan tidak lagi dimajukan ke Operasi.
+     */
+    private function selesaikanTransaksi(int $dataPengadaanId): void
     {
         $transaksiIds = PoDetail::where('data_pengadaan_id', $dataPengadaanId)->pluck('transaksi_id');
 
-        Transaksi::whereIn('id_transaksi', $transaksiIds)->update(['current_stage' => $stageBerikutnya]);
+        Transaksi::whereIn('id_transaksi', $transaksiIds)->update(['status_keseluruhan' => 'selesai']);
     }
 
     private function resetReview($record): void

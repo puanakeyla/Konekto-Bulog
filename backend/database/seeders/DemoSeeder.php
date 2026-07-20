@@ -2,14 +2,12 @@
 
 namespace Database\Seeders;
 
-use App\Models\DataGudang;
 use App\Models\DataJemputPangan;
 use App\Models\DataKeuangan;
 use App\Models\DataMakloonTjp;
 use App\Models\DataPengadaan;
 use App\Models\DataUbJastasma;
 use App\Models\NomorUrutTransaksi;
-use App\Models\PermintaanOperasi;
 use App\Models\PoDetail;
 use App\Models\Role;
 use App\Models\Transaksi;
@@ -17,8 +15,8 @@ use App\Models\User;
 use Illuminate\Database\Seeder;
 
 /**
- * Data demo yang mencerminkan berkas asli (Sheet 1: alur transaksi TJP -> PO -> keuangan,
- * Sheet 2: modul Operasi & Gudang mandiri). Idempoten — aman dijalankan ulang.
+ * Data demo alur transaksi TJP -> PO -> keuangan. Idempoten — aman dijalankan ulang.
+ * Modul Pengolahan (pengganti Operasi/Gudang lama) belum punya data demo di sini.
  * Jalankan manual: php artisan db:seed --class=DemoSeeder
  */
 class DemoSeeder extends Seeder
@@ -32,14 +30,12 @@ class DemoSeeder extends Seeder
         $this->user('ubj_demo', 'ub_jastasma');
         $pengadaanUser = $this->user('pengadaan_demo', 'pengadaan');
         $this->user('keuangan_demo', 'keuangan');
-        $operasiUser = $this->user('operasi_demo', 'operasi');
-        $gudangUser = $this->user('gudang_demo', 'gudang');
+        $this->user('operasi_demo', 'operasi');
+        $this->user('gudang_demo', 'gudang');
         $makloon = $this->user('mk_jaya', 'makloon', 'PT. JAYA MANUNGGAL PANGAN', 'Cikupa', 'Tangerang');
 
         $this->seedTransaksiTjp($jp, $makloon, $pengadaanUser);
         $this->seedInProgressTjp($jp, $makloon, $pengadaanUser);
-        $this->seedOperasi($operasiUser, $pengadaanUser);
-        $this->seedGudang($gudangUser);
     }
 
     /**
@@ -267,72 +263,6 @@ class DemoSeeder extends Seeder
             ['skema' => 'TJP', 'tahun' => 2026, 'bulan' => 1],
             ['urut' => count($rows)],
         );
-    }
-
-    /** Sheet 2 (kiri): permintaan pengeluaran stok Operasi yang sudah dikeluarkan + hasil. */
-    private function seedOperasi(User $operasi, User $pengadaan): void
-    {
-        // [gabah_diolah, no_out, no_mo, no_tm, hgl, katul, rendemen]
-        $rows = [
-            [897890, 'OUT/00832/02/2026/ADA08001', 'MO/3746/02/2026/08001', 'TM/3746/02/2026/08001', 458500, 54000, 51.06],
-            [1113810, 'OUT/00853/02/2026/ADA08001', 'MO/3798/02/2026/08001', 'TM/3798/02/2026/08001', 569300, 63500, 51.11],
-            [1350090, 'OUT/00881/02/2026/ADA08001', 'MO/3868/02/2026/08001', 'TM/3868/02/2026/08001', 690500, 79800, 51.14],
-            [1358070, 'OUT/00899/03/2026/ADA08001', 'MO/3912/03/2026/08001', 'TM/3912/03/2026/08001', 695000, 73000, 51.18],
-            [1748300, 'OUT/01013/04/2026/ADA08001', 'MO/4111/04/2026/08001', 'TM/4111/04/2026/08001', 892350, 85000, 51.04],
-            [2172760, 'OUT/01024/04/2026/ADA08001', 'MO/4127/04/2026/08001', 'TM/4127/04/2026/08001', 1109050, 108600, 51.04],
-            [1095490, 'OUT/01130/05/2026/ADA08001', 'MO/4274/05/2026/08001', 'TM/4274/05/2026/08001', 558700, 54900, 51.00],
-            [1694100, 'OUT/01131/05/2026/ADA08001', 'MO/4275/05/2026/08001', 'TM/4275/05/2026/08001', 864400, 85000, 51.02],
-            [296000, 'OUT/01152/06/2026/ADA08001', 'MO/4310/06/2026/08001', 'TM/4310/06/2026/08001', 148750, 14850, 50.25],
-        ];
-
-        foreach ($rows as $r) {
-            [$gabah, $noOut, $noMo, $noTm, $hgl, $katul, $rendemen] = $r;
-
-            PermintaanOperasi::updateOrCreate(
-                ['no_out' => $noOut],
-                [
-                    'gabah_diolah_kg' => $gabah,
-                    'status_out' => 'dikeluarkan',
-                    'kuantum_out' => $gabah,
-                    'no_mo' => $noMo,
-                    'no_tm' => $noTm,
-                    'hgl_kg' => $hgl,
-                    'broken_kg' => 0,
-                    'menir_kg' => 0,
-                    'katul_kg' => $katul,
-                    'rendemen_persen' => $rendemen,
-                    'created_by' => $operasi->id,
-                    'reviewed_by' => $pengadaan->id,
-                    'reviewed_at' => now(),
-                ],
-            );
-        }
-    }
-
-    /** Sheet 2 (kanan): pencatatan penerimaan Gudang mandiri. */
-    private function seedGudang(User $gudang): void
-    {
-        // [tanggal_masuk, nama_gudang, realisasi_hgl, no_tm]
-        $rows = [
-            ['2026-02-10', 'Campang Raya I', 458500, 'TM/8712/02/2026/08001'],
-            ['2026-02-15', 'Campang Raya I', 569300, 'TM/8818/02/2026/08001'],
-            ['2026-02-20', 'Putra Bali', 199350, 'TM/8926/02/2026/08001'],
-            ['2026-02-25', 'CAMPANG RAYA 2', 94000, 'TM/8927/02/2026/08001'],
-            ['2026-03-05', 'Campang Raya I', 397150, 'TM/8925/03/2026/08001'],
-            ['2026-03-15', 'Campang Raya I', 695000, 'TM/9030/03/2026/08001'],
-            ['2026-04-05', 'Yapindex', 42000, 'TM/9490/04/2026/08001'],
-            ['2026-04-10', 'Abadi Sakti', 412350, 'TM/9491/04/2026/08001'],
-            ['2026-04-15', 'Ketapang', 438000, 'TM/9492/04/2026/08001'],
-        ];
-
-        foreach ($rows as $r) {
-            [$tanggal, $nama, $realisasi, $noTm] = $r;
-
-            DataGudang::updateOrCreate(
-                ['no_tm' => $noTm],
-                ['tanggal_masuk' => $tanggal, 'nama_gudang' => $nama, 'realisasi_hgl' => $realisasi, 'created_by' => $gudang->id],
-            );
-        }
     }
 
     private function user(string $username, string $role, ?string $namaMaklon = null, ?string $kecamatan = null, ?string $kabupaten = null): User

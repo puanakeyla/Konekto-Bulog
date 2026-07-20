@@ -10,9 +10,9 @@ use App\Services\AuditLogService;
 use Illuminate\Support\Facades\DB;
 
 /**
- * Review PO oleh Keuangan (Terima & Lanjutkan / Tolak) atas data Pengadaan.
- * Operasi & Gudang sudah menjadi modul mandiri (lihat OperasiService) sehingga tidak lagi
- * memakai mekanisme review PO ini.
+ * Review PO oleh Keuangan (Terima & Lanjutkan / Tolak) atas data Pengadaan. Keuangan adalah
+ * tahap terakhir timeline transaksi; setelah pembayaran, transaksi ditandai selesai
+ * (lihat PoLifecycleService). Operasi & Gudang kini modul Pengolahan terpisah.
  */
 class PoReviewService
 {
