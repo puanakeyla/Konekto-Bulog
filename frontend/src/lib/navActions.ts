@@ -23,7 +23,8 @@ export function buildActions(role: string): NavAction[] {
 
   if (role === 'keuangan') actions.push({ to: '/keuangan', label: 'Pembayaran PO' })
   if (role === 'ub_jastasma') actions.push({ to: '/pengolahan', label: 'Pengolahan' })
-  // Menu Pengolahan untuk operasi/pengadaan/gudang ditambahkan di Task 10-11.
+  if (role === 'operasi') actions.push({ to: '/operasi/pengolahan', label: 'Pengolahan' })
+  // Menu Pengolahan untuk pengadaan/gudang ditambahkan di Task 11.
 
   return actions
 }
