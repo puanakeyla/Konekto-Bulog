@@ -111,6 +111,8 @@ Route::middleware('auth:sanctum')->group(function () {
         ->middleware('role:pengadaan|admin');
     Route::patch('/mo/{mo}/kirim-gudang', [MoController::class, 'kirimGudang'])
         ->middleware('role:operasi|admin');
+    Route::patch('/mo/{mo}/ulang-pengadaan', [MoController::class, 'ulangPengadaan'])
+        ->middleware('role:operasi|admin');
     Route::post('/mo/{mo}/terima', [MoController::class, 'terima'])
         ->middleware('role:gudang|admin');
     Route::post('/mo/{mo}/tolak', [MoController::class, 'tolak'])

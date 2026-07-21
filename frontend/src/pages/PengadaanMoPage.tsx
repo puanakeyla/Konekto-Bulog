@@ -12,8 +12,8 @@ function fmt(value: string | null): string {
 }
 
 export default function PengadaanMoPage() {
-  const { data: moResult, isLoading } = useMoList()
-  const rows = (moResult?.items ?? []).filter((m) => m.current_stage === 'pengadaan')
+  const { data: moResult, isLoading } = useMoList('pengadaan')
+  const rows = moResult?.items ?? []
 
   return (
     <div className="min-h-screen bg-surface">

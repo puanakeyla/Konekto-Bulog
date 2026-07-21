@@ -14,11 +14,11 @@ function fmt(value: string | null): string {
 
 export default function GudangMoPage() {
   const { user } = useAuth()
-  const { data: moResult, isLoading } = useMoList()
+  const { data: moResult, isLoading } = useMoList('gudang')
 
-  // Tampilkan hanya MO tahap gudang yang tujuannya = akun ini (admin melihat semua).
+  // Tahap gudang difilter server-side; sisakan filter tujuan = akun ini (admin melihat semua).
   const rows = (moResult?.items ?? []).filter(
-    (m) => m.current_stage === 'gudang' && (user?.role.nama_role === 'admin' || m.tujuan_gudang_user_id === user?.id),
+    (m) => user?.role.nama_role === 'admin' || m.tujuan_gudang_user_id === user?.id,
   )
 
   return (

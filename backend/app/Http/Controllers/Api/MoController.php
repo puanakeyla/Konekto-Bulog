@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Mo;
+use App\Models\Role;
 use App\Services\Pengolahan\MoService;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -14,9 +15,14 @@ class MoController extends Controller
 
     public function index(Request $request)
     {
+        $request->validate([
+            'stage' => ['sometimes', Rule::in(['pengadaan', 'operasi', 'gudang', 'selesai'])],
+        ]);
+
         $page = Mo::with(['makloon', 'tujuanGudang', 'moDetail.pengolahan'])
+            ->when($request->filled('stage'), fn ($q) => $q->where('current_stage', $request->query('stage')))
             ->orderByDesc('created_at')
-            ->paginate($request->integer('per_page', 20));
+            ->paginate($request->integer('per_page', 50));
 
         return response()->json([
             'data' => $page->items(),
@@ -65,13 +71,24 @@ class MoController extends Controller
 
     public function kirimGudang(Request $request, Mo $mo)
     {
+        $gudangRoleId = Role::where('nama_role', 'gudang')->value('id');
+
         $validated = $request->validate([
-            'tujuan_gudang_user_id' => ['required', 'integer', Rule::exists('users', 'id')],
+            // Tujuan wajib akun ber-role gudang yang aktif — kalau tidak, MO pindah ke tahap
+            // gudang tapi tak ada akun gudang yang bisa menerima (tersangkut).
+            'tujuan_gudang_user_id' => ['required', 'integer', Rule::exists('users', 'id')->where('role_id', $gudangRoleId)->where('is_active', true)],
             'no_tm_gudang' => ['required', 'string', 'max:255'],
             'kuantum_total' => ['required', 'numeric', 'min:0.01', 'max:999999999999.99'],
         ]);
 
         $mo = $this->service->kirimGudang($mo, $validated, $request->user());
+
+        return response()->json(['data' => $mo]);
+    }
+
+    public function ulangPengadaan(Request $request, Mo $mo)
+    {
+        $mo = $this->service->kirimUlangPengadaan($mo, $request->user());
 
         return response()->json(['data' => $mo]);
     }

@@ -31,12 +31,12 @@ export type Mo = {
 
 export type GudangOption = { id: number; nama_gudang: string | null }
 
-export function useMoList(page = 1, perPage = 50) {
+export function useMoList(stage?: MoStage, page = 1, perPage = 50) {
   return useQuery({
-    queryKey: ['mo', page, perPage],
+    queryKey: ['mo', stage ?? 'all', page, perPage],
     queryFn: async () => {
       const { data } = await api.get<{ data: Mo[]; meta: PaginationMeta }>('/api/mo', {
-        params: { page, per_page: perPage },
+        params: { page, per_page: perPage, ...(stage ? { stage } : {}) },
       })
       return { items: data.data, meta: data.meta }
     },
@@ -84,6 +84,17 @@ export function useKirimGudang() {
   return useMutation({
     mutationFn: async ({ id, body }: { id: number; body: { tujuan_gudang_user_id: number; no_tm_gudang: string; kuantum_total: number } }) => {
       const { data } = await api.patch<{ data: Mo }>(`/api/mo/${id}/kirim-gudang`, body)
+      return data.data
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['mo'] }),
+  })
+}
+
+export function useKirimUlangPengadaan() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (id: number) => {
+      const { data } = await api.patch<{ data: Mo }>(`/api/mo/${id}/ulang-pengadaan`, {})
       return data.data
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['mo'] }),

@@ -9,6 +9,7 @@ import {
   useGabungkanMo,
   useGudangOptions,
   useKirimGudang,
+  useKirimUlangPengadaan,
   useMoList,
   useTolakPengolahan,
   type Mo,
@@ -20,11 +21,11 @@ function fmt(value: string | number | null): string {
 }
 
 export default function OperasiPengolahanPage() {
-  const { data: pengolahanResult, isLoading: loadingPengolahan } = usePengolahanList()
-  const { data: moResult, isLoading: loadingMo } = useMoList()
+  const { data: pengolahanResult, isLoading: loadingPengolahan } = usePengolahanList('menunggu_operasi')
+  const { data: moResult, isLoading: loadingMo } = useMoList('operasi')
 
-  const menunggu = (pengolahanResult?.items ?? []).filter((p) => p.status === 'menunggu_operasi')
-  const moOperasi = (moResult?.items ?? []).filter((m) => m.current_stage === 'operasi')
+  const menunggu = pengolahanResult?.items ?? []
+  const moOperasi = moResult?.items ?? []
 
   return (
     <div className="min-h-screen bg-surface">
@@ -208,13 +209,15 @@ function MoOperasiSection({ rows, loading }: { rows: Mo[]; loading: boolean }) {
 
 function MoKirimGudangCard({ mo }: { mo: Mo }) {
   const kirim = useKirimGudang()
+  const ulang = useKirimUlangPengadaan()
   const { data: gudangOptions } = useGudangOptions()
 
   const [tujuan, setTujuan] = useState<number | ''>('')
   const [noTmGudang, setNoTmGudang] = useState('')
   const [kuantumTotal, setKuantumTotal] = useState('')
 
-  const menungguOut = !mo.no_out
+  // MO kembali ke Operasi tanpa No. OUT hanya bisa karena ditolak Pengadaan → perlu dikirim ulang.
+  const belumAdaOut = !mo.no_out
   const valid = tujuan !== '' && noTmGudang.trim() !== '' && Number(kuantumTotal) > 0
 
   function submit() {
@@ -228,6 +231,13 @@ function MoKirimGudangCard({ mo }: { mo: Mo }) {
     )
   }
 
+  function kirimUlang() {
+    ulang.mutate(mo.id, {
+      onSuccess: () => toast.success(`MO ${mo.no_mo} dikirim ulang ke Pengadaan.`),
+      onError: (err) => toast.error(apiErrorMessage(err, 'Gagal mengirim ulang ke Pengadaan.')),
+    })
+  }
+
   return (
     <div className="po-card">
       <div className="po-card-header">
@@ -235,15 +245,20 @@ function MoKirimGudangCard({ mo }: { mo: Mo }) {
           <div className="po-title">No. MO {mo.no_mo}</div>
           <div className="po-meta">{mo.makloon?.nama_maklon ?? '-'} · No. TM {mo.no_tm} · {fmt(mo.total_kuantum_olah)} kg</div>
         </div>
-        {menungguOut
-          ? <span className="badge badge-warning">Menunggu No. OUT</span>
+        {belumAdaOut
+          ? <span className="badge badge-danger">Ditolak Pengadaan</span>
           : <span className="badge badge-success">No. OUT {mo.no_out}</span>}
       </div>
 
       {mo.catatan_penolakan && <div className="alert-danger mb-3">Ditolak: {mo.catatan_penolakan}</div>}
 
-      {menungguOut ? (
-        <p className="text-sm text-muted">Menunggu Pengadaan menerbitkan No. OUT sebelum bisa dikirim ke gudang.</p>
+      {belumAdaOut ? (
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="text-sm text-muted">MO dikembalikan Pengadaan. Perbaiki sesuai catatan, lalu kirim ulang untuk keputusan OUT.</p>
+          <button type="button" disabled={ulang.isPending} onClick={kirimUlang} className="btn btn-primary">
+            {ulang.isPending ? 'Mengirim...' : 'Kirim Ulang ke Pengadaan'}
+          </button>
+        </div>
       ) : (
         <>
           <div className="grid gap-3 sm:grid-cols-3">

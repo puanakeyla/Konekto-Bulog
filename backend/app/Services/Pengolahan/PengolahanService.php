@@ -45,7 +45,13 @@ class PengolahanService
             abort(422, 'Hanya pengolahan yang ditolak yang dapat diajukan ulang.');
         }
 
+        // Makloon boleh diperbaiki saat pengajuan ulang; jumlah_kuantum diselaraskan dengan
+        // total IN makloon yang dipilih supaya nilai tersimpan konsisten dengan tampilan form.
+        $jumlahKuantum = $this->totalKuantumIn((int) $data['makloon_user_id']);
+
         $p->update([
+            'makloon_user_id' => $data['makloon_user_id'],
+            'jumlah_kuantum' => $jumlahKuantum,
             'kuantum_olah' => $data['kuantum_olah'],
             'no_lhpk' => $data['no_lhpk'],
             'tanggal' => $data['tanggal'],
@@ -56,7 +62,7 @@ class PengolahanService
             'broken' => $data['broken'] ?? null,
             'menir' => $data['menir'] ?? null,
             'katul' => $data['katul'] ?? null,
-            'rendemen' => $this->hitungRendemen($data['hgl'] ?? null, (float) $p->jumlah_kuantum),
+            'rendemen' => $this->hitungRendemen($data['hgl'] ?? null, $jumlahKuantum),
             'status' => 'menunggu_operasi',
             'catatan_penolakan' => null,
         ]);

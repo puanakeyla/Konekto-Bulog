@@ -92,6 +92,25 @@ class MoService
         });
     }
 
+    /**
+     * MO yang ditolak Pengadaan kembali ke Operasi tanpa No. OUT. Operasi memperbaiki lalu
+     * mengirimnya ulang ke Pengadaan. Hanya berlaku bila belum ada No. OUT (kalau No. OUT
+     * sudah terbit, MO lanjut ke gudang, bukan balik ke Pengadaan).
+     */
+    public function kirimUlangPengadaan(Mo $mo, User $operasi): Mo
+    {
+        if ($mo->current_stage !== 'operasi') {
+            abort(422, 'MO tidak sedang di tahap Operasi.');
+        }
+        if (! empty($mo->no_out)) {
+            abort(422, 'MO sudah memiliki No. OUT; lanjutkan ke gudang, bukan ke Pengadaan.');
+        }
+
+        $mo->update(['catatan_penolakan' => null, 'current_stage' => 'pengadaan']);
+
+        return $mo->fresh();
+    }
+
     public function kirimGudang(Mo $mo, array $data, User $operasi): Mo
     {
         if ($mo->current_stage !== 'operasi') {

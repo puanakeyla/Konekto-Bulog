@@ -119,4 +119,30 @@ class MoServiceTest extends TestCase
         $this->expectException(HttpException::class);
         $this->service->kirimGudang($mo, ['tujuan_gudang_user_id' => $this->gudangA->id, 'no_tm_gudang' => 'X', 'kuantum_total' => 400], $this->operasi);
     }
+
+    public function test_mo_ditolak_pengadaan_bisa_dikirim_ulang_ke_pengadaan(): void
+    {
+        $p = $this->pengolahan($this->makloon1, 'LHPK-6', 400);
+        $mo = $this->service->gabungkan([$p->id], 'MO-6', 'TM-6', $this->operasi);
+        $mo = $this->service->putuskanOut($mo, 'ditolak', null, 'No TM salah', $this->pengadaan);
+        $this->assertSame('operasi', $mo->current_stage);
+
+        $mo = $this->service->kirimUlangPengadaan($mo, $this->operasi);
+        $this->assertSame('pengadaan', $mo->current_stage);
+        $this->assertNull($mo->catatan_penolakan);
+
+        // Pengadaan bisa memutuskan lagi.
+        $mo = $this->service->putuskanOut($mo, 'diterima', 'OUT-6', null, $this->pengadaan);
+        $this->assertSame('OUT-6', $mo->no_out);
+    }
+
+    public function test_kirim_ulang_pengadaan_ditolak_bila_sudah_ada_no_out(): void
+    {
+        $p = $this->pengolahan($this->makloon1, 'LHPK-5', 400);
+        $mo = $this->service->gabungkan([$p->id], 'MO-5', 'TM-5', $this->operasi);
+        $mo = $this->service->putuskanOut($mo, 'diterima', 'OUT-5', null, $this->pengadaan); // no_out terisi, stage operasi
+
+        $this->expectException(HttpException::class);
+        $this->service->kirimUlangPengadaan($mo, $this->operasi);
+    }
 }

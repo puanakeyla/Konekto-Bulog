@@ -14,9 +14,14 @@ class PengolahanController extends Controller
 
     public function index(Request $request)
     {
+        $request->validate([
+            'status' => ['sometimes', Rule::in(['menunggu_operasi', 'ditolak', 'digabung'])],
+        ]);
+
         $page = Pengolahan::with(['makloon', 'creator', 'mo'])
+            ->when($request->filled('status'), fn ($q) => $q->where('status', $request->query('status')))
             ->orderByDesc('created_at')
-            ->paginate($request->integer('per_page', 20));
+            ->paginate($request->integer('per_page', 50));
 
         return response()->json([
             'data' => $page->items(),

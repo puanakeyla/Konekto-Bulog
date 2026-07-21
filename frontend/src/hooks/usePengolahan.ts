@@ -40,12 +40,12 @@ export type PengolahanForm = {
   katul?: number | null
 }
 
-export function usePengolahanList(page = 1, perPage = 50) {
+export function usePengolahanList(status?: PengolahanStatus, page = 1, perPage = 50) {
   return useQuery({
-    queryKey: ['pengolahan', page, perPage],
+    queryKey: ['pengolahan', status ?? 'all', page, perPage],
     queryFn: async () => {
       const { data } = await api.get<{ data: Pengolahan[]; meta: PaginationMeta }>('/api/pengolahan', {
-        params: { page, per_page: perPage },
+        params: { page, per_page: perPage, ...(status ? { status } : {}) },
       })
       return { items: data.data, meta: data.meta }
     },
