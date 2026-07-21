@@ -14,6 +14,7 @@ type UserForm = {
   password_confirmation: string
   role_id: string
   nama_maklon: string
+  nama_gudang: string
   kecamatan: string
   kabupaten: string
   is_active: boolean
@@ -32,6 +33,7 @@ const emptyForm: UserForm = {
   password_confirmation: '',
   role_id: '',
   nama_maklon: '',
+  nama_gudang: '',
   kecamatan: '',
   kabupaten: '',
   is_active: true,
@@ -61,6 +63,7 @@ export default function AdminUsersPage() {
     [form.role_id, roles],
   )
   const isMakloon = selectedRole?.nama_role === 'makloon'
+  const isGudang = selectedRole?.nama_role === 'gudang'
 
   const saveMutation = useMutation({
     mutationFn: () => {
@@ -68,6 +71,7 @@ export default function AdminUsersPage() {
         username: form.username,
         role_id: Number(form.role_id),
         nama_maklon: isMakloon ? form.nama_maklon : null,
+        nama_gudang: isGudang ? form.nama_gudang : null,
         kecamatan: form.kecamatan || null,
         kabupaten: form.kabupaten || null,
         is_active: form.is_active,
@@ -130,6 +134,7 @@ export default function AdminUsersPage() {
       password_confirmation: '',
       role_id: String(target.role_id),
       nama_maklon: target.nama_maklon ?? '',
+      nama_gudang: target.nama_gudang ?? '',
       kecamatan: target.kecamatan ?? '',
       kabupaten: target.kabupaten ?? '',
       is_active: target.is_active,
@@ -205,6 +210,20 @@ export default function AdminUsersPage() {
                   value={form.nama_maklon}
                   onChange={(event) =>
                     setForm((prev) => ({ ...prev, nama_maklon: event.target.value }))
+                  }
+                />
+              </label>
+            )}
+
+            {isGudang && (
+              <label className="block @md:col-span-2">
+                <span className="label">Nama Gudang</span>
+                <input
+                  required
+                  className="input"
+                  value={form.nama_gudang}
+                  onChange={(event) =>
+                    setForm((prev) => ({ ...prev, nama_gudang: event.target.value }))
                   }
                 />
               </label>
@@ -360,7 +379,7 @@ export default function AdminUsersPage() {
                 <tr>
                   <th className="px-5 py-3 text-xs font-bold uppercase tracking-wide">Username</th>
                   <th className="px-5 py-3 text-xs font-bold uppercase tracking-wide">Role</th>
-                  <th className="px-5 py-3 text-xs font-bold uppercase tracking-wide">Nama Makloon</th>
+                  <th className="px-5 py-3 text-xs font-bold uppercase tracking-wide">Nama Mitra/Gudang</th>
                   <th className="px-5 py-3 text-xs font-bold uppercase tracking-wide">Status</th>
                   <th className="px-5 py-3 text-center text-xs font-bold uppercase tracking-wide">Aksi</th>
                 </tr>
@@ -382,7 +401,7 @@ export default function AdminUsersPage() {
                   <tr key={target.id} className="transition-colors hover:bg-surface">
                     <td className="px-5 py-3 font-semibold text-primary-dark">{target.username}</td>
                     <td className="px-5 py-3 capitalize text-gray-600">{target.role.nama_role.replaceAll('_', ' ')}</td>
-                    <td className="px-5 py-3 text-gray-600">{target.nama_maklon ?? '-'}</td>
+                    <td className="px-5 py-3 text-gray-600">{target.nama_maklon ?? target.nama_gudang ?? '-'}</td>
                     <td className="px-5 py-3">
                       <span
                         className={
