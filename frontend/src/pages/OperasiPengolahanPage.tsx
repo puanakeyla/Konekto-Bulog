@@ -3,8 +3,9 @@ import { toast } from 'sonner'
 import { apiErrorMessage } from '../lib/apiError'
 import FormHero from '../components/FormHero'
 import ConfirmDialog from '../components/ConfirmDialog'
+import Pagination from '../components/Pagination'
 import { SkeletonTable } from '../components/Skeleton'
-import { usePengolahanList, type Pengolahan } from '../hooks/usePengolahan'
+import { usePengolahanList } from '../hooks/usePengolahan'
 import {
   useGabungkanMo,
   useGudangOptions,
@@ -21,12 +22,6 @@ function fmt(value: string | number | null): string {
 }
 
 export default function OperasiPengolahanPage() {
-  const { data: pengolahanResult, isLoading: loadingPengolahan } = usePengolahanList('menunggu_operasi')
-  const { data: moResult, isLoading: loadingMo } = useMoList('operasi')
-
-  const menunggu = pengolahanResult?.items ?? []
-  const moOperasi = moResult?.items ?? []
-
   return (
     <div className="min-h-screen bg-surface">
       <FormHero
@@ -37,14 +32,18 @@ export default function OperasiPengolahanPage() {
       />
 
       <div className="relative mx-auto -mt-16 max-w-5xl space-y-6 px-6 pb-16">
-        <ReviewLhpkSection rows={menunggu} loading={loadingPengolahan} />
-        <MoOperasiSection rows={moOperasi} loading={loadingMo} />
+        <ReviewLhpkSection />
+        <MoOperasiSection />
       </div>
     </div>
   )
 }
 
-function ReviewLhpkSection({ rows, loading }: { rows: Pengolahan[]; loading: boolean }) {
+function ReviewLhpkSection() {
+  const [page, setPage] = useState(1)
+  const { data: pengolahanResult, isLoading: loading } = usePengolahanList('menunggu_operasi', page)
+  const rows = useMemo(() => pengolahanResult?.items ?? [], [pengolahanResult])
+
   const gabung = useGabungkanMo()
   const tolak = useTolakPengolahan()
 
@@ -167,6 +166,8 @@ function ReviewLhpkSection({ rows, loading }: { rows: Pengolahan[]; loading: boo
         </>
       )}
 
+      <Pagination meta={pengolahanResult?.meta} page={page} onPage={setPage} />
+
       <ConfirmDialog
         open={tolakId != null}
         title="Tolak pengolahan?"
@@ -184,7 +185,11 @@ function ReviewLhpkSection({ rows, loading }: { rows: Pengolahan[]; loading: boo
   )
 }
 
-function MoOperasiSection({ rows, loading }: { rows: Mo[]; loading: boolean }) {
+function MoOperasiSection() {
+  const [page, setPage] = useState(1)
+  const { data: moResult, isLoading: loading } = useMoList('operasi', page)
+  const rows = moResult?.items ?? []
+
   return (
     <section className="panel panel-pad">
       <div className="toolbar-card mb-4">
@@ -203,6 +208,8 @@ function MoOperasiSection({ rows, loading }: { rows: Mo[]; loading: boolean }) {
       <div className="space-y-4">
         {rows.map((mo) => <MoKirimGudangCard key={mo.id} mo={mo} />)}
       </div>
+
+      <Pagination meta={moResult?.meta} page={page} onPage={setPage} />
     </section>
   )
 }

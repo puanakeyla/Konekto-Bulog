@@ -4,6 +4,7 @@ import { apiErrorMessage } from '../lib/apiError'
 import { useAuth } from '../hooks/useAuth'
 import FormHero from '../components/FormHero'
 import ConfirmDialog from '../components/ConfirmDialog'
+import Pagination from '../components/Pagination'
 import { SkeletonPoCards } from '../components/Skeleton'
 import { useMoList, useTerimaMo, useTolakMo, type Mo } from '../hooks/useMo'
 
@@ -14,7 +15,8 @@ function fmt(value: string | null): string {
 
 export default function GudangMoPage() {
   const { user } = useAuth()
-  const { data: moResult, isLoading } = useMoList('gudang')
+  const [page, setPage] = useState(1)
+  const { data: moResult, isLoading } = useMoList('gudang', page)
 
   // Tahap gudang difilter server-side; sisakan filter tujuan = akun ini (admin melihat semua).
   const rows = (moResult?.items ?? []).filter(
@@ -48,6 +50,8 @@ export default function GudangMoPage() {
           <div className="space-y-4">
             {rows.map((mo) => <MoTerimaCard key={mo.id} mo={mo} />)}
           </div>
+
+          <Pagination meta={moResult?.meta} page={page} onPage={setPage} />
         </section>
       </div>
     </div>

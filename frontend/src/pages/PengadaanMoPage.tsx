@@ -3,6 +3,7 @@ import { toast } from 'sonner'
 import { apiErrorMessage } from '../lib/apiError'
 import FormHero from '../components/FormHero'
 import ConfirmDialog from '../components/ConfirmDialog'
+import Pagination from '../components/Pagination'
 import { SkeletonPoCards } from '../components/Skeleton'
 import { useMoList, usePutuskanOut, type Mo } from '../hooks/useMo'
 
@@ -12,7 +13,8 @@ function fmt(value: string | null): string {
 }
 
 export default function PengadaanMoPage() {
-  const { data: moResult, isLoading } = useMoList('pengadaan')
+  const [page, setPage] = useState(1)
+  const { data: moResult, isLoading } = useMoList('pengadaan', page)
   const rows = moResult?.items ?? []
 
   return (
@@ -42,6 +44,8 @@ export default function PengadaanMoPage() {
           <div className="space-y-4">
             {rows.map((mo) => <MoOutCard key={mo.id} mo={mo} />)}
           </div>
+
+          <Pagination meta={moResult?.meta} page={page} onPage={setPage} />
         </section>
       </div>
     </div>

@@ -3,6 +3,7 @@ import { toast } from 'sonner'
 import { apiErrorMessage } from '../lib/apiError'
 import FormHero from '../components/FormHero'
 import MakloonCombobox from '../components/MakloonCombobox'
+import Pagination from '../components/Pagination'
 import { SkeletonTable } from '../components/Skeleton'
 import {
   useAjukanUlangPengolahan,
@@ -29,7 +30,8 @@ function fmt(value: string | null): string {
 const KOSONG = { kuantumOlah: '', noLhpk: '', tanggal: '', ka1: '', ka2: '', ka3: '', hgl: '', broken: '', menir: '', katul: '' }
 
 export default function PengolahanUbJastasmaPage() {
-  const { data: listResult, isLoading } = usePengolahanList()
+  const [listPage, setListPage] = useState(1)
+  const { data: listResult, isLoading } = usePengolahanList(undefined, listPage)
   const buat = useBuatPengolahan()
   const ajukanUlang = useAjukanUlangPengolahan()
 
@@ -233,6 +235,8 @@ export default function PengolahanUbJastasmaPage() {
               </table>
             </div>
           )}
+
+          <Pagination meta={listResult?.meta} page={listPage} onPage={setListPage} />
         </section>
       </div>
     </div>
