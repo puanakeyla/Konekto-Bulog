@@ -89,3 +89,36 @@ export function useKirimGudang() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['mo'] }),
   })
 }
+
+export function usePutuskanOut() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ id, body }: { id: number; body: { keputusan: 'diterima' | 'ditolak'; no_out?: string; catatan?: string } }) => {
+      const { data } = await api.patch<{ data: Mo }>(`/api/mo/${id}/out`, body)
+      return data.data
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['mo'] }),
+  })
+}
+
+export function useTerimaMo() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ id, tanggal }: { id: number; tanggal: string }) => {
+      const { data } = await api.post<{ data: Mo }>(`/api/mo/${id}/terima`, { tanggal })
+      return data.data
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['mo'] }),
+  })
+}
+
+export function useTolakMo() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ id, catatan }: { id: number; catatan: string }) => {
+      const { data } = await api.post<{ data: Mo }>(`/api/mo/${id}/tolak`, { catatan })
+      return data.data
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['mo'] }),
+  })
+}

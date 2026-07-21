@@ -12,6 +12,8 @@ import TransaksiMakloonBaruPage from './pages/TransaksiMakloonBaruPage'
 import KeuanganPage from './pages/KeuanganPage'
 import PengolahanUbJastasmaPage from './pages/PengolahanUbJastasmaPage'
 import OperasiPengolahanPage from './pages/OperasiPengolahanPage'
+import PengadaanMoPage from './pages/PengadaanMoPage'
+import GudangMoPage from './pages/GudangMoPage'
 import AdminUsersPage from './pages/AdminUsersPage'
 import MonitoringPage from './pages/MonitoringPage'
 import RekapTransaksiPage from './pages/RekapTransaksiPage'
@@ -54,6 +56,8 @@ function AppRoutes() {
         <Route path="/keuangan" element={<KeuanganPage />} />
         <Route path="/pengolahan" element={<PengolahanUbJastasmaPage />} />
         <Route path="/operasi/pengolahan" element={<OperasiPengolahanPage />} />
+        <Route path="/pengadaan/mo" element={<PengadaanMoPage />} />
+        <Route path="/gudang" element={<GudangMoPage />} />
         <Route path="/admin/users" element={<AdminUsersPage />} />
         <Route path="/admin/audit-logs" element={<AdminAuditLogPage />} />
         <Route path="/monitoring" element={<MonitoringPage />} />
