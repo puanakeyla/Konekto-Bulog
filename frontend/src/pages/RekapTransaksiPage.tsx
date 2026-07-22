@@ -3,6 +3,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import FormHero from '../components/FormHero'
 import DataSpreadsheet, { type SheetColumn } from '../components/DataSpreadsheet'
+import KabupatenSelect from '../components/KabupatenSelect'
 import { useAuth } from '../hooks/useAuth'
 import { useRekapTransaksi, type RekapTransaksi } from '../hooks/useRekapTransaksi'
 import { useMakloonOptions } from '../hooks/useMakloonOptions'
@@ -48,10 +49,65 @@ function numeric(v: string) {
   return clean === '' ? null : Number(clean)
 }
 
+function numberValue(v: string | number | null | undefined) {
+  if (v === null || v === undefined || v === '') return 0
+  const parsed = Number(v)
+  return Number.isFinite(parsed) ? parsed : 0
+}
+
+function formatKg(value: number) {
+  return new Intl.NumberFormat('id-ID', { maximumFractionDigits: 2 }).format(value)
+}
+
+type RejectInfo = { stage: string; catatan: string | null }
+
+const STAGE_LABELS: Record<string, string> = {
+  jemput_pangan: 'Jemput Pangan',
+  makloon: 'Makloon',
+  makloon_kirim: 'Makloon Kirim',
+  makloon_terima: 'Makloon Terima',
+  ub_jastasma: 'UB Jastasma',
+  pengadaan: 'Pengadaan',
+  keuangan: 'Keuangan',
+}
+
+function labelTahap(stage: string) {
+  return STAGE_LABELS[stage] ?? stage.replaceAll('_', ' ')
+}
+
+function rejectedStages(row: RekapTransaksi): RejectInfo[] {
+  const items: RejectInfo[] = []
+  if (row.data_jemput_pangan?.status === 'ditolak') items.push({ stage: 'jemput_pangan', catatan: row.data_jemput_pangan.catatan_penolakan ?? null })
+  if (row.data_makloon_tjp?.status === 'ditolak' || row.data_makloon_mpp?.status === 'ditolak') {
+    items.push({ stage: row.skema === 'MPP' ? 'makloon_kirim' : 'makloon', catatan: (row.data_makloon_tjp?.catatan_penolakan ?? row.data_makloon_mpp?.catatan_penolakan) ?? null })
+  }
+  if (row.data_ub_jastasma?.status === 'ditolak') items.push({ stage: 'ub_jastasma', catatan: row.data_ub_jastasma.catatan_penolakan ?? null })
+  if (row.data_pengadaan?.review_status === 'ditolak') items.push({ stage: 'pengadaan', catatan: null })
+  if (row.data_pengadaan?.data_keuangan?.review_status === 'ditolak') items.push({ stage: 'keuangan', catatan: null })
+  return items
+}
+
+function rejectedText(row: RekapTransaksi) {
+  const stages = rejectedStages(row).map((item) => labelTahap(item.stage))
+  return stages.length > 0 ? stages.join(', ') : null
+}
+
+function RejectedMarker({ row }: { row: RekapTransaksi }) {
+  const rejected = rejectedStages(row)
+  if (rejected.length === 0) return <span className="text-xs text-slate-400">-</span>
+  return (
+    <div className="flex min-w-[9rem] flex-col gap-1">
+      <span className="w-fit rounded-md bg-danger-bg px-2 py-1 text-[0.68rem] font-bold text-danger">Ditolak</span>
+      <span className="whitespace-normal text-[0.72rem] font-semibold leading-4 text-danger">{rejected.map((item) => labelTahap(item.stage)).join(', ')}</span>
+    </div>
+  )
+}
+
 const COLS_UMUM: SheetColumn<RekapTransaksi>[] = [
   { key: 'id', label: 'ID Transaksi', value: (r) => r.id_transaksi },
   { key: 'skema', label: 'Skema', value: (r) => r.skema, filterable: true },
-  { key: 'tahap', label: 'Tahap Saat Ini', value: (r) => r.current_stage.replaceAll('_', ' ') },
+  { key: 'penanda', label: 'Penanda', value: rejectedText, render: (r) => <RejectedMarker row={r} />, filterable: true, searchable: true },
+  { key: 'tahap', label: 'Tahap Saat Ini', value: (r) => labelTahap(r.current_stage) },
   { key: 'dibuat', label: 'Dibuat', value: (r) => tgl(r.created_at) },
   { key: 'makloon_nama', label: 'Makloon', value: (r) => r.nama_maklon, filterable: true },
 ]
@@ -137,9 +193,45 @@ const JUDUL: Record<string, { title: string; badge: string; sub: string }> = {
 /** Kolom kumulatif: semua tahap sampai (dan termasuk) tahap milik role. */
 function kolomUntukRole(role: string): SheetColumn<RekapTransaksi>[] {
   const batas = role === 'admin' ? STAGE_ORDER.length - 1 : STAGE_ORDER.indexOf(role as StageKey)
-  if (batas < 0) return COLS_UMUM
+  const colsUmum = ['makloon', 'ub_jastasma'].includes(role)
+    ? COLS_UMUM.filter((col) => col.key !== 'tahap')
+    : COLS_UMUM
+  if (batas < 0) return colsUmum
   const stageCols = STAGE_ORDER.slice(0, batas + 1).flatMap((s) => GROUPS[s])
-  return [...COLS_UMUM, ...stageCols]
+  return [...colsUmum, ...stageCols]
+}
+
+type KuantumSummaryItem = { key: string; label: string; value: number }
+
+function totalJemputPangan(rows: RekapTransaksi[]) {
+  return rows.reduce((total, row) => total + numberValue(row.data_jemput_pangan?.kuantum), 0)
+}
+
+function totalMakloon(rows: RekapTransaksi[]) {
+  return rows.reduce((total, row) => total + numberValue(row.data_makloon_tjp?.kuantum_bongkar ?? row.data_makloon_mpp?.kuantum), 0)
+}
+
+function totalPengadaan(rows: RekapTransaksi[]) {
+  const byPo = new Map<string, number>()
+  rows.forEach((row) => {
+    const po = row.data_pengadaan
+    if (!po) return
+    const key = String(po.id ?? po.no_po ?? row.id_transaksi)
+    if (!byPo.has(key)) byPo.set(key, numberValue(po.total_kuantum))
+  })
+  return [...byPo.values()].reduce((total, value) => total + value, 0)
+}
+
+function kuantumSummaryUntukRole(role: string, rows: RekapTransaksi[]): KuantumSummaryItem[] {
+  const batas = role === 'admin' ? STAGE_ORDER.length - 1 : STAGE_ORDER.indexOf(role as StageKey)
+  const canSee = (stage: StageKey) => batas >= STAGE_ORDER.indexOf(stage)
+  const items: KuantumSummaryItem[] = []
+
+  if (canSee('jemput_pangan')) items.push({ key: 'jp', label: 'Total Kuantum JP', value: totalJemputPangan(rows) })
+  if (canSee('makloon')) items.push({ key: 'makloon', label: 'Total Kuantum Makloon', value: totalMakloon(rows) })
+  if (canSee('pengadaan')) items.push({ key: 'po', label: 'Total Kuantum PO', value: totalPengadaan(rows) })
+
+  return items
 }
 
 type RekapEditForm = {
@@ -273,6 +365,7 @@ export default function RekapTransaksiPage() {
 
   const columns = kolomUntukRole(role)
   const judul = JUDUL[role] ?? { title: 'Rekap Transaksi', badge: 'Rekap', sub: 'Rekap data transaksi lintas tahap.' }
+  const kuantumSummaries = kuantumSummaryUntukRole(role, rows)
 
   // Semua baris kini pasti terkunci (disaring backend), jadi kartu "terkunci" tak lagi
   // bermakna. Jumlah PO unik lebih informatif sekarang setelah kolom No. PO digabung.
@@ -368,6 +461,8 @@ export default function RekapTransaksiPage() {
               </div>
             ) : undefined}
           />
+
+          <KuantumSummary items={kuantumSummaries} />
         </section>
       </div>
 
@@ -385,6 +480,27 @@ export default function RekapTransaksiPage() {
           onSubmit={() => updateMutation.mutate({ row: editing, form: editForm })}
         />
       )}
+    </div>
+  )
+}
+
+function KuantumSummary({ items }: { items: KuantumSummaryItem[] }) {
+  if (items.length === 0) return null
+
+  return (
+    <div className="mt-4 rounded-lg border border-border bg-surface px-4 py-3">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <span className="section-title">Total keseluruhan kuantum</span>
+        <span className="text-xs font-semibold text-slate-500">Dihitung dari seluruh baris rekap yang tampil</span>
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {items.map((item) => (
+          <div key={item.key} className="rounded-lg border border-border bg-white px-4 py-3">
+            <div className="text-[0.68rem] font-bold uppercase tracking-[0.14em] text-slate-500">{item.label}</div>
+            <div className="mt-1 text-2xl font-extrabold text-primary-dark">{formatKg(item.value)} kg</div>
+          </div>
+        ))}
+      </div>
     </div>
   )
 }
@@ -432,7 +548,7 @@ function RekapEditModal({ row, form, makloonOptions, isSaving, onChange, onClose
               <TextField label="Plat Mobil" value={form.jp_plat} onChange={(v) => onChange('jp_plat', v)} />
               <TextField label="Desa" value={form.jp_desa} onChange={(v) => onChange('jp_desa', v)} />
               <TextField label="Kecamatan" value={form.jp_kecamatan} onChange={(v) => onChange('jp_kecamatan', v)} />
-              <TextField label="Kabupaten" value={form.jp_kabupaten} onChange={(v) => onChange('jp_kabupaten', v)} />
+              <SelectField label="Kabupaten"><KabupatenSelect required={false} value={form.jp_kabupaten} onChange={(v) => onChange('jp_kabupaten', v)} /></SelectField>
               <label className="block">
                 <span className="label">Makloon</span>
                 <select className="input" value={form.jp_makloon_user_id} onChange={(e) => onChange('jp_makloon_user_id', e.target.value)}>
@@ -462,7 +578,7 @@ function RekapEditModal({ row, form, makloonOptions, isSaving, onChange, onClose
               <TextField label="Plat Mobil" value={form.mmpp_plat} onChange={(v) => onChange('mmpp_plat', v)} />
               <TextField label="Desa" value={form.mmpp_desa} onChange={(v) => onChange('mmpp_desa', v)} />
               <TextField label="Kecamatan" value={form.mmpp_kecamatan} onChange={(v) => onChange('mmpp_kecamatan', v)} />
-              <TextField label="Kabupaten" value={form.mmpp_kabupaten} onChange={(v) => onChange('mmpp_kabupaten', v)} />
+              <SelectField label="Kabupaten"><KabupatenSelect required={false} value={form.mmpp_kabupaten} onChange={(v) => onChange('mmpp_kabupaten', v)} /></SelectField>
               <TextField type="date" label="Tanggal Bongkar" value={form.mmpp_tanggal_bongkar} onChange={(v) => onChange('mmpp_tanggal_bongkar', v)} />
               <TextField type="number" label="Kuantum (kg)" value={form.mmpp_kuantum} onChange={(v) => onChange('mmpp_kuantum', v)} />
               <TextField type="number" label="Jarak ke Makloon (km)" value={form.mmpp_jarak} onChange={(v) => onChange('mmpp_jarak', v)} />
@@ -510,6 +626,15 @@ function EditSection({ title, badge, children }: { title: string; badge: string;
       </div>
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">{children}</div>
     </section>
+  )
+}
+
+function SelectField({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <label className="block">
+      <span className="label">{label}</span>
+      {children}
+    </label>
   )
 }
 
