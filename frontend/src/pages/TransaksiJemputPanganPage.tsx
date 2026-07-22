@@ -8,6 +8,7 @@ import { uploadSemuaFoto } from '../lib/uploadFoto'
 import MakloonCombobox from '../components/MakloonCombobox'
 import FotoPicker from '../components/FotoPicker'
 import FormHero from '../components/FormHero'
+import KabupatenSelect from '../components/KabupatenSelect'
 
 type FormState = {
   id_pemasok: string
@@ -175,12 +176,7 @@ export default function TransaksiJemputPanganPage() {
                 />
               </Field>
               <Field label="Kabupaten">
-                <input
-                  required
-                  className="input"
-                  value={form.kabupaten}
-                  onChange={(e) => setField('kabupaten', e.target.value)}
-                />
+                <KabupatenSelect value={form.kabupaten} onChange={(value) => setField('kabupaten', value)} />
               </Field>
             </div>
           </Section>
