@@ -14,6 +14,7 @@ export default function PoInForm({ po, onChanged }: { po: PoItem; onChanged?: ()
   const queryClient = useQueryClient()
   const [values, setValues] = useState<Record<number, string>>({})
   const [statusPo, setStatusPo] = useState(po.status)
+  const [noSpp, setNoSpp] = useState(po.no_spp ?? '')
   const [confirmIn, setConfirmIn] = useState(false)
   const [confirmBatal, setConfirmBatal] = useState(false)
 
@@ -25,16 +26,18 @@ export default function PoInForm({ po, onChanged }: { po: PoItem; onChanged?: ()
   const mutation = useMutation({
     mutationFn: () =>
       api.patch(`/api/po/${po.id}/in`, {
-        items: Object.entries(values)
-          .filter(([, no_in]) => no_in.trim() !== '')
-          .map(([po_detail_id, no_in]) => ({ po_detail_id: Number(po_detail_id), no_in })),
+        items: po.po_detail
+          .map((detail) => ({ po_detail_id: detail.id, no_in: (values[detail.id] ?? detail.no_in ?? '').trim() }))
+          .filter((item) => item.no_in !== ''),
+        no_spp: noSpp || undefined,
+        status: statusPo,
       }),
     onSuccess: (res) => {
       setConfirmIn(false)
       setValues({})
       afterChange()
       const lengkap = (res.data as { data?: { status?: string } })?.data?.status === 'lengkap'
-      toast.success(lengkap ? `PO ${po.no_po} lengkap, diteruskan ke Keuangan.` : `Nomor IN PO ${po.no_po} tersimpan.`)
+      toast.success(lengkap ? `PO ${po.no_po} lengkap, diteruskan ke Keuangan.` : `Data Pengadaan PO ${po.no_po} tersimpan.`)
     },
     onError: (err) => toast.error(apiErrorMessage(err, 'Gagal menyimpan nomor IN.')),
   })
@@ -49,35 +52,35 @@ export default function PoInForm({ po, onChanged }: { po: PoItem; onChanged?: ()
     onError: (err) => toast.error(apiErrorMessage(err, 'Gagal memperbarui PO.')),
   })
 
-  // Harga bisa diubah bebas (tanpa dialog); khusus perubahan status ke 'dibatalkan'
-  // wajib konfirmasi karena membatalkan PO tidak bisa diurungkan lewat UI ini.
-  const submitUpdatePo = () => {
-    if (statusPo === 'dibatalkan' && po.status !== 'dibatalkan') {
-      setConfirmBatal(true)
-      return
-    }
-    updatePo.mutate()
-  }
-
   const errorMessage =
     ((mutation.error || updatePo.error) as { response?: { data?: { message?: string } } } | null)?.response?.data?.message
   const isiCount = Object.values(values).filter((v) => v.trim() !== '').length
-  const lengkapCount = po.po_detail.filter((d) => d.no_in).length
+  const lengkapCount = po.po_detail.filter((d) => d.no_in || values[d.id]?.trim()).length
+  const statusOptions: { value: PoItem['status']; label: string }[] = [
+    { value: 'proses', label: 'Proses' },
+    { value: 'lengkap', label: 'Lengkap' },
+    { value: 'kwitansi_belum_upload', label: 'Kwitansi belum upload' },
+    { value: 'foto_belum_lengkap', label: 'Foto belum lengkap' },
+    { value: 'dibatalkan', label: 'Dibatalkan' },
+  ]
+  const siapKeKeuangan = statusPo === 'lengkap' && lengkapCount === po.po_detail.length && noSpp.trim() !== ''
+  const bisaSimpan = statusPo === 'lengkap' ? siapKeKeuangan : (isiCount > 0 || statusPo !== po.status || noSpp.trim() !== (po.no_spp ?? ''))
 
   return (
-    <form className="po-card @container" onSubmit={(e) => { e.preventDefault(); setConfirmIn(true) }}>
+    <form className="po-card @container" onSubmit={(e) => { e.preventDefault(); statusPo === 'dibatalkan' && po.status !== 'dibatalkan' ? setConfirmBatal(true) : setConfirmIn(true) }}>
       <div className="po-card-header">
         <div><div className="po-title">{po.no_po}</div><div className="po-meta">Pemasok {po.id_pemasok} - {formatNumber(po.total_kuantum)} kg - {formatMoney(po.total_harga)}</div></div>
         <span className="badge badge-warning">{lengkapCount}/{po.po_detail.length} IN terisi</span>
       </div>
       {errorMessage && <div className="alert-danger mb-3">{errorMessage}</div>}
       <div className="mb-4 rounded-lg border border-border bg-surface p-3">
-        <div className="section-title mb-3">Status PO</div>
-        <p className="page-subtitle mb-3">Harga per kg hanya diatur saat menggabungkan transaksi menjadi PO.</p>
+        <div className="section-title mb-3">No. SPP & Status Sergab</div>
+        <p className="page-subtitle mb-3">Status Lengkap akan mengirim PO ke Keuangan setelah semua nomor IN dan No. SPP terisi.</p>
         <div className="grid gap-4 @md:grid-cols-2">
-          <label className="block"><span className="label">Status</span><select className="input" value={statusPo} onChange={(e) => setStatusPo(e.target.value as PoItem['status'])}><option value="proses">Proses</option><option value="lengkap">Lengkap</option><option value="dibatalkan">Dibatalkan</option></select></label>
-          <div className="@md:col-span-2 flex justify-end"><button type="button" disabled={updatePo.isPending} onClick={submitUpdatePo} className="btn btn-primary">{updatePo.isPending ? 'Menyimpan...' : 'Update Status'}</button></div>
+          <label className="block"><span className="label">No. SPP</span><input className="input" value={noSpp} onChange={(e) => setNoSpp(e.target.value)} placeholder="Nomor SPP" /></label>
+          <label className="block"><span className="label">Status Sergab</span><select className="input" value={statusPo} onChange={(e) => setStatusPo(e.target.value as PoItem['status'])}>{statusOptions.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label>
         </div>
+        {statusPo === 'lengkap' && !siapKeKeuangan && <div className="alert-warning mt-3">Lengkapi seluruh nomor IN dan No. SPP sebelum status dibuat Lengkap.</div>}
       </div>
       <div className="data-table-wrap mb-3">
         <table className="data-table">
@@ -93,13 +96,13 @@ export default function PoInForm({ po, onChanged }: { po: PoItem; onChanged?: ()
           </tbody>
         </table>
       </div>
-      <div className="flex justify-end"><button type="submit" disabled={isiCount === 0 || mutation.isPending} className="btn btn-primary">{mutation.isPending ? 'Menyimpan...' : 'Simpan Nomor IN'}</button></div>
+      <div className="flex justify-end"><button type="submit" disabled={!bisaSimpan || mutation.isPending} className="btn btn-primary">{mutation.isPending ? 'Menyimpan...' : 'Simpan Data Pengadaan'}</button></div>
 
       <ConfirmDialog
         open={confirmIn}
         title="Simpan nomor IN?"
-        description={<><strong>{isiCount} nomor IN</strong> akan disimpan dan tidak bisa diubah lagi. Jika seluruh nomor IN pada PO ini sudah terisi, PO otomatis diteruskan ke tahap <strong>Keuangan</strong>. Lanjutkan?</>}
-        confirmLabel="Simpan Nomor IN"
+        description={<><strong>{lengkapCount} nomor IN</strong>, No. SPP, dan status Sergab akan disimpan. Jika status Lengkap, PO diteruskan ke tahap <strong>Keuangan</strong>. Lanjutkan?</>}
+        confirmLabel="Simpan Data"
         loading={mutation.isPending}
         error={errorMessage}
         onCancel={() => setConfirmIn(false)}

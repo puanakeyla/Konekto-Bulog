@@ -31,7 +31,7 @@ export type PoItem = {
   total_harga: string
   no_po: string
   no_spp: string | null
-  status: 'proses' | 'lengkap' | 'dibatalkan'
+  status: 'proses' | 'lengkap' | 'kwitansi_belum_upload' | 'foto_belum_lengkap' | 'dibatalkan'
   review_status?: ReviewStatus | null
   catatan_penolakan?: string | null
   current_stage?: string[]

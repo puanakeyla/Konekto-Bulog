@@ -59,7 +59,7 @@ class PengadaanController extends Controller
             'transaksi_ids.*' => ['required', 'string', Rule::exists('transaksi', 'id_transaksi')],
             'no_po' => ['required', 'string', 'max:255', 'unique:data_pengadaan,no_po'],
             'harga' => ['nullable', 'numeric', 'min:0', 'max:9999999999999.99'],
-            'status' => ['sometimes', Rule::in(['proses', 'lengkap', 'dibatalkan'])],
+            'status' => ['sometimes', Rule::in(['proses', 'lengkap', 'kwitansi_belum_upload', 'foto_belum_lengkap', 'dibatalkan'])],
         ]);
 
         $dataPengadaan = $this->service->gabungkanPo(
@@ -83,7 +83,7 @@ class PengadaanController extends Controller
     {
         $validated = $request->validate([
             'harga' => ['sometimes', 'numeric', 'min:0', 'max:9999999999999.99'],
-            'status' => ['sometimes', Rule::in(['proses', 'lengkap', 'dibatalkan'])],
+            'status' => ['sometimes', Rule::in(['proses', 'lengkap', 'kwitansi_belum_upload', 'foto_belum_lengkap', 'dibatalkan'])],
         ]);
 
         if ($dataPengadaan->review_status === 'diterima') {
@@ -149,9 +149,16 @@ class PengadaanController extends Controller
             'items' => ['required', 'array', 'min:1'],
             'items.*.po_detail_id' => ['required', 'integer'],
             'items.*.no_in' => ['required', 'string', 'max:255'],
+            'no_spp' => ['nullable', 'string', 'max:255', Rule::unique('data_pengadaan', 'no_spp')->ignore($dataPengadaan->id)],
+            'status' => ['sometimes', Rule::in(['proses', 'lengkap', 'kwitansi_belum_upload', 'foto_belum_lengkap', 'dibatalkan'])],
         ]);
 
-        $dataPengadaan = $this->service->isiNomorIn($dataPengadaan, $validated['items']);
+        $dataPengadaan = $this->service->isiNomorIn(
+            $dataPengadaan,
+            $validated['items'],
+            $validated['no_spp'] ?? null,
+            $validated['status'] ?? null,
+        );
 
         $this->auditLog->logMany($request->user(), 'isi_nomor_in', $dataPengadaan->poDetail->pluck('transaksi_id'), [
             'data_pengadaan_id' => $dataPengadaan->id,

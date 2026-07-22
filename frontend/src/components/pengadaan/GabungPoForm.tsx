@@ -28,6 +28,16 @@ function groupKeyOf(t: TransaksiListItem) {
   return { id_pemasok: '-', tanggal_bongkar: '-', kuantum: '-' }
 }
 
+function groupIdOf(t: TransaksiListItem) {
+  const k = groupKeyOf(t)
+  return [t.skema, k.tanggal_bongkar, k.id_pemasok, t.nama_maklon ?? 'Tanpa makloon'].join('|')
+}
+
+function groupLabelOf(t: TransaksiListItem) {
+  const k = groupKeyOf(t)
+  return `${t.skema} - ${formatDate(k.tanggal_bongkar)} - ${k.id_pemasok} - ${t.nama_maklon ?? 'Tanpa makloon'}`
+}
+
 // Form "Gabungkan Transaksi Menjadi PO". Dipakai halaman Pengadaan (daftar semua transaksi siap PO)
 // dan panel inline di timeline (daftar transaksi yang cocok, dengan transaksi berjalan tercentang &
 // terkunci lewat prop `preselectId`). onChanged dipanggil setelah PO dibuat.
@@ -47,28 +57,41 @@ export default function GabungPoForm({
   const [noPo, setNoPo] = useState('')
   const [harga, setHarga] = useState('6500')
   const [confirmGabung, setConfirmGabung] = useState(false)
-  const [filterPemasok, setFilterPemasok] = useState('')
-  const [filterTanggal, setFilterTanggal] = useState('')
+  const [selectedGroup, setSelectedGroup] = useState('')
 
   const selectedRows = useMemo(
     () => transaksiList.filter((item) => selected.has(item.id_transaksi)),
     [selected, transaksiList],
   )
-  const opsiPemasok = useMemo(
-    () => Array.from(new Set(transaksiList.map((t) => groupKeyOf(t).id_pemasok))).filter((v) => v !== '-'),
-    [transaksiList],
-  )
-  const opsiTanggal = useMemo(
-    () => Array.from(new Set(transaksiList.map((t) => groupKeyOf(t).tanggal_bongkar))).filter((v) => v !== '-'),
-    [transaksiList],
-  )
+  const groupOptions = useMemo(() => {
+    const map = new Map<string, { id: string; label: string; count: number }>()
+    for (const t of transaksiList) {
+      const id = groupIdOf(t)
+      const current = map.get(id)
+      map.set(id, { id, label: groupLabelOf(t), count: (current?.count ?? 0) + 1 })
+    }
+    return Array.from(map.values()).sort((a, b) => a.label.localeCompare(b.label, 'id'))
+  }, [transaksiList])
+  useEffect(() => {
+    if (!preselectId) return
+    const preselected = transaksiList.find((item) => item.id_transaksi === preselectId)
+    if (preselected) setSelectedGroup(groupIdOf(preselected))
+  }, [preselectId, transaksiList])
+  useEffect(() => {
+    setSelected((prev) => {
+      const next = new Set<string>()
+      for (const id of prev) {
+        const row = transaksiList.find((item) => item.id_transaksi === id)
+        if (row && selectedGroup && groupIdOf(row) === selectedGroup) next.add(id)
+      }
+      if (preselectId) next.add(preselectId)
+      return next
+    })
+  }, [preselectId, selectedGroup, transaksiList])
   const filteredTransaksi = useMemo(
     () =>
-      transaksiList.filter((t) => {
-        const k = groupKeyOf(t)
-        return (!filterPemasok || k.id_pemasok === filterPemasok) && (!filterTanggal || k.tanggal_bongkar === filterTanggal)
-      }),
-    [transaksiList, filterPemasok, filterTanggal],
+      selectedGroup ? transaksiList.filter((t) => groupIdOf(t) === selectedGroup) : [],
+    [transaksiList, selectedGroup],
   )
   const totalSelectedKuantum = selectedRows.reduce((sum, item) => sum + Number(groupKeyOf(item).kuantum || 0), 0)
 
@@ -84,7 +107,7 @@ export default function GabungPoForm({
         harga: harga ? Number(harga) : undefined,
       }),
     onSuccess: () => {
-      toast.success(`PO ${noPo} dibuat dari ${selected.size} transaksi, diteruskan ke Keuangan.`)
+      toast.success(`PO ${noPo} dibuat dari ${selected.size} transaksi. Silakan isi No. IN, No. SPP, dan status Sergab.`)
       setConfirmGabung(false)
       setSelected(new Set(preselectId ? [preselectId] : []))
       setNoPo('')
@@ -102,6 +125,8 @@ export default function GabungPoForm({
     if (id === preselectId) return // transaksi berjalan wajib ikut, tidak bisa dilepas
     setSelected((prev) => {
       const next = new Set(prev)
+      const row = transaksiList.find((item) => item.id_transaksi === id)
+      if (!row || (selectedGroup && groupIdOf(row) !== selectedGroup)) return next
       if (next.has(id)) next.delete(id)
       else next.add(id)
       return next
@@ -128,17 +153,11 @@ export default function GabungPoForm({
 
       {transaksiList.length > 0 && (
         <>
-          <div className="grid gap-4 @md:grid-cols-2 mb-4">
-            <label className="block"><span className="label">Filter ID Pemasok</span>
-              <select className="input" value={filterPemasok} onChange={(e) => setFilterPemasok(e.target.value)}>
-                <option value="">Semua pemasok</option>
-                {opsiPemasok.map((v) => <option key={v} value={v}>{v}</option>)}
-              </select>
-            </label>
-            <label className="block"><span className="label">Filter Tanggal Bongkar</span>
-              <select className="input" value={filterTanggal} onChange={(e) => setFilterTanggal(e.target.value)}>
-                <option value="">Semua tanggal</option>
-                {opsiTanggal.map((v) => <option key={v} value={v}>{formatDate(v)}</option>)}
+          <div className="mb-4">
+            <label className="block"><span className="label">Kelompok PO</span>
+              <select className="input" value={selectedGroup} onChange={(e) => setSelectedGroup(e.target.value)}>
+                <option value="">Pilih kelompok skema/tanggal/pemasok/mitra</option>
+                {groupOptions.map((v) => <option key={v.id} value={v.id}>{v.label} ({v.count} transaksi)</option>)}
               </select>
             </label>
           </div>
@@ -182,7 +201,7 @@ export default function GabungPoForm({
           <ConfirmDialog
             open={confirmGabung}
             title="Gabungkan menjadi PO?"
-            description={<>PO <strong>{noPo}</strong> akan dibuat dari <strong>{selected.size} transaksi</strong> terpilih. Transaksi tersebut akan dikunci dan diteruskan ke tahap <strong>Keuangan</strong>. Lanjutkan?</>}
+            description={<>PO <strong>{noPo}</strong> akan dibuat dari <strong>{selected.size} transaksi</strong> terpilih. Setelah itu Pengadaan mengisi No. IN, No. SPP, dan status Sergab. Lanjutkan?</>}
             confirmLabel="Buat PO"
             loading={gabungMutation.isPending}
             error={errorMessage}

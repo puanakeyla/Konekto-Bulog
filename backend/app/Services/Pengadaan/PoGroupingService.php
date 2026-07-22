@@ -101,7 +101,7 @@ class PoGroupingService
                     'kuantum_kontribusi' => number_format((float) $row['kuantum'], 2, '.', ''),
                 ]);
 
-                $row['transaksi']->current_stage = 'keuangan';
+                $row['transaksi']->current_stage = 'pengadaan';
                 $row['transaksi']->save();
             }
 
@@ -114,13 +114,13 @@ class PoGroupingService
      * ke baris transaksi asalnya"). Hanya boleh selama PO belum 'lengkap'/'dibatalkan';
      * begitu semua baris terisi, status PO otomatis jadi 'lengkap'.
      */
-    public function isiNomorIn(DataPengadaan $dataPengadaan, array $items): DataPengadaan
+    public function isiNomorIn(DataPengadaan $dataPengadaan, array $items, ?string $noSpp = null, ?string $status = null): DataPengadaan
     {
         if (count($items) < 1) {
             abort(422, 'Isi minimal satu nomor IN.');
         }
 
-        return DB::transaction(function () use ($dataPengadaan, $items) {
+        return DB::transaction(function () use ($dataPengadaan, $items, $noSpp, $status) {
             $dataPengadaan = DataPengadaan::whereKey($dataPengadaan->id)->lockForUpdate()->firstOrFail();
 
             if ($dataPengadaan->status === 'dibatalkan' || ($dataPengadaan->status === 'lengkap' && $dataPengadaan->review_status !== 'ditolak')) {
@@ -154,13 +154,33 @@ class PoGroupingService
                 $poDetails[$item['po_detail_id']]->update(['no_in' => $item['no_in']]);
             }
 
-            if (! $dataPengadaan->poDetail()->whereNull('no_in')->exists()) {
-                $dataPengadaan->status = 'lengkap';
-                $this->resetReview($dataPengadaan);
+            if ($noSpp !== null) {
+                $dataPengadaan->no_spp = $noSpp;
+            }
+
+            if ($status !== null) {
+                $dataPengadaan->status = $status;
+            }
+
+            if ($dataPengadaan->status === 'lengkap' && ($dataPengadaan->no_spp === null || trim((string) $dataPengadaan->no_spp) === '')) {
+                abort(422, 'No. SPP wajib diisi sebelum status PO menjadi lengkap.');
+            }
+
+            if ($dataPengadaan->status === 'dibatalkan') {
+                $this->majukanTahapTransaksi($dataPengadaan->id, 'pengadaan');
+                $dataPengadaan->poDetail()->delete();
                 $dataPengadaan->save();
+
+                return $dataPengadaan->fresh('poDetail');
+            }
+
+            if (! $dataPengadaan->poDetail()->whereNull('no_in')->exists() && $dataPengadaan->no_spp !== null && $dataPengadaan->status === 'lengkap') {
+                $this->resetReview($dataPengadaan);
 
                 $this->majukanTahapTransaksi($dataPengadaan->id, 'keuangan');
             }
+
+            $dataPengadaan->save();
 
             return $dataPengadaan->fresh('poDetail');
         });
