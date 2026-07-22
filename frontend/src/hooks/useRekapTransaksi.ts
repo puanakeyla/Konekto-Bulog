@@ -4,7 +4,7 @@ import type { PaginationMeta } from './useTransaksiList'
 
 export type StageStatus = 'menunggu_review' | 'diterima' | 'ditolak'
 
-type StageBase = { status: StageStatus; locked_at?: string | null; submitted_at?: string | null }
+type StageBase = { status: StageStatus; locked_at?: string | null; submitted_at?: string | null; catatan_penolakan?: string | null }
 
 export type RekapJemputPangan = StageBase & {
   id_pemasok: string

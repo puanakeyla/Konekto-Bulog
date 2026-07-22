@@ -86,6 +86,39 @@ function StatusBadge({ status }: { status: string }) {
   return <span className={`badge ${cls} capitalize`}>{status.replaceAll('_', ' ')}</span>
 }
 
+type RejectInfo = { stage: string; catatan: string | null }
+
+const STAGE_LABELS: Record<string, string> = {
+  jemput_pangan: 'Jemput Pangan',
+  makloon: 'Makloon',
+  makloon_kirim: 'Makloon Kirim',
+  makloon_terima: 'Makloon Terima',
+  ub_jastasma: 'UB Jastasma',
+  pengadaan: 'Pengadaan',
+  keuangan: 'Keuangan',
+}
+
+function labelTahap(stage: string) {
+  return STAGE_LABELS[stage] ?? stage.replaceAll('_', ' ')
+}
+
+function rejectedStages(row: TransaksiListItem | RekapTransaksi): RejectInfo[] {
+  const items: RejectInfo[] = []
+  if (row.data_jemput_pangan?.status === 'ditolak') items.push({ stage: 'jemput_pangan', catatan: row.data_jemput_pangan.catatan_penolakan ?? null })
+  if (row.data_makloon_tjp?.status === 'ditolak' || row.data_makloon_mpp?.status === 'ditolak') {
+    items.push({ stage: row.skema === 'MPP' ? 'makloon_kirim' : 'makloon', catatan: (row.data_makloon_tjp?.catatan_penolakan ?? row.data_makloon_mpp?.catatan_penolakan) ?? null })
+  }
+  if (row.data_ub_jastasma?.status === 'ditolak') items.push({ stage: 'ub_jastasma', catatan: row.data_ub_jastasma.catatan_penolakan ?? null })
+  if (row.data_pengadaan?.review_status === 'ditolak') items.push({ stage: 'pengadaan', catatan: null })
+  if (row.data_pengadaan?.data_keuangan?.review_status === 'ditolak') items.push({ stage: 'keuangan', catatan: null })
+  return items
+}
+
+function RejectedBadge({ items }: { items: RejectInfo[] }) {
+  if (items.length === 0) return null
+  return <span className="inline-flex items-center gap-1 rounded-md bg-danger-bg px-2 py-1 text-[0.68rem] font-bold text-danger">Ditolak: {items.map((item) => labelTahap(item.stage)).join(', ')}</span>
+}
+
 function num(value: string | number | null | undefined) {
   if (value === null || value === undefined || value === '') return 0
   return Number(value) || 0
@@ -259,16 +292,23 @@ export default function DashboardPage() {
       : berjalan,
     [berjalan, rekapTransaksi, role],
   )
+  const rejectedSource = role === 'admin' || role === 'keuangan' ? rekapTransaksi : transaksi
+  const rejectedTransaksi = useMemo(
+    () => rejectedSource.filter((item) => rejectedStages(item).length > 0),
+    [rejectedSource],
+  )
   const statCards = role === 'admin'
     ? [
         { label: 'Total transaksi', value: total, sub: 'data rekap masuk', tone: 'primary' as const, icon: ICONS.total },
         { label: 'Perlu diproses', value: perluTindakan, sub: 'tahap aktif', tone: 'warning' as const, icon: ICONS.berjalan },
+        { label: 'Ditolak', value: rejectedTransaksi.length, sub: 'perlu revisi', tone: 'danger' as const, icon: ICONS.ditolak },
         { label: 'Selesai', value: selesai, sub: 'sudah rampung', tone: 'success' as const, icon: ICONS.selesai },
         { label: 'Makloon terhubung', value: makloonTerhubung, sub: 'mitra pada rekap', tone: 'accent' as const, icon: ICONS.makloon },
       ]
     : [
         { label: 'Total transaksi', value: total, sub: 'keseluruhan', tone: 'primary' as const, icon: ICONS.total },
         { label: 'Sedang berjalan', value: berjalan, sub: 'menunggu tindakan', tone: 'warning' as const, icon: ICONS.berjalan },
+        { label: 'Ditolak', value: rejectedTransaksi.length, sub: 'perlu revisi', tone: 'danger' as const, icon: ICONS.ditolak },
         { label: 'Selesai', value: selesai, sub: 'sudah rampung', tone: 'success' as const, icon: ICONS.selesai },
         { label: 'Makloon terhubung', value: makloonTerhubung, sub: 'mitra pada daftar', tone: 'accent' as const, icon: ICONS.makloon },
       ]
@@ -333,10 +373,42 @@ export default function DashboardPage() {
 
       {/* Kartu statistik ditarik naik menimpa hero. */}
       <div className="relative mx-auto -mt-16 max-w-6xl px-6">
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
           {statCards.map((card) => <StatCard key={card.label} {...card} />)}
         </div>
       </div>
+
+      {rejectedTransaksi.length > 0 && (
+        <div className="mx-auto max-w-6xl px-6 pt-6">
+          <section className="panel overflow-hidden border-danger/25">
+            <div className="flex flex-col gap-2 border-b border-danger/15 bg-danger-bg px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h2 className="section-title text-danger">Transaksi ditolak</h2>
+                <p className="page-subtitle">Periksa bagian yang ditandai lalu buka detail transaksi untuk tindak lanjut.</p>
+              </div>
+              <span className="badge badge-danger">{rejectedTransaksi.length} transaksi</span>
+            </div>
+            <div className="divide-y divide-border bg-white">
+              {rejectedTransaksi.slice(0, 5).map((item) => {
+                const rejected = rejectedStages(item)
+                return (
+                  <div key={item.id_transaksi} className="flex flex-col gap-2 px-5 py-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-bold text-primary-dark">{item.id_transaksi}</span>
+                        <SkemaBadge skema={item.skema} />
+                        <RejectedBadge items={rejected} />
+                      </div>
+                      {rejected[0]?.catatan && <p className="mt-1 text-xs text-danger">{rejected[0].catatan}</p>}
+                    </div>
+                    <Link to={`/transaksi/${encodeURIComponent(item.id_transaksi)}`} className="text-sm font-bold text-primary hover:underline">Lihat detail</Link>
+                  </div>
+                )
+              })}
+            </div>
+          </section>
+        </div>
+      )}
 
       {role === 'admin' && (
         <div className="mx-auto max-w-[96rem] px-4 pt-6 sm:px-6 2xl:max-w-[104rem]">
@@ -409,14 +481,7 @@ export default function DashboardPage() {
                 </thead>
                 <tbody>
                   {filteredTransaksi.map((t) => (
-                    <tr key={t.id_transaksi} className="border-t border-border">
-                      <td className="px-4 py-2 font-medium text-primary-dark">{t.id_transaksi}</td>
-                      <td className="px-4 py-2"><span className="badge">{t.skema}</span></td>
-                      <td className="px-4 py-2">{t.current_stage.replaceAll('_', ' ')}</td>
-                      <td className="px-4 py-2">{t.status_keseluruhan.replaceAll('_', ' ')}</td>
-                      <td className="px-4 py-2">{new Date(t.created_at).toLocaleDateString('id-ID')}</td>
-                      <td className="px-4 py-2 text-right"><Link to={`/transaksi/${encodeURIComponent(t.id_transaksi)}`} className="font-medium text-primary">Lihat</Link></td>
-                    </tr>
+                    <DashboardTableRow key={t.id_transaksi} t={t} />
                   ))}
                 </tbody>
               </table>
@@ -443,6 +508,7 @@ export default function DashboardPage() {
 const ICONS = {
   total: <path d="M4 7h16M4 12h16M4 17h10" />,
   berjalan: <><circle cx="12" cy="12" r="8" /><path d="M12 8v4l3 2" /></>,
+  ditolak: <><circle cx="12" cy="12" r="8" /><path d="M9 9l6 6M15 9l-6 6" /></>,
   selesai: <><circle cx="12" cy="12" r="8" /><path d="M8.5 12.5l2.5 2.5 4.5-5" /></>,
   makloon: <><circle cx="9" cy="8" r="3" /><path d="M15 11a3 3 0 1 0-2-5.2M4 19a5 5 0 0 1 10 0M14 19a5 5 0 0 1 6-4.6" /></>,
 }
@@ -458,12 +524,13 @@ function StatCard({
   label: string
   value: number
   sub: string
-  tone: 'primary' | 'warning' | 'success' | 'accent'
+  tone: 'primary' | 'warning' | 'danger' | 'success' | 'accent'
   icon: ReactNode
 }) {
   const cfg = {
     primary: { bar: 'bg-primary', chip: 'bg-primary-tint text-primary' },
     warning: { bar: 'bg-warning', chip: 'bg-warning-bg text-warning' },
+    danger: { bar: 'bg-danger', chip: 'bg-danger-bg text-danger' },
     success: { bar: 'bg-success', chip: 'bg-success/10 text-success' },
     accent: { bar: 'bg-accent', chip: 'bg-accent/15 text-accent' },
   }[tone]
@@ -646,7 +713,37 @@ function DashboardGrafis() {
   )
 }
 
+function RejectedTransaksiRow({ t }: { t: TransaksiListItem }) {
+  const rejected = rejectedStages(t)
+  return (
+    <tr className={`border-t border-border/60 ${rejected.length > 0 ? 'bg-danger-bg/60' : ''}`}>
+      <td className="py-3 pl-16 pr-4 font-medium text-primary-dark">{t.id_transaksi}</td>
+      <td className="px-4"><SkemaBadge skema={t.skema} /></td>
+      <td className="px-4 capitalize text-gray-600">{labelTahap(t.current_stage)}</td>
+      <td className="px-4"><div className="flex flex-wrap gap-2"><StatusBadge status={t.status_keseluruhan} /><RejectedBadge items={rejected} /></div></td>
+      <td className="px-4 text-gray-500">{tanggalSingkat(t.created_at)}</td>
+      <td className="py-3 pl-4 pr-4 text-right"><Link to={`/transaksi/${encodeURIComponent(t.id_transaksi)}`} className="font-medium text-primary hover:underline">Lihat</Link></td>
+    </tr>
+  )
+}
+
+function DashboardTableRow({ t }: { t: TransaksiListItem }) {
+  const rejected = rejectedStages(t)
+  return (
+    <tr className={`border-t border-border ${rejected.length > 0 ? 'bg-danger-bg/60' : ''}`}>
+      <td className="px-4 py-2 font-medium text-primary-dark">{t.id_transaksi}</td>
+      <td className="px-4 py-2"><SkemaBadge skema={t.skema} /></td>
+      <td className="px-4 py-2 capitalize">{labelTahap(t.current_stage)}</td>
+      <td className="px-4 py-2"><div className="flex flex-wrap gap-2"><StatusBadge status={t.status_keseluruhan} /><RejectedBadge items={rejected} /></div></td>
+      <td className="px-4 py-2">{new Date(t.created_at).toLocaleDateString('id-ID')}</td>
+      <td className="px-4 py-2 text-right"><Link to={`/transaksi/${encodeURIComponent(t.id_transaksi)}`} className="font-medium text-primary">Lihat</Link></td>
+    </tr>
+  )
+}
+
 function TransaksiRow({ t }: { t: TransaksiListItem }) {
+  return <RejectedTransaksiRow t={t} />
+
   return (
     <tr className="border-t border-border/60">
       <td className="py-3 pl-16 pr-4 font-medium text-primary-dark">{t.id_transaksi}</td>

@@ -27,7 +27,7 @@ class MonitoringController extends Controller
                 'skema' => $skema,
                 'stages' => collect(TransaksiStages::sequence($skema))->map(fn (array $stage) => [
                     'stage' => $stage['role'],
-                    'label' => str($stage['role'])->replace('_', ' ')->title()->toString(),
+                    'label' => TransaksiStages::label($stage),
                     'total' => (int) ($stageCounts->get($stage['role'])?->total ?? 0),
                 ])->values(),
             ];
