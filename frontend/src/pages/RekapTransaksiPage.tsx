@@ -173,6 +173,33 @@ const COLS_KEUANGAN: SheetColumn<RekapTransaksi>[] = [
   { key: 'ku_tgl', label: 'Keuangan · Tanggal Bayar', value: (r) => tgl(r.data_pengadaan?.data_keuangan?.tanggal_bayar) },
 ]
 
+type DokumenField = { key: string; label: string; role: 'jemput_pangan' | 'makloon' | 'ub_jastasma' }
+
+const DOKUMEN_TJP: DokumenField[] = [
+  { key: 'foto_petani', label: 'JP - Foto Petani', role: 'jemput_pangan' },
+  { key: 'foto_gabah', label: 'JP - Foto Gabah', role: 'jemput_pangan' },
+  { key: 'foto_serah_terima', label: 'JP - Foto Serah Terima', role: 'jemput_pangan' },
+  { key: 'foto_kwitansi', label: 'JP - Foto Kwitansi', role: 'jemput_pangan' },
+  { key: 'foto_surat_pernyataan', label: 'JP - Foto Surat Pernyataan', role: 'jemput_pangan' },
+  { key: 'foto_surat_jalan', label: 'JP - Foto Surat Jalan', role: 'jemput_pangan' },
+  { key: 'foto_surat_jalan_paraf', label: 'Makloon - Surat Jalan Diparaf', role: 'makloon' },
+  { key: 'foto_nota_timbang', label: 'Makloon - Nota Timbang', role: 'makloon' },
+]
+
+const DOKUMEN_MPP: DokumenField[] = [
+  { key: 'foto_petani', label: 'Makloon - Foto Petani', role: 'makloon' },
+  { key: 'foto_gabah', label: 'Makloon - Foto Gabah', role: 'makloon' },
+  { key: 'foto_serah_terima', label: 'Makloon - Foto Serah Terima', role: 'makloon' },
+  { key: 'foto_pembayaran', label: 'Makloon - Foto Pembayaran', role: 'makloon' },
+  { key: 'foto_surat_pernyataan', label: 'Makloon - Foto Surat Pernyataan', role: 'makloon' },
+  { key: 'foto_surat_jalan', label: 'Makloon - Foto Surat Jalan', role: 'makloon' },
+  { key: 'foto_nota_timbang', label: 'Makloon - Foto Nota Timbang', role: 'makloon' },
+]
+
+const DOKUMEN_UB: DokumenField[] = [
+  { key: 'foto_lhpk_hpk', label: 'UB - Foto LHPK/HPK', role: 'ub_jastasma' },
+]
+
 const GROUPS: Record<StageKey, SheetColumn<RekapTransaksi>[]> = {
   jemput_pangan: COLS_JP,
   makloon: COLS_MAKLOON,
@@ -604,6 +631,8 @@ function RekapEditModal({ row, form, makloonOptions, isSaving, onChange, onClose
               <TextField type="date" label="Tanggal Bayar" value={form.po_tanggal_bayar} onChange={(v) => onChange('po_tanggal_bayar', v)} />
             </EditSection>
           )}
+
+          <DokumenAdminPanel row={row} />
         </div>
 
         <div className="flex flex-col-reverse gap-3 border-t border-border bg-white px-6 py-4 sm:flex-row sm:justify-end">
@@ -614,6 +643,92 @@ function RekapEditModal({ row, form, makloonOptions, isSaving, onChange, onClose
         </div>
       </form>
     </div>
+  )
+}
+
+function DokumenAdminPanel({ row }: { row: RekapTransaksi }) {
+  const [busyKey, setBusyKey] = useState<string | null>(null)
+  const fields = [
+    ...(row.skema === 'TJP' ? DOKUMEN_TJP : DOKUMEN_MPP),
+    ...(row.data_ub_jastasma ? DOKUMEN_UB : []),
+  ]
+
+  const bukaDokumen = async (field: DokumenField) => {
+    setBusyKey(`open:${field.key}`)
+    try {
+      const { data } = await api.get<{ url: string }>(`/api/transaksi/${encodeURIComponent(row.id_transaksi)}/foto/${field.key}`)
+      window.open(data.url, '_blank', 'noopener,noreferrer')
+    } catch (err) {
+      toast.error(pesanKegagalan(err) ?? 'Dokumen belum tersedia.')
+    } finally {
+      setBusyKey(null)
+    }
+  }
+
+  const gantiDokumen = async (field: DokumenField, file: File | null) => {
+    if (!file) return
+    setBusyKey(`upload:${field.key}`)
+    try {
+      const formData = new FormData()
+      formData.append('jenis_foto', field.key)
+      formData.append('foto', file)
+      formData.append('role', field.role)
+      await api.post(`/api/transaksi/${encodeURIComponent(row.id_transaksi)}/foto`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      })
+      toast.success(`${field.label} diperbarui.`)
+    } catch (err) {
+      toast.error(pesanKegagalan(err) ?? 'Gagal mengganti dokumen.')
+    } finally {
+      setBusyKey(null)
+    }
+  }
+
+  const hapusDokumen = async (field: DokumenField) => {
+    if (!window.confirm(`Hapus ${field.label} dari transaksi ${row.id_transaksi}?`)) return
+    setBusyKey(`delete:${field.key}`)
+    try {
+      await api.delete(`/api/transaksi/${encodeURIComponent(row.id_transaksi)}/foto/${field.key}`)
+      toast.success(`${field.label} dihapus.`)
+    } catch (err) {
+      toast.error(pesanKegagalan(err) ?? 'Gagal menghapus dokumen.')
+    } finally {
+      setBusyKey(null)
+    }
+  }
+
+  return (
+    <section className="rounded-xl border border-border bg-white p-4 shadow-sm">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <h3 className="text-sm font-extrabold text-primary-dark">Dokumen {row.skema}</h3>
+          <p className="mt-1 text-xs text-slate-500">Buka/download ulang, ganti file, atau hapus dokumen transaksi.</p>
+        </div>
+        <span className="rounded-full bg-primary-tint px-3 py-1 text-[0.68rem] font-bold text-primary">{fields.length} slot dokumen</span>
+      </div>
+      <div className="grid gap-3 md:grid-cols-2">
+        {fields.map((field) => (
+          <div key={`${field.role}:${field.key}`} className="rounded-lg border border-border bg-surface px-3 py-3">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <span className="text-xs font-bold text-primary-dark">{field.label}</span>
+              <span className="rounded bg-white px-2 py-0.5 text-[0.65rem] font-bold uppercase text-slate-500">{field.role.replaceAll('_', ' ')}</span>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <button type="button" className="btn btn-ghost border border-border bg-white px-3 py-1.5 text-xs" disabled={busyKey === `open:${field.key}`} onClick={() => bukaDokumen(field)}>
+                {busyKey === `open:${field.key}` ? 'Membuka...' : 'Buka/Download'}
+              </button>
+              <label className="btn btn-ghost cursor-pointer border border-primary/20 bg-primary-tint px-3 py-1.5 text-xs text-primary">
+                {busyKey === `upload:${field.key}` ? 'Mengunggah...' : 'Ganti'}
+                <input type="file" accept="image/jpeg,image/png" className="hidden" disabled={busyKey === `upload:${field.key}`} onChange={(event) => gantiDokumen(field, event.target.files?.[0] ?? null)} />
+              </label>
+              <button type="button" className="btn btn-ghost border border-danger/20 bg-danger-bg px-3 py-1.5 text-xs text-danger" disabled={busyKey === `delete:${field.key}`} onClick={() => hapusDokumen(field)}>
+                {busyKey === `delete:${field.key}` ? 'Menghapus...' : 'Hapus'}
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
   )
 }
 

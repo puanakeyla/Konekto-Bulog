@@ -66,4 +66,19 @@ class FotoController extends Controller
 
         return response()->json(['url' => $url]);
     }
+
+    public function destroy(Request $request, Transaksi $transaksi, string $jenisFoto)
+    {
+        abort_unless($request->user()->role->nama_role === 'admin', 403);
+
+        $media = $this->accessService->resolveDanOtorisasi($transaksi, $jenisFoto, $request->user());
+
+        if (! $media) {
+            abort(404, 'Foto tidak ditemukan.');
+        }
+
+        $media->delete();
+
+        return response()->json(['message' => 'Foto dihapus.']);
+    }
 }

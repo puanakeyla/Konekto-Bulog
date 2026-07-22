@@ -55,6 +55,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::patch('/transaksi/{transaksi}/admin-rekap', [TransaksiController::class, 'adminUpdateRekap'])
         ->middleware('role:admin');
     Route::get('/transaksi/{transaksi}/foto/{jenisFoto}', [FotoController::class, 'link']);
+    Route::delete('/transaksi/{transaksi}/foto/{jenisFoto}', [FotoController::class, 'destroy'])
+        ->middleware('role:admin');
     Route::get('/transaksi/{transaksi}', [TransaksiController::class, 'show']);
     Route::delete('/transaksi/{transaksi}', [TransaksiController::class, 'destroy'])
         ->middleware('role:admin');

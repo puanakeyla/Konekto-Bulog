@@ -51,7 +51,7 @@ class FotoUploadService
             abort(422, "Tidak ada data {$role} untuk transaksi ini.");
         }
 
-        if ($model->locked_at !== null) {
+        if ($model->locked_at !== null && $actor->role->nama_role !== 'admin') {
             abort(422, 'Data tahap ini sudah dikunci, foto tidak bisa diubah.');
         }
 
