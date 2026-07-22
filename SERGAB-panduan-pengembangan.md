@@ -14,9 +14,9 @@
 SERGAB adalah sistem digitalisasi alur pengadaan/serap gabah untuk Perum BULOG Kanwil Lampung, menggantikan proses manual dengan alur kerja bertahap (workflow) lintas 7 role, mendukung dua skema pengadaan:
 
 - **TJP** (Tebus Jemput Pangan): Jemput Pangan → Makloon → UB Jastasma → Pengadaan → Keuangan (5 tahap)
-- **MPP** (Makloon Pengadaan Pangan): Makloon → UB Jastasma → Pengadaan → Keuangan (4 tahap)
+- **MPP** (Makloon Pengadaan Pangan): Makloon Kirim → Makloon Terima → UB Jastasma → Pengadaan → Keuangan (5 tahap)
 
-**Timeline transaksi berhenti di Keuangan** (TJP 5 tahap, MPP 4 tahap). Operasi & Gudang **bukan tahap timeline transaksi** — keduanya berperan di **modul Pengolahan** yang terpisah.
+**Timeline transaksi berhenti di Keuangan** (TJP 5 tahap, MPP 5 tahap). Operasi & Gudang **bukan tahap timeline transaksi** — keduanya berperan di **modul Pengolahan** yang terpisah.
 
 **Modul Pengolahan** *(pemahaman terbaru 2026-07-20; menggantikan modul Operasi/Gudang mandiri lama)* adalah alur terima/tolak bertahap sendiri: **UB Jastasma → Operasi → Pengadaan → Operasi → Gudang.** UB Jastasma membuat data pengolahan per No. LHPK (pilih makloon → Jumlah Kuantum otomatis dari total kuantum yang sudah IN pada makloon itu; isi Kuantum Olah, KA1–3, HGL, Broken, Menir, Katul; Rendemen otomatis = HGL ÷ Jumlah Kuantum × 100). Operasi menolak (kembali ke UB Jastasma) atau menggabungkan beberapa baris **makloon sama** menjadi satu **No. MO** (+ No. TM; pola sama dengan penggabungan PO). Pengadaan menerima (terbitkan No. OUT) atau menolak — keduanya balik ke Operasi. Operasi lalu mengisi Tujuan Gudang, No. TM Gudang, Kuantum Total, dan mengirim ke Gudang. Gudang menerima (isi tanggal) atau menolak. **TM = Transfer Move** (nomor perpindahan antar bidang; tiap hop punya No. TM sendiri). **Akun Gudang** = satu username per gudang fisik (mis. "Gudang Jaya 1", "Gudang Jaya 2" adalah akun berbeda), nama gudang di kolom `users.nama_gudang`.
 
@@ -61,7 +61,7 @@ Skema ditentukan otomatis dari role yang membuat transaksi baru — **tidak ada 
 - Jemput Pangan membuat transaksi baru → `skema = TJP`
 - Makloon membuat transaksi baru → `skema = MPP`
 
-Dashboard Makloon punya dua entry point: **"Buat Baru (MPP)"** (form lengkap, jadi titik awal) dan **"Daftar Masuk dari Jemput Pangan (TJP)"** (form ringkas, meninjau data JP lebih dulu).
+Dashboard Makloon punya dua entry point: **"Buat Baru (MPP)"** (form lengkap, jadi titik awal Makloon Kirim lalu dicek di Makloon Terima) dan **"Daftar Masuk dari Jemput Pangan (TJP)"** (form ringkas, meninjau data JP lebih dulu).
 
 ### 3.2 Pola generik terima/tolak/kunci
 
@@ -363,7 +363,7 @@ Halaman ini murni informasional (tanpa data transaksi), jadi bisa berupa halaman
 
 **(Baru)** — halaman ini menjawab kebutuhan "42 makloon dan progres sampai gudang harus mudah dilihat". Sudah didemonstrasikan visualnya di percakapan ini, terdiri dari dua bagian:
 
-**a) Sebaran tahap saat ini, per skema** — dua kartu berdampingan (Skema TJP dan Skema MPP), masing-masing berisi horizontal bar chart sederhana: satu baris per tahap (Jemput Pangan..Gudang untuk TJP, Makloon..Gudang untuk MPP), panjang bar proporsional terhadap jumlah transaksi yang sedang ada di tahap tersebut, angka jumlah di ujung kanan. Ini menjawab permintaan "current stage tiap skema" — sekali lihat langsung tahu di mana penumpukan transaksi terjadi (mis. banyak yang menumpuk di Gudang berarti ada bottleneck penerimaan gudang).
+**a) Sebaran tahap saat ini, per skema** — dua kartu berdampingan (Skema TJP dan Skema MPP), masing-masing berisi horizontal bar chart sederhana: satu baris per tahap (Jemput Pangan..Keuangan untuk TJP, Makloon Kirim..Keuangan untuk MPP), panjang bar proporsional terhadap jumlah transaksi yang sedang ada di tahap tersebut, angka jumlah di ujung kanan. Ini menjawab permintaan "current stage tiap skema" — sekali lihat langsung tahu di mana penumpukan transaksi terjadi (mis. banyak yang menumpuk di Pengadaan berarti ada bottleneck penggabungan PO/IN).
 
 **b) Daftar 42 makloon, dikelompokkan per wilayah** — bukan daftar datar 42 baris, tapi dikelompokkan (accordion/collapsible) per kabupaten/kecamatan supaya tidak menakutkan dilihat sekaligus. Tiap grup punya header dengan jumlah makloon di wilayah itu. Tiap baris makloon menampilkan: `nama_maklon`, lokasi singkat, dan dua badge kecil (jumlah transaksi aktif skema TJP & MPP untuk makloon tersebut). Ada filter cepat di atas (Semua/TJP/MPP) dan pencarian nama.
 
