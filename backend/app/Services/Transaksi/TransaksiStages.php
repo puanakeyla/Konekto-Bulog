@@ -10,7 +10,7 @@ use App\Models\DataUbJastasma;
 class TransaksiStages
 {
     /**
-     * Urutan tahap per skema. Timeline transaksi berhenti di Keuangan (TJP 5 tahap, MPP 4 tahap);
+     * Urutan tahap per skema. Timeline transaksi berhenti di Keuangan (TJP 5 tahap, MPP 5 tahap);
      * Operasi & Gudang bukan tahap timeline lagi — keduanya bagian dari modul Pengolahan terpisah.
      * Tahap dengan 'model' null (pengadaan & keuangan) beroperasi di level PO (gabungan banyak
      * transaksi), bukan satu baris per transaksi — jadi tidak lewat TransaksiStageService::
@@ -32,11 +32,22 @@ class TransaksiStages
                 ...$afterMakloon,
             ],
             'MPP' => [
-                ['role' => 'makloon', 'model' => DataMakloonMpp::class],
+                ['role' => 'makloon_kirim', 'model' => DataMakloonMpp::class, 'actor_role' => 'makloon', 'label' => 'Makloon Kirim'],
+                ['role' => 'makloon_terima', 'model' => null, 'actor_role' => 'makloon', 'label' => 'Makloon Terima'],
                 ...$afterMakloon,
             ],
             default => [],
         };
+    }
+
+    public static function actorRole(array $stage): string
+    {
+        return $stage['actor_role'] ?? $stage['role'];
+    }
+
+    public static function label(array $stage): string
+    {
+        return $stage['label'] ?? str($stage['role'])->replace('_', ' ')->title()->toString();
     }
 
     public static function indexOfRole(string $skema, string $role): ?int

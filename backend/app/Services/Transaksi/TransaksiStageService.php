@@ -40,7 +40,9 @@ class TransaksiStageService
 
     public function submitStage(Transaksi $transaksi, User $actor, string $role, string $modelClass, array $data): Model
     {
-        $this->assertActorRole($actor, $role);
+        if ($transaksi->skema === 'MPP' && $role === 'makloon' && $transaksi->current_stage === 'makloon_kirim') {
+            $role = 'makloon_kirim';
+        }
 
         if ($transaksi->current_stage !== $role) {
             abort(422, 'Transaksi bukan sedang berada di tahap ini.');
@@ -51,8 +53,13 @@ class TransaksiStageService
             abort(422, 'Tahap tidak dikenal untuk skema ini.');
         }
 
+        $this->assertActorRole($actor, TransaksiStages::actorRole(TransaksiStages::stageAt($transaksi->skema, $index)));
+
         if ($index > 0) {
-            $prevStage = TransaksiStages::stageAt($transaksi->skema, $index - 1);
+            $prevStage = $this->previousDataStage($transaksi->skema, $index);
+            if ($prevStage === null) {
+                abort(422, 'Data tahap sebelumnya belum diterima.');
+            }
             $prevRecord = $prevStage['model']::where('transaksi_id', $transaksi->id_transaksi)->first();
             if (! $prevRecord || $prevRecord->status !== 'diterima') {
                 abort(422, 'Data tahap sebelumnya belum diterima.');
@@ -93,18 +100,27 @@ class TransaksiStageService
     {
         [$index, $prevStage, $record] = $this->pendingReview($transaksi, $actor);
 
-        $record->status = 'diterima';
-        $record->locked_at = now();
-        $record->locked_by = $actor->id;
-        $record->save();
+        return DB::transaction(function () use ($transaksi, $actor, $index, $prevStage, $record) {
+            $record->status = 'diterima';
+            $record->locked_at = now();
+            $record->locked_by = $actor->id;
+            $record->save();
 
-        $this->auditLog->log($actor, 'terima', $transaksi->id_transaksi, [
-            'stage' => $prevStage['role'],
-            'review_stage' => $transaksi->current_stage,
-            'model' => class_basename($record),
-        ]);
+            $this->auditLog->log($actor, 'terima', $transaksi->id_transaksi, [
+                'stage' => $prevStage['role'],
+                'review_stage' => $transaksi->current_stage,
+                'model' => class_basename($record),
+            ]);
 
-        return $record;
+            $currentStage = TransaksiStages::stageAt($transaksi->skema, $index);
+            $nextStage = TransaksiStages::stageAt($transaksi->skema, $index + 1);
+            if (($currentStage['role'] ?? null) === 'makloon_terima' && ($currentStage['model'] ?? null) === null && $nextStage !== null) {
+                $transaksi->current_stage = $nextStage['role'];
+                $transaksi->save();
+            }
+
+            return $record;
+        });
     }
 
     public function tolak(Transaksi $transaksi, User $actor, string $catatan): Model
@@ -140,14 +156,17 @@ class TransaksiStageService
 
     private function pendingReview(Transaksi $transaksi, User $actor): array
     {
-        $this->assertActorRole($actor, $transaksi->current_stage);
-
         $index = TransaksiStages::indexOfRole($transaksi->skema, $transaksi->current_stage);
         if ($index === null || $index === 0) {
             abort(422, 'Tidak ada data tahap sebelumnya untuk direview.');
         }
 
+        $this->assertActorRole($actor, TransaksiStages::actorRole(TransaksiStages::stageAt($transaksi->skema, $index)));
+
         $prevStage = TransaksiStages::stageAt($transaksi->skema, $index - 1);
+        if (($prevStage['model'] ?? null) === null) {
+            abort(422, 'Tidak ada data tahap sebelumnya untuk direview.');
+        }
         $record = $prevStage['model']::where('transaksi_id', $transaksi->id_transaksi)->first();
 
         if (! $record || $record->status !== 'menunggu_review') {
@@ -163,6 +182,18 @@ class TransaksiStageService
         if ($actorRole !== $expectedRole && $actorRole !== 'admin') {
             abort(403, 'Anda tidak berwenang melakukan aksi ini.');
         }
+    }
+
+    private function previousDataStage(string $skema, int $index): ?array
+    {
+        for ($i = $index - 1; $i >= 0; $i--) {
+            $stage = TransaksiStages::stageAt($skema, $i);
+            if (($stage['model'] ?? null) !== null) {
+                return $stage;
+            }
+        }
+
+        return null;
     }
 
     /**

@@ -6,6 +6,7 @@ import api from '../lib/api'
 import { apiErrorMessage } from '../lib/apiError'
 import { uploadSemuaFoto } from '../lib/uploadFoto'
 import FotoPicker from '../components/FotoPicker'
+import KabupatenSelect from '../components/KabupatenSelect'
 
 type FormState = {
   id_pemasok: string
@@ -73,7 +74,7 @@ export default function TransaksiMakloonBaruPage() {
     },
     onSuccess: ({ idTransaksi, gagal }) => {
       setFotoGagal(gagal)
-      toast.success(`Transaksi ${idTransaksi} dibuat & dikirim ke UB Jastasma.`)
+      toast.success(`Transaksi ${idTransaksi} dibuat & dikirim ke Makloon Terima.`)
       gagal.forEach((f) => toast.error(`Foto "${fotoLabel(f)}" gagal diupload, coba ulangi.`))
       if (gagal.length === 0) navigate('/dashboard')
     },
@@ -117,7 +118,7 @@ export default function TransaksiMakloonBaruPage() {
           </h1>
           <p className="mt-3 max-w-lg text-sm leading-6 text-white/70">
             Makloon membuat transaksi dan mengisi data bongkar, lokasi asal, kuantum, dan dokumen.
-            Transaksi langsung dikirim ke UB Jastasma setelah disimpan.
+            Transaksi masuk ke Makloon Terima setelah disimpan, lalu diteruskan ke UB Jastasma setelah diterima.
           </p>
         </div>
       </section>
@@ -191,12 +192,7 @@ export default function TransaksiMakloonBaruPage() {
                 />
               </Field>
               <Field label="Kabupaten">
-                <input
-                  required
-                  className="input"
-                  value={form.kabupaten}
-                  onChange={(e) => setField('kabupaten', e.target.value)}
-                />
+                <KabupatenSelect value={form.kabupaten} onChange={(value) => setField('kabupaten', value)} />
               </Field>
             </div>
           </Section>
@@ -253,7 +249,7 @@ export default function TransaksiMakloonBaruPage() {
           </Section>
 
           <div className="flex flex-col gap-3 bg-primary-tint/40 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
-            <p className="text-xs text-slate-500">Transaksi akan dikirim ke UB Jastasma setelah disimpan.</p>
+            <p className="text-xs text-slate-500">Transaksi akan dikirim ke Makloon Terima setelah disimpan.</p>
             <button
               type="submit"
               disabled={mutation.isPending}

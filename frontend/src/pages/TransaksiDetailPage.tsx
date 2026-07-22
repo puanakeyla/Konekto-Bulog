@@ -12,6 +12,7 @@ import FormHero from '../components/FormHero'
 import ConfirmDialog from '../components/ConfirmDialog'
 import { SkeletonTimeline } from '../components/Skeleton'
 import MakloonCombobox from '../components/MakloonCombobox'
+import KabupatenSelect from '../components/KabupatenSelect'
 import GabungPoForm from '../components/pengadaan/GabungPoForm'
 import PoInForm from '../components/pengadaan/PoInForm'
 import PembayaranForm from '../components/pengadaan/PembayaranForm'
@@ -86,6 +87,8 @@ type StageConfig = {
 const STAGES: StageConfig[] = [
   { id: 'jemput_pangan', label: 'Jemput Pangan', owner: 'Jemput Pangan', dataKeys: ['data_jemput_pangan'], helper: 'Input pemasok, kuantum awal, tujuan makloon, dan dokumen lapangan.' },
   { id: 'makloon', label: 'Makloon', owner: 'Makloon', dataKeys: ['data_makloon_tjp', 'data_makloon_mpp'], helper: 'Input data bongkar dan dokumen timbang dari makloon.' },
+  { id: 'makloon_kirim', label: 'Makloon Kirim', owner: 'Makloon', dataKeys: ['data_makloon_mpp'], helper: 'Makloon membuat data MPP dan mengirimkannya untuk pengecekan internal.' },
+  { id: 'makloon_terima', label: 'Makloon Terima', owner: 'Makloon', dataKeys: [], helper: 'Makloon mengecek data MPP sebelum diteruskan ke UB Jastasma.' },
   { id: 'ub_jastasma', label: 'UB Jastasma', owner: 'UB Jastasma', dataKeys: ['data_ub_jastasma'], helper: 'Cek mutu gabah sebelum transaksi masuk pengadaan.' },
   { id: 'pengadaan', label: 'Pengadaan', owner: 'Pengadaan', dataKeys: [], helper: 'Gabungkan transaksi yang diterima menjadi PO dan isi nomor IN.' },
   { id: 'keuangan', label: 'Keuangan', owner: 'Keuangan', dataKeys: [], helper: 'Input No. SPP dan tanggal pembayaran PO.' },
@@ -104,6 +107,8 @@ const STAGE_ICONS: Record<string, React.ReactNode> = {
     </>
   ),
   makloon: <path d="M2 16V7l4 2.5V7l4 2.5V4.5l6 3.5V16z M6 16v-3 M11 16v-3" />,
+  makloon_kirim: <path d="M2 16V7l4 2.5V7l4 2.5V4.5l6 3.5V16z M6 16v-3 M11 16v-3 M13 7.5l3 2.5-3 2.5 M16 10H9" />,
+  makloon_terima: <path d="M2 16V7l4 2.5V7l4 2.5V4.5l6 3.5V16z M6 16v-3 M11 16v-3 M9.5 10.5l2 2 4-4" />,
   ub_jastasma: <path d="M7 2.5h4 M8.5 2.5v4l-4 7.5a1 1 0 0 0 .9 1.5h7.2a1 1 0 0 0 .9-1.5l-4-7.5v-4 M6.3 11.5h5.4" />,
   pengadaan: <path d="M4.5 2.5h6l3.5 3.5V15.5h-9.5z M10.5 2.5v3.5h3.5 M7 9.5h4 M7 12h4" />,
   keuangan: <path d="M2 5.5h14v8H2z M2 8.5h14 M12 11.5h2.5" />,
@@ -199,6 +204,7 @@ function fotoLabel(key: string) {
 function photoFieldsFor(stageId: string, skema: 'TJP' | 'MPP') {
   if (stageId === 'jemput_pangan') return JEMPUT_PANGAN_FOTO_FIELDS
   if (stageId === 'makloon') return skema === 'MPP' ? MAKLOON_MPP_FOTO_FIELDS : MAKLOON_FOTO_FIELDS
+  if (stageId === 'makloon_kirim') return MAKLOON_MPP_FOTO_FIELDS
   if (stageId === 'ub_jastasma') return UB_FOTO_FIELDS
   return []
 }
@@ -221,10 +227,41 @@ function labelOf(key: string) {
 // /operasi & /gudang. Timeline berhenti di Keuangan. Definisi keduanya tetap ada di STAGES
 // untuk keperluan lookup label (mis. current_stage, riwayat penolakan).
 const TIMELINE_HIDDEN = new Set(['operasi', 'gudang'])
+const STAGE_ACTOR_ROLES: Record<string, string> = {
+  makloon_kirim: 'makloon',
+  makloon_terima: 'makloon',
+}
 
 function stagesFor(skema: 'TJP' | 'MPP') {
-  const base = skema === 'MPP' ? STAGES.filter((stage) => stage.id !== 'jemput_pangan') : STAGES
+  const base = skema === 'MPP'
+    ? STAGES.filter((stage) => !['jemput_pangan', 'makloon'].includes(stage.id))
+    : STAGES.filter((stage) => !['makloon_kirim', 'makloon_terima'].includes(stage.id))
   return base.filter((stage) => !TIMELINE_HIDDEN.has(stage.id))
+}
+
+function actorRoleFor(stageId: string) {
+  return STAGE_ACTOR_ROLES[stageId] ?? stageId
+}
+
+function pendingReviewFor(activeStages: StageConfig[], currentIndex: number, transaksi: TransaksiDetail) {
+  if (currentIndex <= 0) return null
+
+  const currentStage = activeStages[currentIndex]
+  for (let i = currentIndex - 1; i >= 0; i -= 1) {
+    const previousStage = activeStages[i]
+    const data = previousStage.dataKeys
+      .map((key) => transaksi[key] as StageData | null)
+      .find((item) => item?.status === 'menunggu_review')
+
+    if (data) {
+      return {
+        stageId: currentStage.dataKeys.length === 0 ? currentStage.id : previousStage.id,
+        data,
+      }
+    }
+  }
+
+  return null
 }
 
 function textField(data: StageData | null | undefined, key: string) {
@@ -383,7 +420,7 @@ export default function TransaksiDetailPage() {
     onSuccess: ({ gagal }) => {
       setFotoMakloonGagal(gagal)
       invalidate()
-      toast.success('Data Makloon dikirim, transaksi diteruskan ke UB Jastasma.')
+      toast.success(transaksi?.skema === 'MPP' ? 'Data Makloon dikirim untuk proses Makloon Terima.' : 'Data Makloon dikirim, transaksi diteruskan ke UB Jastasma.')
       gagal.forEach((f) => toast.error(`Foto "${fotoLabel(f)}" gagal diupload, coba ulangi.`))
     },
     onError: (err) => toast.error(apiErrorMessage(err, 'Gagal menyimpan data Makloon.')),
@@ -435,12 +472,10 @@ export default function TransaksiDetailPage() {
   const role = user?.role.nama_role
   const activeStages = stagesFor(transaksi.skema)
   const currentIndex = activeStages.findIndex((stage) => stage.id === transaksi.current_stage)
-  const pendingData = activeStages
-    .flatMap((stage) => stage.dataKeys.map((key) => ({ stageId: stage.id, data: transaksi[key] as StageData | null })))
-    .find((item) => item.data?.status === 'menunggu_review') ?? null
-  const canAct = role === transaksi.current_stage || role === 'admin'
+  const pendingData = pendingReviewFor(activeStages, currentIndex, transaksi)
+  const canAct = role === actorRoleFor(transaksi.current_stage) || role === 'admin'
   const canFillJemputPangan = canAct && !pendingData && transaksi.skema === 'TJP' && transaksi.current_stage === 'jemput_pangan' && transaksi.data_jemput_pangan?.status === 'ditolak'
-  const canFillMakloon = canAct && !pendingData && transaksi.current_stage === 'makloon' && (transaksi.skema === 'TJP' || transaksi.skema === 'MPP')
+  const canFillMakloon = canAct && !pendingData && ((transaksi.skema === 'TJP' && transaksi.current_stage === 'makloon') || (transaksi.skema === 'MPP' && transaksi.current_stage === 'makloon_kirim'))
   const canFillUb = canAct && !pendingData && transaksi.current_stage === 'ub_jastasma'
   // Tahap PO (level PO, dikerjakan inline). po = PO tempat transaksi ini bernaung (null bila belum).
   // PENTING: setelah digabung, backend memindahkan current_stage transaksi langsung ke 'keuangan'
@@ -474,6 +509,7 @@ export default function TransaksiDetailPage() {
   const completedCount = activeStages.filter((stage) => {
     if (stage.id === 'pengadaan') return pengadaanComplete
     if (stage.id === 'keuangan') return keuanganComplete
+    if (stage.id === 'makloon_terima') return transaksi.data_makloon_mpp?.status === 'diterima'
     const data = stage.dataKeys.map((key) => transaksi[key] as StageData | null).find(Boolean) ?? null
     return !!data && data.status === 'diterima'
   }).length
@@ -486,7 +522,7 @@ export default function TransaksiDetailPage() {
     <div className="min-h-screen bg-surface">
       <FormHero
         title={transaksi.id_transaksi}
-        subtitle={`Alur ${transaksi.skema === 'TJP' ? 'TJP: Jemput Pangan ke Makloon lalu UB Jastasma' : 'MPP: Makloon langsung ke UB Jastasma'} · dibuat ${formatDateTime(transaksi.created_at)}`}
+        subtitle={`Alur ${transaksi.skema === 'TJP' ? 'TJP: Jemput Pangan ke Makloon lalu UB Jastasma' : 'MPP: Makloon Kirim ke Makloon Terima lalu UB Jastasma'} · dibuat ${formatDateTime(transaksi.created_at)}`}
         eyebrow="Perum Bulog Kanwil Lampung"
         badge={`Skema ${transaksi.skema}`}
       />
@@ -534,6 +570,7 @@ export default function TransaksiDetailPage() {
               // karena current_stage transaksi sudah pindah ke 'keuangan' begitu PO dibuat.
               const isComplete = stage.id === 'pengadaan' ? pengadaanComplete
                 : stage.id === 'keuangan' ? keuanganComplete
+                : stage.id === 'makloon_terima' ? transaksi.data_makloon_mpp?.status === 'diterima'
                 : (!!data && data.status === 'diterima')
               const isCurrent = stage.id === 'pengadaan' ? pengadaanCurrent
                 : stage.id === 'keuangan' ? keuanganCurrent
@@ -541,15 +578,16 @@ export default function TransaksiDetailPage() {
               const isFuture = stage.id === 'pengadaan' ? (!po && !pengadaanCurrent && !pengadaanComplete)
                 : stage.id === 'keuangan' ? (!keuanganCurrent && !keuanganComplete)
                 : (currentIndex >= 0 && index > currentIndex && !data)
-              const canReviewThis = canAct && isPendingReview && stage.id === pendingData?.stageId
+              const canReviewThis = canAct && !!pendingData?.data && stage.id === pendingData.stageId
               const showJemputPanganForm = stage.id === 'jemput_pangan' && canFillJemputPangan
-              const showMakloonForm = stage.id === 'makloon' && canFillMakloon
+              const showMakloonForm = (stage.id === 'makloon' || stage.id === 'makloon_kirim') && canFillMakloon
               const showUbForm = stage.id === 'ub_jastasma' && canFillUb
               const showPengadaanCombine = stage.id === 'pengadaan' && showCombine
               const showPengadaanIn = stage.id === 'pengadaan' && showIsiIn
               const showKeuanganReviewCard = stage.id === 'keuangan' && showKeuanganReview
               const showKeuanganBayar = stage.id === 'keuangan' && showBayar
               const showPoPanel = showPengadaanCombine || showPengadaanIn || showKeuanganReviewCard || showKeuanganBayar
+              const blockedByPendingPrevious = isCurrent && !!pendingData?.data && stage.id !== pendingData.stageId && !showPoPanel
 
               return (
                 <li key={stage.id} className="relative pl-12">
@@ -576,7 +614,7 @@ export default function TransaksiDetailPage() {
                     <div className="flex items-start justify-between gap-3">
                       <div>
                         <h2 className="section-title">{stage.label}{isCurrent && !isPendingReview && !showJemputPanganForm && !showMakloonForm && !showUbForm && !showPoPanel ? ' - sedang berjalan' : ''}</h2>
-                        <p className="mt-1 text-xs text-gray-500">{isComplete ? `Diterima oleh ${stage.owner}${data?.locked_at ? ' · ' + formatDateTime(String(data.locked_at)) : ''}` : isPendingReview ? `Menunggu dicek oleh ${STAGES.find((s) => s.id === transaksi.current_stage)?.owner ?? transaksi.current_stage}` : showJemputPanganForm || showMakloonForm || showUbForm || showPoPanel ? 'Giliran Anda mengisi data tahap ini' : isFuture ? 'Menunggu tahap sebelumnya' : stage.helper}</p>
+                        <p className="mt-1 text-xs text-gray-500">{isComplete ? `Diterima oleh ${stage.owner}${data?.locked_at ? ' · ' + formatDateTime(String(data.locked_at)) : ''}` : isPendingReview ? `Menunggu dicek oleh ${STAGES.find((s) => s.id === transaksi.current_stage)?.owner ?? transaksi.current_stage}` : showJemputPanganForm || showMakloonForm || showUbForm ? 'Giliran Anda mengisi data tahap ini' : showPoPanel ? 'Giliran Anda melanjutkan proses tahap ini' : canReviewThis ? 'Giliran Anda mengecek data tahap sebelumnya' : blockedByPendingPrevious ? 'Terima atau tolak tahap sebelumnya dahulu.' : isFuture ? 'Menunggu tahap sebelumnya' : stage.helper}</p>
                       </div>
                       {isCurrent && (
                         isPendingReview
@@ -765,7 +803,7 @@ function JemputPanganForm({ form, setForm, mutation, error, fotos, setFotos, pro
         <Field label="Plat mobil"><input required className="input" value={form.plat_mobil} onChange={(e) => setForm((prev: JemputPanganFormState) => ({ ...prev, plat_mobil: e.target.value }))} /></Field>
         <Field label="Desa"><input required className="input" value={form.desa} onChange={(e) => setForm((prev: JemputPanganFormState) => ({ ...prev, desa: e.target.value }))} /></Field>
         <Field label="Kecamatan"><input required className="input" value={form.kecamatan} onChange={(e) => setForm((prev: JemputPanganFormState) => ({ ...prev, kecamatan: e.target.value }))} /></Field>
-        <Field label="Kabupaten"><input required className="input" value={form.kabupaten} onChange={(e) => setForm((prev: JemputPanganFormState) => ({ ...prev, kabupaten: e.target.value }))} /></Field>
+        <Field label="Kabupaten"><KabupatenSelect value={form.kabupaten} onChange={(value) => setForm((prev: JemputPanganFormState) => ({ ...prev, kabupaten: value }))} /></Field>
         <Field label="Makloon tujuan"><MakloonCombobox value={form.makloon_user_id} onChange={(value) => setForm((prev: JemputPanganFormState) => ({ ...prev, makloon_user_id: value }))} /></Field>
         <Field label="Tanggal kirim"><input required type="date" className="input" value={form.tanggal_kirim} onChange={(e) => setForm((prev: JemputPanganFormState) => ({ ...prev, tanggal_kirim: e.target.value }))} /></Field>
         <Field label="Kuantum (kg)"><input required type="number" step="0.01" min="0" className="input" value={form.kuantum} onChange={(e) => setForm((prev: JemputPanganFormState) => ({ ...prev, kuantum: e.target.value }))} /></Field>
@@ -789,13 +827,13 @@ function MakloonMppForm({ form, setForm, mutation, error, fotos, setFotos, progr
         <Field label="Plat mobil"><input required className="input" value={form.plat_mobil} onChange={(e) => setForm((prev: MakloonMppFormState) => ({ ...prev, plat_mobil: e.target.value }))} /></Field>
         <Field label="Desa"><input required className="input" value={form.desa} onChange={(e) => setForm((prev: MakloonMppFormState) => ({ ...prev, desa: e.target.value }))} /></Field>
         <Field label="Kecamatan"><input required className="input" value={form.kecamatan} onChange={(e) => setForm((prev: MakloonMppFormState) => ({ ...prev, kecamatan: e.target.value }))} /></Field>
-        <Field label="Kabupaten"><input required className="input" value={form.kabupaten} onChange={(e) => setForm((prev: MakloonMppFormState) => ({ ...prev, kabupaten: e.target.value }))} /></Field>
+        <Field label="Kabupaten"><KabupatenSelect value={form.kabupaten} onChange={(value) => setForm((prev: MakloonMppFormState) => ({ ...prev, kabupaten: value }))} /></Field>
         <Field label="Tanggal bongkar"><input required type="date" className="input" value={form.tanggal_bongkar} onChange={(e) => setForm((prev: MakloonMppFormState) => ({ ...prev, tanggal_bongkar: e.target.value }))} /></Field>
         <Field label="Kuantum (kg)"><input required type="number" step="0.01" min="0" className="input" value={form.kuantum} onChange={(e) => setForm((prev: MakloonMppFormState) => ({ ...prev, kuantum: e.target.value }))} /></Field>
         <Field label="Jarak ke Makloon (km)"><input required type="number" step="0.01" min="0" className="input" value={form.jarak_ke_makloon_km} onChange={(e) => setForm((prev: MakloonMppFormState) => ({ ...prev, jarak_ke_makloon_km: e.target.value }))} /></Field>
       </div>
       <DokumenGrid fields={MAKLOON_MPP_FOTO_FIELDS} fotos={fotos} setFotos={setFotos} progress={progress} fotoGagal={fotoGagal} />
-      <div className="flex justify-end border-t border-border pt-4"><button type="submit" disabled={mutation.isPending || !ready} className="btn btn-primary">{mutation.isPending ? 'Mengirim...' : 'Kirim ke UB Jastasma'}</button></div>
+      <div className="flex justify-end border-t border-border pt-4"><button type="submit" disabled={mutation.isPending || !ready} className="btn btn-primary">{mutation.isPending ? 'Mengirim...' : 'Kirim ke Makloon Terima'}</button></div>
     </form>
   )
 }

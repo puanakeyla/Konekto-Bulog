@@ -13,6 +13,7 @@ use App\Models\Role;
 use App\Models\Transaksi;
 use App\Services\AuditLogService;
 use App\Services\Transaksi\TransaksiStageService;
+use App\Services\Transaksi\TransaksiStages;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -29,7 +30,16 @@ class TransaksiController extends Controller
 
     public function index(Request $request)
     {
-        $query = Transaksi::where('current_stage', $request->user()->role->nama_role)
+        $role = $request->user()->role->nama_role;
+        $stageRoles = collect(['TJP', 'MPP'])
+            ->flatMap(fn (string $skema) => TransaksiStages::sequence($skema))
+            ->filter(fn (array $stage) => TransaksiStages::actorRole($stage) === $role)
+            ->pluck('role')
+            ->unique()
+            ->values()
+            ->all();
+
+        $query = Transaksi::whereIn('current_stage', $stageRoles ?: [$role])
             ->with(['dataJemputPangan.makloon', 'dataMakloonMpp', 'dataMakloonTjp', 'dataUbJastasma', 'creator'])
             ->orderBy('created_at');
 
@@ -385,7 +395,8 @@ class TransaksiController extends Controller
             $model = DataMakloonMpp::class;
         }
 
-        $record = $this->service->submitStage($transaksi, $request->user(), 'makloon', $model, $data);
+        $stage = $transaksi->skema === 'MPP' ? 'makloon_kirim' : 'makloon';
+        $record = $this->service->submitStage($transaksi, $request->user(), $stage, $model, $data);
 
         return response()->json(['data' => $record]);
     }
