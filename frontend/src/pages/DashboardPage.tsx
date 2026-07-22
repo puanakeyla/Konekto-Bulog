@@ -4,6 +4,7 @@ import { useAuth } from '../hooks/useAuth'
 import { useRekapTransaksi, type RekapTransaksi } from '../hooks/useRekapTransaksi'
 import { useTransaksiList, type TransaksiListItem } from '../hooks/useTransaksiList'
 import { SkeletonMakloonGroups, SkeletonTable } from '../components/Skeleton'
+import DataSpreadsheet, { type SheetColumn } from '../components/DataSpreadsheet'
 
 type SkemaFilter = 'semua' | 'TJP' | 'MPP'
 
@@ -572,112 +573,66 @@ function PantauanPengadaanTable({ rows }: { rows: PantauanRow[] }) {
     ? rows.reduce((sum, row) => sum + (row.rataRendemen * row.gabahSudahDiolah), 0) / totals.gabahSudahDiolah
     : 0
   const totalPersenDiolah = totals.gabahAdministrasi > 0 ? (totals.gabahSudahDiolah / totals.gabahAdministrasi) * 100 : 0
+  const columns: SheetColumn<PantauanRow>[] = [
+    { key: 'nama', label: 'Nama Makloon', value: (row) => row.nama, filterable: true },
+    { key: 'gabah_diterima', label: 'GKP - Gabah Diterima', value: (row) => row.gabahDiterima, align: 'right' },
+    { key: 'gabah_administrasi', label: 'GKP - Gabah Administrasi', value: (row) => row.gabahAdministrasi, align: 'right' },
+    { key: 'belum_administrasi', label: 'GKP - Belum Diadministrasi', value: (row) => row.belumDiadministrasi, align: 'right' },
+    { key: 'gabah_diolah', label: 'GKP - Gabah Sudah Diolah', value: (row) => row.gabahSudahDiolah, align: 'right' },
+    { key: 'stok_gudang', label: 'GKP - Stok di Gudang ADM Ada', value: (row) => row.stokGudangAdmAda, align: 'right' },
+    { key: 'hgl', label: 'Hasil Olah - HGL', value: (row) => row.hgl, align: 'right' },
+    { key: 'broken', label: 'Hasil Olah - Broken', value: (row) => row.broken, align: 'right' },
+    { key: 'menir', label: 'Hasil Olah - Menir', value: (row) => row.menir, align: 'right' },
+    { key: 'katul', label: 'Hasil Olah - Katul', value: (row) => row.katul, align: 'right' },
+    { key: 'rendemen', label: 'Rata-rata Rendemen', value: (row) => pct(row.rataRendemen), align: 'right' },
+    { key: 'hgb', label: 'Realisasi Penerimaan HGB', value: (row) => row.realisasiPenerimaanHgb, align: 'right' },
+    { key: 'hgl_belum', label: 'HGL Belum Administrasi', value: (row) => row.hglBelumAdministrasi, align: 'right' },
+    { key: 'persen_diolah', label: 'Persentase Gabah Diolah vs Administrasi', value: (row) => pct(row.persenDiolah), align: 'right' },
+  ]
+  const summary = [
+    { label: 'Gabah Diterima', value: fmt(totals.gabahDiterima), tone: 'primary' },
+    { label: 'Gabah Administrasi', value: fmt(totals.gabahAdministrasi), tone: 'primary' },
+    { label: 'Belum Diadministrasi', value: fmt(totals.belumDiadministrasi), tone: 'warning' },
+    { label: 'Gabah Sudah Diolah', value: fmt(totals.gabahSudahDiolah), tone: 'success' },
+    { label: 'Rata-rata Rendemen', value: pct(totalRendemen), tone: 'accent' },
+    { label: 'Persentase Diolah', value: pct(totalPersenDiolah), tone: 'accent' },
+  ]
 
   return (
-    <section className="panel overflow-hidden">
-      <div className="flex flex-col gap-2 border-b border-border bg-white px-5 py-4 md:flex-row md:items-end md:justify-between">
+    <section className="panel panel-pad">
+      <div className="toolbar-card mb-4">
         <div>
           <p className="text-[0.68rem] font-bold uppercase tracking-[0.18em] text-accent">Pantauan Admin</p>
-          <h2 className="mt-1 text-base font-extrabold uppercase tracking-wide text-primary-dark">Pantauan Pengadaan GKP Tahun 2026</h2>
+          <h2 className="section-title mt-1">Pantauan Pengadaan GKP Tahun 2026</h2>
+          <p className="page-subtitle">Satu baris = satu makloon - {columns.length} kolom</p>
         </div>
         <span className="badge">{rows.length} makloon</span>
       </div>
 
-      <div className="overflow-x-auto">
-        <table className="min-w-[1740px] w-full table-fixed border-collapse text-[0.70rem] text-primary-dark">
-          <colgroup>
-            <col className="w-[44px]" />
-            <col className="w-[260px]" />
-            <col className="w-[112px]" />
-            <col className="w-[122px]" />
-            <col className="w-[124px]" />
-            <col className="w-[122px]" />
-            <col className="w-[130px]" />
-            <col className="w-[108px]" />
-            <col className="w-[108px]" />
-            <col className="w-[108px]" />
-            <col className="w-[108px]" />
-            <col className="w-[120px]" />
-            <col className="w-[134px]" />
-            <col className="w-[132px]" />
-            <col className="w-[156px]" />
-          </colgroup>
-          <thead className="text-center font-extrabold uppercase leading-tight">
-            <tr>
-              <th rowSpan={2} className="border border-slate-300 bg-slate-100 px-1.5 py-2">No</th>
-              <th rowSpan={2} className="border border-slate-300 bg-slate-100 px-3 py-2 text-left">Nama Makloon</th>
-              <th colSpan={5} className="border border-slate-300 bg-[#fff56a] px-2 py-2">GKP</th>
-              <th colSpan={4} className="border border-slate-300 bg-[#dbe8f5] px-2 py-2">Hasil Olah</th>
-              <th rowSpan={2} className="border border-slate-300 bg-[#8cff66] px-2 py-2">Rata-rata<br />rendemen</th>
-              <th rowSpan={2} className="border border-slate-300 bg-[#e7a13a] px-2 py-2">Realisasi<br />Penerimaan HGB</th>
-              <th rowSpan={2} className="border border-slate-300 bg-[#e7a13a] px-2 py-2">HGL Belum<br />Administrasi</th>
-              <th rowSpan={2} className="border border-slate-300 bg-[#fff0b5] px-2 py-2">Persentase Gabah<br />Diolah dibanding<br />Administrasi Gabah</th>
-            </tr>
-            <tr>
-              <th className="border border-slate-300 bg-[#fff56a] px-2 py-2">Gabah<br />Diterima</th>
-              <th className="border border-slate-300 bg-[#fff56a] px-2 py-2">Gabah<br />Administrasi</th>
-              <th className="border border-slate-300 bg-[#fff56a] px-2 py-2">Belum<br />Diadministrasi</th>
-              <th className="border border-slate-300 bg-[#fff56a] px-2 py-2">Gabah Sudah<br />Diolah</th>
-              <th className="border border-slate-300 bg-[#fff56a] px-2 py-2">Stok di Gudang<br />ADM ADA</th>
-              <th className="border border-slate-300 bg-[#dbe8f5] px-2 py-2">HGL</th>
-              <th className="border border-slate-300 bg-[#dbe8f5] px-2 py-2">Broken</th>
-              <th className="border border-slate-300 bg-[#dbe8f5] px-2 py-2">Menir</th>
-              <th className="border border-slate-300 bg-[#dbe8f5] px-2 py-2">Katul</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.length === 0 && (
-              <tr>
-                <td colSpan={16} className="border border-slate-300 px-4 py-8 text-center text-muted">Belum ada data transaksi yang dapat dipantau.</td>
-              </tr>
-            )}
-            {rows.map((row, index) => <PantauanRowView key={row.nama} row={row} index={index} />)}
-          </tbody>
-          {rows.length > 0 && (
-            <tfoot className="font-extrabold">
-              <tr>
-                <td colSpan={2} className="border border-slate-300 bg-slate-100 px-3 py-2 text-right">TOTAL</td>
-                <td className="border border-slate-300 bg-[#fffbc0] px-2 py-2 text-right">{fmt(totals.gabahDiterima)}</td>
-                <td className="border border-slate-300 bg-[#fffbc0] px-2 py-2 text-right">{fmt(totals.gabahAdministrasi)}</td>
-                <td className="border border-slate-300 bg-[#fffbc0] px-2 py-2 text-right">{fmt(totals.belumDiadministrasi)}</td>
-                <td className="border border-slate-300 bg-[#fffbc0] px-2 py-2 text-right">{fmt(totals.gabahSudahDiolah)}</td>
-                <td className="border border-slate-300 bg-[#fffbc0] px-2 py-2 text-right">{fmt(totals.stokGudangAdmAda)}</td>
-                <td className="border border-slate-300 bg-[#eaf2fa] px-2 py-2 text-right">{fmt(totals.hgl)}</td>
-                <td className="border border-slate-300 bg-[#eaf2fa] px-2 py-2 text-right">{fmt(totals.broken)}</td>
-                <td className="border border-slate-300 bg-[#eaf2fa] px-2 py-2 text-right">{fmt(totals.menir)}</td>
-                <td className="border border-slate-300 bg-[#eaf2fa] px-2 py-2 text-right">{fmt(totals.katul)}</td>
-                <td className="border border-slate-300 bg-[#caffb6] px-2 py-2 text-right">{pct(totalRendemen)}</td>
-                <td className="border border-slate-300 bg-[#f2be72] px-2 py-2 text-right">{fmt(totals.realisasiPenerimaanHgb)}</td>
-                <td className="border border-slate-300 bg-[#f2be72] px-2 py-2 text-right">{fmt(totals.hglBelumAdministrasi)}</td>
-                <td className="border border-slate-300 bg-[#fff0b5] px-2 py-2 text-right">{pct(totalPersenDiolah)}</td>
-              </tr>
-            </tfoot>
-          )}
-        </table>
+      <DataSpreadsheet
+        rows={rows}
+        columns={columns}
+        rowKey={(row) => row.nama}
+        namaFile="pantauan-pengadaan-gkp"
+        emptyTitle="Belum ada data pantauan"
+        emptyCopy="Data muncul setelah transaksi TJP atau MPP masuk rekap admin."
+      />
+
+      <div className="mt-4 rounded-lg border border-border bg-surface px-4 py-3">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <span className="section-title">Total pantauan pengadaan</span>
+          <span className="text-xs font-semibold text-slate-500">Dihitung dari seluruh makloon pada pantauan</span>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {summary.map((item) => (
+            <div key={item.label} className="rounded-lg border border-border bg-white px-4 py-3">
+              <div className="text-[0.68rem] font-bold uppercase tracking-[0.14em] text-slate-500">{item.label}</div>
+              <div className={`mt-1 text-2xl font-extrabold ${item.tone === 'warning' ? 'text-warning' : item.tone === 'success' ? 'text-success' : item.tone === 'accent' ? 'text-accent' : 'text-primary-dark'}`}>{item.value}</div>
+            </div>
+          ))}
+        </div>
       </div>
     </section>
-  )
-}
-
-function PantauanRowView({ row, index }: { row: PantauanRow; index: number }) {
-  return (
-    <tr className="odd:bg-white even:bg-slate-50 hover:bg-primary-tint/50">
-      <td className="border border-slate-300 bg-slate-100 px-2 py-1.5 text-center font-semibold">{index + 1}</td>
-      <td className="border border-slate-300 bg-slate-100 px-3 py-1.5 font-semibold uppercase">{row.nama}</td>
-      <td className="border border-slate-300 bg-[#ffff68] px-2 py-1.5 text-right">{fmt(row.gabahDiterima)}</td>
-      <td className="border border-slate-300 bg-[#ffff68] px-2 py-1.5 text-right">{fmt(row.gabahAdministrasi)}</td>
-      <td className="border border-slate-300 bg-[#ffff68] px-2 py-1.5 text-right">{fmt(row.belumDiadministrasi)}</td>
-      <td className="border border-slate-300 bg-[#ffff68] px-2 py-1.5 text-right">{fmt(row.gabahSudahDiolah)}</td>
-      <td className="border border-slate-300 bg-[#ffff68] px-2 py-1.5 text-right">{fmt(row.stokGudangAdmAda)}</td>
-      <td className="border border-slate-300 bg-[#dbe8f5] px-2 py-1.5 text-right">{fmt(row.hgl)}</td>
-      <td className="border border-slate-300 bg-[#dbe8f5] px-2 py-1.5 text-right">{fmt(row.broken)}</td>
-      <td className="border border-slate-300 bg-[#dbe8f5] px-2 py-1.5 text-right">{fmt(row.menir)}</td>
-      <td className="border border-slate-300 bg-[#dbe8f5] px-2 py-1.5 text-right">{fmt(row.katul)}</td>
-      <td className="border border-slate-300 bg-[#8cff66] px-2 py-1.5 text-right font-semibold">{pct(row.rataRendemen)}</td>
-      <td className="border border-slate-300 bg-[#e7a13a] px-2 py-1.5 text-right">{fmt(row.realisasiPenerimaanHgb)}</td>
-      <td className="border border-slate-300 bg-[#e7a13a] px-2 py-1.5 text-right">{fmt(row.hglBelumAdministrasi)}</td>
-      <td className="border border-slate-300 bg-[#fff0b5] px-2 py-1.5 text-right font-semibold">{pct(row.persenDiolah)}</td>
-    </tr>
   )
 }
 
