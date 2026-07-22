@@ -22,7 +22,7 @@ export default function PembayaranForm({ po, onChanged }: { po: PoItem; onChange
       setConfirmBayar(false)
       queryClient.invalidateQueries({ queryKey: ['po-list'] })
       onChanged?.()
-      toast.success(`PO ${po.no_po} ditandai dibayarkan, diteruskan ke Operasi.`)
+      toast.success(`PO ${po.no_po} ditandai dibayarkan dan transaksi selesai.`)
     },
     onError: (err) => toast.error(apiErrorMessage(err, 'Gagal menyimpan pembayaran.')),
   })
@@ -59,7 +59,7 @@ export default function PembayaranForm({ po, onChanged }: { po: PoItem; onChange
       <ConfirmDialog
         open={confirmBayar}
         title="Tandai PO sudah dibayarkan?"
-        description={<>PO <strong>{po.no_po}</strong> akan ditandai sudah dibayarkan dan diteruskan ke tahap <strong>Operasi</strong>. Status pembayaran tidak dapat dibatalkan. Lanjutkan?</>}
+        description={<>PO <strong>{po.no_po}</strong> akan ditandai sudah dibayarkan dan transaksi selesai. Status pembayaran tidak dapat dibatalkan. Lanjutkan?</>}
         confirmLabel="Tandai Dibayarkan"
         loading={mutation.isPending}
         error={errorMessage}

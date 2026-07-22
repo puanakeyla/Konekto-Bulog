@@ -35,6 +35,10 @@ export type PoItem = {
   review_status?: ReviewStatus | null
   catatan_penolakan?: string | null
   current_stage?: string[]
+  review_timeline?: {
+    pengadaan?: { status: ReviewStatus | 'belum_ada'; catatan_penolakan: string | null; reviewed_by: number | null; reviewed_at: string | null }
+    keuangan?: { status: ReviewStatus | 'belum_ada'; catatan_penolakan: string | null; reviewed_by: number | null; reviewed_at: string | null }
+  }
   po_detail: PoDetailItem[]
   data_keuangan: DataKeuangan | null
 }

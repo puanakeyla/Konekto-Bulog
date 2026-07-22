@@ -40,6 +40,7 @@ class TransaksiController extends Controller
             ->all();
 
         $query = Transaksi::whereIn('current_stage', $stageRoles ?: [$role])
+            ->where('status_keseluruhan', 'berjalan')
             ->with(['dataJemputPangan.makloon', 'dataMakloonMpp', 'dataMakloonTjp', 'dataUbJastasma', 'creator'])
             ->orderBy('created_at');
 

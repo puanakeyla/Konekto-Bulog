@@ -130,6 +130,28 @@ class PoLifecycleTest extends TestCase
         $response->assertJsonPath('data.status_bayar', 'dibayarkan');
     }
 
+    public function test_transaksi_selesai_tidak_muncul_di_daftar_tindakan_keuangan(): void
+    {
+        [$poSelesai, $transaksiSelesaiIds] = $this->buatPoLengkap(1);
+        [$poMenunggu, $transaksiMenungguIds] = $this->buatPoLengkap(1);
+
+        $this->bayarPo($poSelesai, '2026-07-12', 'SPP-SELESAI-001');
+
+        $this->assertSame('selesai', Transaksi::find($transaksiSelesaiIds[0])->status_keseluruhan);
+        $this->assertSame('berjalan', Transaksi::find($transaksiMenungguIds[0])->status_keseluruhan);
+
+        Sanctum::actingAs($this->keuangan);
+
+        $response = $this->getJson('/api/transaksi');
+
+        $response->assertOk();
+        $ids = collect($response->json('data'))->pluck('id_transaksi')->all();
+
+        $this->assertNotContains($transaksiSelesaiIds[0], $ids);
+        $this->assertContains($transaksiMenungguIds[0], $ids);
+        $this->assertSame('keuangan', $poMenunggu->fresh()->poDetail()->first()->transaksi->current_stage);
+    }
+
     public function test_keuangan_tolak_po_lalu_pengadaan_revisi_mengirim_lagi_ke_keuangan(): void
     {
         [$po, $transaksiIds] = $this->buatPoLengkap(1);

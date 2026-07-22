@@ -139,6 +139,14 @@ const FIELD_LABELS: Record<string, string> = {
   ka3: 'KA3',
   hampa: 'Hampa',
   butir_hijau: 'Butir hijau',
+  no_po: 'No. PO',
+  no_spp: 'No. SPP',
+  status_po: 'Status PO',
+  total_kuantum: 'Total kuantum',
+  harga: 'Harga',
+  total_harga: 'Total harga',
+  status_bayar: 'Status bayar',
+  tanggal_bayar: 'Tanggal bayar',
 }
 
 const MAKLOON_FOTO_FIELDS = [
@@ -277,6 +285,36 @@ function numberIdField(data: StageData | null | undefined, key: string) {
   const value = data?.[key]
   if (value === null || value === undefined || value === '') return null
   return Number(value)
+}
+
+function poStageData(po: PoItem | null, stageId: string): StageData | null {
+  if (!po) return null
+
+  if (stageId === 'pengadaan') {
+    return {
+      status: po.review_status ?? 'menunggu_review',
+      locked_at: po.review_timeline?.pengadaan?.reviewed_at ?? null,
+      no_po: po.no_po,
+      no_spp: po.no_spp,
+      status_po: po.status,
+      total_kuantum: po.total_kuantum,
+      harga: po.harga,
+      total_harga: po.total_harga,
+    }
+  }
+
+  if (stageId === 'keuangan' && po.data_keuangan) {
+    return {
+      status: po.data_keuangan.review_status ?? (po.data_keuangan.status_bayar === 'dibayarkan' ? 'diterima' : 'menunggu_review'),
+      locked_at: po.review_timeline?.keuangan?.reviewed_at ?? null,
+      no_po: po.no_po,
+      no_spp: po.no_spp,
+      status_bayar: po.data_keuangan.status_bayar,
+      tanggal_bayar: po.data_keuangan.tanggal_bayar,
+    }
+  }
+
+  return null
 }
 
 export default function TransaksiDetailPage() {
@@ -488,7 +526,7 @@ export default function TransaksiDetailPage() {
   const poFillingIn = !!po && transaksi.current_stage === 'pengadaan' && (po.status === 'proses' || poRejected) // fase Pengadaan mengisi/memperbaiki PO
   const poWaitingReview = !!po && transaksi.current_stage === 'keuangan' && po.review_status === 'menunggu_review'
   const poAccepted = !!po && po.review_status === 'diterima'
-  const poPaid = po?.data_keuangan?.status_bayar === 'dibayarkan'
+  const poPaid = po?.data_keuangan?.status_bayar === 'dibayarkan' || po?.data_keuangan?.review_status === 'diterima'
   // Pengadaan: gabung PO (belum ada PO) lalu isi No. IN (PO 'proses'/ditolak).
   const showCombine = !po && transaksi.current_stage === 'pengadaan' && !pendingData && isPengadaanRole
   const showIsiIn = poFillingIn && isPengadaanRole
@@ -563,7 +601,9 @@ export default function TransaksiDetailPage() {
 
           <ol className="relative space-y-3 before:absolute before:left-4 before:top-5 before:h-[calc(100%-2.5rem)] before:w-px before:bg-border">
             {activeStages.map((stage, index) => {
-              const data = stage.dataKeys.map((key) => transaksi[key] as StageData | null).find(Boolean) ?? null
+              const data = stage.id === 'pengadaan' || stage.id === 'keuangan'
+                ? poStageData(po, stage.id)
+                : stage.dataKeys.map((key) => transaksi[key] as StageData | null).find(Boolean) ?? null
               const isPendingReview = !!data && data.status === 'menunggu_review'
               const isRejected = stage.id !== 'pengadaan' && stage.id !== 'keuangan' && !!data && data.status === 'ditolak'
               // Tahap PO (pengadaan/keuangan) diturunkan dari STATUS PO + role, bukan current_stage,
@@ -614,7 +654,7 @@ export default function TransaksiDetailPage() {
                     <div className="flex items-start justify-between gap-3">
                       <div>
                         <h2 className="section-title">{stage.label}{isCurrent && !isPendingReview && !showJemputPanganForm && !showMakloonForm && !showUbForm && !showPoPanel ? ' - sedang berjalan' : ''}</h2>
-                        <p className="mt-1 text-xs text-gray-500">{isComplete ? `Diterima oleh ${stage.owner}${data?.locked_at ? ' · ' + formatDateTime(String(data.locked_at)) : ''}` : isPendingReview ? `Menunggu dicek oleh ${STAGES.find((s) => s.id === transaksi.current_stage)?.owner ?? transaksi.current_stage}` : showJemputPanganForm || showMakloonForm || showUbForm ? 'Giliran Anda mengisi data tahap ini' : showPoPanel ? 'Giliran Anda melanjutkan proses tahap ini' : canReviewThis ? 'Giliran Anda mengecek data tahap sebelumnya' : blockedByPendingPrevious ? 'Terima atau tolak tahap sebelumnya dahulu.' : isFuture ? 'Menunggu tahap sebelumnya' : stage.helper}</p>
+                        <p className="mt-1 text-xs text-gray-500">{isComplete ? `Diterima oleh ${stage.owner}${data?.locked_at ? ' - ' + formatDateTime(String(data.locked_at)) : ''}` : isPendingReview ? `Menunggu dicek oleh ${STAGES.find((s) => s.id === transaksi.current_stage)?.owner ?? transaksi.current_stage}` : showJemputPanganForm || showMakloonForm || showUbForm ? 'Giliran Anda mengisi data tahap ini' : showPoPanel ? 'Giliran Anda melanjutkan proses tahap ini' : canReviewThis ? 'Giliran Anda mengecek data tahap sebelumnya' : blockedByPendingPrevious ? 'Terima atau tolak tahap sebelumnya dahulu.' : isFuture ? 'Menunggu tahap sebelumnya' : stage.helper}</p>
                       </div>
                       {isCurrent && (
                         isPendingReview
