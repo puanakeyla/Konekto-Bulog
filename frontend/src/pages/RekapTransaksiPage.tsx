@@ -106,8 +106,7 @@ function RejectedMarker({ row }: { row: RekapTransaksi }) {
 
 const COLS_UMUM: SheetColumn<RekapTransaksi>[] = [
   { key: 'id', label: 'ID Transaksi', value: (r) => r.id_transaksi },
-  { key: 'skema', label: 'Skema', value: (r) => r.skema, filterable: true },
-  { key: 'penanda', label: 'Penanda', value: rejectedText, render: (r) => <RejectedMarker row={r} />, filterable: true, searchable: true },
+  { key: 'penanda', label: 'Status Penolakan', value: rejectedText, render: (r) => <RejectedMarker row={r} />, filterable: true, searchable: true },
   { key: 'tahap', label: 'Tahap Saat Ini', value: (r) => labelTahap(r.current_stage) },
   { key: 'dibuat', label: 'Dibuat', value: (r) => tgl(r.created_at) },
   { key: 'makloon_nama', label: 'Makloon', value: (r) => r.nama_maklon, filterable: true },
@@ -126,15 +125,23 @@ const COLS_JP: SheetColumn<RekapTransaksi>[] = [
   { key: 'jp_jarak', label: 'JP · Jarak (km)', value: (r) => num(r.data_jemput_pangan?.jarak_ke_makloon_km), align: 'right' },
 ]
 
-const COLS_MAKLOON: SheetColumn<RekapTransaksi>[] = [
+// TJP: makloon hanya membongkar (tanggal + kuantum bongkar). Detail pemasok/kendaraan
+// ada di tahap Jemput Pangan, jadi tak diulang di sini.
+const COLS_MAKLOON_TJP: SheetColumn<RekapTransaksi>[] = [
+  { key: 'mk_tgl', label: 'Makloon · Tanggal Bongkar', value: (r) => tgl(r.data_makloon_tjp?.tanggal_bongkar) },
+  { key: 'mk_kuantum', label: 'Makloon · Kuantum Bongkar (kg)', value: (r) => num(r.data_makloon_tjp?.kuantum_bongkar), align: 'right' },
+]
+
+// MPP: makloon adalah titik masuk data, jadi detail pemasok/kendaraan/lokasi ada di sini.
+const COLS_MAKLOON_MPP: SheetColumn<RekapTransaksi>[] = [
   { key: 'mk_pemasok', label: 'Makloon · ID Pemasok', value: (r) => r.data_makloon_mpp?.id_pemasok ?? null },
   { key: 'mk_supir', label: 'Makloon · Supir', value: (r) => r.data_makloon_mpp?.supir ?? null },
   { key: 'mk_plat', label: 'Makloon · Plat Mobil', value: (r) => r.data_makloon_mpp?.plat_mobil ?? null },
   { key: 'mk_desa', label: 'Makloon · Desa', value: (r) => r.data_makloon_mpp?.desa ?? null },
   { key: 'mk_kec', label: 'Makloon · Kecamatan', value: (r) => r.data_makloon_mpp?.kecamatan ?? null },
   { key: 'mk_kab', label: 'Makloon · Kabupaten', value: (r) => r.data_makloon_mpp?.kabupaten ?? null },
-  { key: 'mk_tgl', label: 'Makloon · Tanggal Bongkar', value: (r) => tgl(r.data_makloon_tjp?.tanggal_bongkar ?? r.data_makloon_mpp?.tanggal_bongkar) },
-  { key: 'mk_kuantum', label: 'Makloon · Kuantum Bongkar (kg)', value: (r) => num(r.data_makloon_tjp?.kuantum_bongkar ?? r.data_makloon_mpp?.kuantum), align: 'right' },
+  { key: 'mk_tgl', label: 'Makloon · Tanggal Bongkar', value: (r) => tgl(r.data_makloon_mpp?.tanggal_bongkar) },
+  { key: 'mk_kuantum', label: 'Makloon · Kuantum (kg)', value: (r) => num(r.data_makloon_mpp?.kuantum), align: 'right' },
 ]
 
 const COLS_UB: SheetColumn<RekapTransaksi>[] = [
@@ -201,31 +208,38 @@ const DOKUMEN_UB: DokumenField[] = [
   { key: 'foto_lhpk_hpk', label: 'UB - Foto LHPK/HPK', role: 'ub_jastasma' },
 ]
 
-const GROUPS: Record<StageKey, SheetColumn<RekapTransaksi>[]> = {
-  jemput_pangan: COLS_JP,
-  makloon: COLS_MAKLOON,
-  ub_jastasma: COLS_UB,
-  pengadaan: COLS_PENGADAAN,
-  keuangan: COLS_KEUANGAN,
-}
-
 const JUDUL: Record<string, { title: string; badge: string; sub: string }> = {
   jemput_pangan: { title: 'Rekap Jemput Pangan', badge: 'Rekap Jemput Pangan', sub: 'Seluruh transaksi TJP beserta data Jemput Pangan.' },
-  makloon: { title: 'Rekap Makloon', badge: 'Rekap Makloon', sub: 'Data Jemput Pangan sampai Makloon dalam satu tabel.' },
-  ub_jastasma: { title: 'Rekap UB Jastasma', badge: 'Rekap UB Jastasma', sub: 'Data Jemput Pangan, Makloon, dan hasil uji mutu UB Jastasma.' },
-  pengadaan: { title: 'Rekap Pengadaan', badge: 'Rekap Pengadaan', sub: 'Data lapangan sampai penggabungan PO dan nomor IN.' },
-  keuangan: { title: 'Rekap Keuangan', badge: 'Rekap Keuangan', sub: 'Data lengkap lintas tahap sampai pembayaran PO.' },
-  admin: { title: 'Rekap Seluruh Tahap', badge: 'Rekap Admin', sub: 'Seluruh kolom dari Jemput Pangan sampai Keuangan.' },
+  makloon: { title: 'Rekap Makloon', badge: 'Rekap Makloon', sub: 'Data lapangan sampai Makloon, dipisah tabel TJP dan MPP.' },
+  ub_jastasma: { title: 'Rekap UB Jastasma', badge: 'Rekap UB Jastasma', sub: 'Data lapangan, Makloon, dan hasil uji mutu UB Jastasma, dipisah tabel TJP dan MPP.' },
+  pengadaan: { title: 'Rekap Pengadaan', badge: 'Rekap Pengadaan', sub: 'Data lapangan sampai penggabungan PO dan nomor IN, dipisah tabel TJP dan MPP.' },
+  keuangan: { title: 'Rekap Keuangan', badge: 'Rekap Keuangan', sub: 'Data lengkap lintas tahap sampai pembayaran PO, dipisah tabel TJP dan MPP.' },
+  admin: { title: 'Rekap Seluruh Tahap', badge: 'Rekap Admin', sub: 'Seluruh kolom lintas tahap, dipisah tabel TJP dan MPP.' },
 }
 
-/** Kolom kumulatif: semua tahap sampai (dan termasuk) tahap milik role. */
-function kolomUntukRole(role: string): SheetColumn<RekapTransaksi>[] {
+/** Skema yang relevan untuk role: Jemput Pangan hanya ada di alur TJP. */
+function skemaUntukRole(role: string): ('TJP' | 'MPP')[] {
+  return role === 'jemput_pangan' ? ['TJP'] : ['TJP', 'MPP']
+}
+
+/**
+ * Kolom kumulatif per skema: semua tahap sampai (dan termasuk) tahap milik role, tapi
+ * tahap Jemput Pangan hanya untuk TJP dan kolom Makloon menyesuaikan skema (TJP =
+ * bongkar saja, MPP = detail lapangan lengkap).
+ */
+function kolomUntukRoleSkema(role: string, skema: 'TJP' | 'MPP'): SheetColumn<RekapTransaksi>[] {
   const batas = role === 'admin' ? STAGE_ORDER.length - 1 : STAGE_ORDER.indexOf(role as StageKey)
   const colsUmum = ['makloon', 'ub_jastasma'].includes(role)
     ? COLS_UMUM.filter((col) => col.key !== 'tahap')
     : COLS_UMUM
   if (batas < 0) return colsUmum
-  const stageCols = STAGE_ORDER.slice(0, batas + 1).flatMap((s) => GROUPS[s])
+  const stageCols = STAGE_ORDER.slice(0, batas + 1).flatMap((s): SheetColumn<RekapTransaksi>[] => {
+    if (s === 'jemput_pangan') return skema === 'TJP' ? COLS_JP : []
+    if (s === 'makloon') return skema === 'TJP' ? COLS_MAKLOON_TJP : COLS_MAKLOON_MPP
+    if (s === 'ub_jastasma') return COLS_UB
+    if (s === 'pengadaan') return COLS_PENGADAAN
+    return COLS_KEUANGAN
+  })
   return [...colsUmum, ...stageCols]
 }
 
@@ -392,9 +406,8 @@ export default function RekapTransaksiPage() {
   const [editForm, setEditForm] = useState<RekapEditForm | null>(null)
   const [dokumenTransaksi, setDokumenTransaksi] = useState<string | null>(null)
 
-  const columns = kolomUntukRole(role)
   const judul = JUDUL[role] ?? { title: 'Rekap Transaksi', badge: 'Rekap', sub: 'Rekap data transaksi lintas tahap.' }
-  const kuantumSummaries = kuantumSummaryUntukRole(role, rows)
+  const daftarSkema = skemaUntukRole(role)
 
   // Semua baris kini pasti terkunci (disaring backend), jadi kartu "terkunci" tak lagi
   // bermakna. Jumlah PO unik lebih informatif sekarang setelah kolom No. PO digabung.
@@ -430,6 +443,42 @@ export default function RekapTransaksiPage() {
     setEditForm(formDariRekap(row))
   }
 
+  // Aksi per baris dipakai ulang oleh tabel TJP maupun MPP.
+  const renderRowActions = (row: RekapTransaksi) => (
+    <div className="flex justify-center gap-2">
+      <button
+        type="button"
+        onClick={() => setDokumenTransaksi(row.id_transaksi)}
+        className="rounded-lg border border-border bg-white px-3 py-1.5 text-xs font-bold text-primary-dark transition-colors hover:border-primary hover:bg-primary-tint"
+      >
+        Dokumen
+      </button>
+      {role === 'admin' && (
+        <>
+          <button
+            type="button"
+            onClick={() => mulaiEdit(row)}
+            className="rounded-lg border border-primary/20 bg-primary-tint px-3 py-1.5 text-xs font-bold text-primary transition-colors hover:border-primary hover:bg-primary hover:text-white"
+          >
+            Edit
+          </button>
+          <button
+            type="button"
+            disabled={deleteMutation.isPending}
+            onClick={() => {
+              if (window.confirm(`Hapus transaksi ${row.id_transaksi}? Data tahap terkait ikut terhapus dari rekap.`)) {
+                deleteMutation.mutate(row)
+              }
+            }}
+            className="rounded-lg border border-danger/20 bg-danger-bg px-3 py-1.5 text-xs font-bold text-danger transition-colors hover:border-danger hover:bg-danger hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Hapus
+          </button>
+        </>
+      )}
+    </div>
+  )
+
   return (
     <div className="min-h-screen bg-surface">
       <FormHero
@@ -447,63 +496,38 @@ export default function RekapTransaksiPage() {
           <div className="stat-card"><div className="stat-label">Total PO</div><div className="stat-value">{totalPo}</div></div>
         </div>
 
-        <section className="panel panel-pad">
-          <div className="toolbar-card mb-4">
-            <div>
-              <h2 className="section-title">Tabel {judul.title}</h2>
-              <p className="page-subtitle">Satu baris = satu transaksi · {columns.length} kolom</p>
-            </div>
-            <span className="badge badge-success">Hanya menampilkan data yang sudah terkunci</span>
-          </div>
+        {daftarSkema.map((skema) => {
+          const rowsSkema = rows.filter((r) => r.skema === skema)
+          const columns = kolomUntukRoleSkema(role, skema)
+          const summaries = kuantumSummaryUntukRole(role, rowsSkema)
 
-          <DataSpreadsheet
-            rows={rows}
-            columns={columns}
-            rowKey={(r) => r.id_transaksi}
-            namaFile={`rekap-${role || 'transaksi'}`}
-            isLoading={isLoading}
-            isError={isError}
-            errorMessage={pesanKegagalan(error)}
-            emptyTitle="Belum ada transaksi"
-            emptyCopy="Data muncul setelah transaksi dibuat pada alur TJP atau MPP."
-            renderRowActions={(row) => (
-              <div className="flex justify-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setDokumenTransaksi(row.id_transaksi)}
-                  className="rounded-lg border border-border bg-white px-3 py-1.5 text-xs font-bold text-primary-dark transition-colors hover:border-primary hover:bg-primary-tint"
-                >
-                  Dokumen
-                </button>
-                {role === 'admin' && (
-                  <>
-                    <button
-                      type="button"
-                      onClick={() => mulaiEdit(row)}
-                      className="rounded-lg border border-primary/20 bg-primary-tint px-3 py-1.5 text-xs font-bold text-primary transition-colors hover:border-primary hover:bg-primary hover:text-white"
-                    >
-                      Edit
-                    </button>
-                    <button
-                      type="button"
-                      disabled={deleteMutation.isPending}
-                      onClick={() => {
-                        if (window.confirm(`Hapus transaksi ${row.id_transaksi}? Data tahap terkait ikut terhapus dari rekap.`)) {
-                          deleteMutation.mutate(row)
-                        }
-                      }}
-                      className="rounded-lg border border-danger/20 bg-danger-bg px-3 py-1.5 text-xs font-bold text-danger transition-colors hover:border-danger hover:bg-danger hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      Hapus
-                    </button>
-                  </>
-                )}
+          return (
+            <section key={skema} className="panel panel-pad">
+              <div className="toolbar-card mb-4">
+                <div>
+                  <h2 className="section-title">Tabel {judul.title} — {skema}</h2>
+                  <p className="page-subtitle">Satu baris = satu transaksi {skema} · {columns.length} kolom · {rowsSkema.length} baris</p>
+                </div>
+                <span className="badge badge-success">Hanya menampilkan data yang sudah terkunci</span>
               </div>
-            )}
-          />
 
-          <KuantumSummary items={kuantumSummaries} />
-        </section>
+              <DataSpreadsheet
+                rows={rowsSkema}
+                columns={columns}
+                rowKey={(r) => r.id_transaksi}
+                namaFile={`rekap-${role || 'transaksi'}-${skema.toLowerCase()}`}
+                isLoading={isLoading}
+                isError={isError}
+                errorMessage={pesanKegagalan(error)}
+                emptyTitle={`Belum ada transaksi ${skema}`}
+                emptyCopy={`Data muncul setelah transaksi dibuat pada alur ${skema}.`}
+                renderRowActions={renderRowActions}
+              />
+
+              <KuantumSummary items={summaries} />
+            </section>
+          )
+        })}
       </div>
 
       {editing && editForm && (
