@@ -8,6 +8,7 @@ import { apiErrorMessage } from '../lib/apiError'
 import { useAuth } from '../hooks/useAuth'
 import { uploadSemuaFoto } from '../lib/uploadFoto'
 import { formatMoney, formatNumber } from '../lib/poFormat'
+import AngkaInput from '../components/AngkaInput'
 import FotoPicker from '../components/FotoPicker'
 import FormHero from '../components/FormHero'
 import ConfirmDialog from '../components/ConfirmDialog'
@@ -853,7 +854,7 @@ function JemputPanganForm({ form, setForm, mutation, error, fotos, setFotos, pro
         <Field label="Kabupaten"><KabupatenSelect value={form.kabupaten} onChange={(value) => setForm((prev: JemputPanganFormState) => ({ ...prev, kabupaten: value }))} /></Field>
         <Field label="Makloon tujuan"><MakloonCombobox value={form.makloon_user_id} onChange={(value) => setForm((prev: JemputPanganFormState) => ({ ...prev, makloon_user_id: value }))} /></Field>
         <Field label="Tanggal kirim"><input required type="date" className="input" value={form.tanggal_kirim} onChange={(e) => setForm((prev: JemputPanganFormState) => ({ ...prev, tanggal_kirim: e.target.value }))} /></Field>
-        <Field label="Kuantum (kg)"><input required type="number" step="0.01" min="0" className="input" value={form.kuantum} onChange={(e) => setForm((prev: JemputPanganFormState) => ({ ...prev, kuantum: e.target.value }))} /></Field>
+        <Field label="Kuantum (kg)"><AngkaInput required value={form.kuantum} onChange={(v) => setForm((prev: JemputPanganFormState) => ({ ...prev, kuantum: v }))} /></Field>
         <Field label="Jarak ke Makloon (km)"><input required type="number" step="0.01" min="0" className="input" value={form.jarak_ke_makloon_km} onChange={(e) => setForm((prev: JemputPanganFormState) => ({ ...prev, jarak_ke_makloon_km: e.target.value }))} /></Field>
       </div>
       <DokumenGrid fields={JEMPUT_PANGAN_FOTO_FIELDS} fotos={fotos} setFotos={setFotos} progress={progress} fotoGagal={fotoGagal} />
@@ -876,7 +877,7 @@ function MakloonMppForm({ form, setForm, mutation, error, fotos, setFotos, progr
         <Field label="Kecamatan"><input required className="input" value={form.kecamatan} onChange={(e) => setForm((prev: MakloonMppFormState) => ({ ...prev, kecamatan: e.target.value }))} /></Field>
         <Field label="Kabupaten"><KabupatenSelect value={form.kabupaten} onChange={(value) => setForm((prev: MakloonMppFormState) => ({ ...prev, kabupaten: value }))} /></Field>
         <Field label="Tanggal bongkar"><input required type="date" className="input" value={form.tanggal_bongkar} onChange={(e) => setForm((prev: MakloonMppFormState) => ({ ...prev, tanggal_bongkar: e.target.value }))} /></Field>
-        <Field label="Kuantum (kg)"><input required type="number" step="0.01" min="0" className="input" value={form.kuantum} onChange={(e) => setForm((prev: MakloonMppFormState) => ({ ...prev, kuantum: e.target.value }))} /></Field>
+        <Field label="Kuantum (kg)"><AngkaInput required value={form.kuantum} onChange={(v) => setForm((prev: MakloonMppFormState) => ({ ...prev, kuantum: v }))} /></Field>
         <Field label="Jarak ke Makloon (km)"><input required type="number" step="0.01" min="0" className="input" value={form.jarak_ke_makloon_km} onChange={(e) => setForm((prev: MakloonMppFormState) => ({ ...prev, jarak_ke_makloon_km: e.target.value }))} /></Field>
       </div>
       <DokumenGrid fields={MAKLOON_MPP_FOTO_FIELDS} fotos={fotos} setFotos={setFotos} progress={progress} fotoGagal={fotoGagal} />
@@ -892,7 +893,7 @@ function MakloonTjpForm({ form, setForm, mutation, error, fotos, setFotos, progr
       {mutation.isSuccess && fotoGagal.length > 0 && <div className="alert-warning">Data tersimpan, tapi {fotoGagal.length} foto gagal terupload.</div>}
       <div className="grid gap-4 @md:grid-cols-2">
         <Field label="Tanggal bongkar"><input required type="date" className="input" value={form.tanggal_bongkar} onChange={(e) => setForm((prev: any) => ({ ...prev, tanggal_bongkar: e.target.value }))} /></Field>
-        <Field label="Kuantum bongkar (kg)"><input required type="number" step="0.01" min="0" className="input" placeholder="0" value={form.kuantum_bongkar} onChange={(e) => setForm((prev: any) => ({ ...prev, kuantum_bongkar: e.target.value }))} /></Field>
+        <Field label="Kuantum bongkar (kg)"><AngkaInput required placeholder="0" value={form.kuantum_bongkar} onChange={(v) => setForm((prev: any) => ({ ...prev, kuantum_bongkar: v }))} /></Field>
       </div>
       <DokumenGrid fields={MAKLOON_FOTO_FIELDS} fotos={fotos} setFotos={setFotos} progress={progress} fotoGagal={fotoGagal} />
       <div className="flex justify-end border-t border-border pt-4"><button type="submit" disabled={mutation.isPending || !form.tanggal_bongkar || !form.kuantum_bongkar} className="btn btn-primary">{mutation.isPending ? 'Mengirim...' : 'Kirim ke UB Jastasma'}</button></div>

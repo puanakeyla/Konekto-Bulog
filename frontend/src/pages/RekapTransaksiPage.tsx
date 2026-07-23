@@ -4,6 +4,7 @@ import { toast } from 'sonner'
 import FormHero from '../components/FormHero'
 import DataSpreadsheet, { type SheetColumn } from '../components/DataSpreadsheet'
 import DokumenGaleriModal from '../components/DokumenGaleriModal'
+import AngkaInput from '../components/AngkaInput'
 import KabupatenSelect from '../components/KabupatenSelect'
 import { useAuth } from '../hooks/useAuth'
 import { useRekapTransaksi, type RekapTransaksi } from '../hooks/useRekapTransaksi'
@@ -628,7 +629,7 @@ function RekapEditModal({ row, form, makloonOptions, isSaving, onChange, onClose
                 </select>
               </label>
               <TextField type="date" label="Tanggal Kirim" value={form.jp_tanggal_kirim} onChange={(v) => onChange('jp_tanggal_kirim', v)} />
-              <TextField type="number" label="Kuantum (kg)" value={form.jp_kuantum} onChange={(v) => onChange('jp_kuantum', v)} />
+              <AngkaField label="Kuantum (kg)" value={form.jp_kuantum} onChange={(v) => onChange('jp_kuantum', v)} />
               <TextField type="number" label="Jarak ke Makloon (km)" value={form.jp_jarak} onChange={(v) => onChange('jp_jarak', v)} />
             </EditSection>
           )}
@@ -636,7 +637,7 @@ function RekapEditModal({ row, form, makloonOptions, isSaving, onChange, onClose
           {row.data_makloon_tjp && (
             <EditSection title="Makloon TJP" badge="Bongkar makloon">
               <TextField type="date" label="Tanggal Bongkar" value={form.mtjp_tanggal_bongkar} onChange={(v) => onChange('mtjp_tanggal_bongkar', v)} />
-              <TextField type="number" label="Kuantum Bongkar (kg)" value={form.mtjp_kuantum_bongkar} onChange={(v) => onChange('mtjp_kuantum_bongkar', v)} />
+              <AngkaField label="Kuantum Bongkar (kg)" value={form.mtjp_kuantum_bongkar} onChange={(v) => onChange('mtjp_kuantum_bongkar', v)} />
             </EditSection>
           )}
 
@@ -649,7 +650,7 @@ function RekapEditModal({ row, form, makloonOptions, isSaving, onChange, onClose
               <TextField label="Kecamatan" value={form.mmpp_kecamatan} onChange={(v) => onChange('mmpp_kecamatan', v)} />
               <SelectField label="Kabupaten"><KabupatenSelect required={false} value={form.mmpp_kabupaten} onChange={(v) => onChange('mmpp_kabupaten', v)} /></SelectField>
               <TextField type="date" label="Tanggal Bongkar" value={form.mmpp_tanggal_bongkar} onChange={(v) => onChange('mmpp_tanggal_bongkar', v)} />
-              <TextField type="number" label="Kuantum (kg)" value={form.mmpp_kuantum} onChange={(v) => onChange('mmpp_kuantum', v)} />
+              <AngkaField label="Kuantum (kg)" value={form.mmpp_kuantum} onChange={(v) => onChange('mmpp_kuantum', v)} />
               <TextField type="number" label="Jarak ke Makloon (km)" value={form.mmpp_jarak} onChange={(v) => onChange('mmpp_jarak', v)} />
             </EditSection>
           )}
@@ -668,7 +669,7 @@ function RekapEditModal({ row, form, makloonOptions, isSaving, onChange, onClose
             <EditSection title="Pengadaan & Keuangan" badge="PO, IN, dan pembayaran">
               <TextField label="No. PO" value={form.po_no} onChange={(v) => onChange('po_no', v)} />
               <TextField label="No. IN" value={form.po_in} onChange={(v) => onChange('po_in', v)} />
-              <TextField type="number" label="Harga/kg" value={form.po_harga} onChange={(v) => onChange('po_harga', v)} />
+              <AngkaField label="Harga/kg" value={form.po_harga} onChange={(v) => onChange('po_harga', v)} />
               <TextField label="No. SPP" value={form.po_spp} onChange={(v) => onChange('po_spp', v)} />
               <TextField type="date" label="Tanggal Bayar" value={form.po_tanggal_bayar} onChange={(v) => onChange('po_tanggal_bayar', v)} />
             </EditSection>
@@ -791,6 +792,16 @@ function SelectField({ label, children }: { label: string; children: ReactNode }
     <label className="block">
       <span className="label">{label}</span>
       {children}
+    </label>
+  )
+}
+
+// Field angka dengan pemisah ribuan langsung saat mengetik (kuantum & harga).
+function AngkaField({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
+  return (
+    <label className="block">
+      <span className="label">{label}</span>
+      <AngkaInput value={value} onChange={onChange} />
     </label>
   )
 }

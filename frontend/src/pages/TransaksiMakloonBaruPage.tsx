@@ -6,6 +6,7 @@ import api from '../lib/api'
 import { apiErrorMessage } from '../lib/apiError'
 import { uploadSemuaFoto } from '../lib/uploadFoto'
 import FotoPicker from '../components/FotoPicker'
+import AngkaInput from '../components/AngkaInput'
 import KabupatenSelect from '../components/KabupatenSelect'
 
 type FormState = {
@@ -209,15 +210,7 @@ export default function TransaksiMakloonBaruPage() {
                 />
               </Field>
               <Field label="Kuantum (kg)">
-                <input
-                  required
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  className="input"
-                  value={form.kuantum}
-                  onChange={(e) => setField('kuantum', e.target.value)}
-                />
+                <AngkaInput required value={form.kuantum} onChange={(v) => setField('kuantum', v)} />
               </Field>
               <Field label="Jarak ke Makloon (km)">
                 <input

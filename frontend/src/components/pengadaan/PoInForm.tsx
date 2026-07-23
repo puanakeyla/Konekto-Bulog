@@ -7,6 +7,7 @@ import { formatMoney, formatNumber } from '../../lib/poFormat'
 import type { PoItem } from '../../hooks/usePoList'
 import type { TransaksiListItem } from '../../hooks/useTransaksiList'
 import ConfirmDialog from '../ConfirmDialog'
+import AngkaInput from '../AngkaInput'
 
 // Kandidat & PO memakai sumber kuantum/pemasok/tanggal yang sama (MPP dari makloon MPP,
 // TJP dari jemput pangan + bongkar TJP). Dipakai untuk memfilter kandidat sekelompok PO.
@@ -195,7 +196,7 @@ export default function PoInForm({
 
         <div className="grid gap-4 @md:grid-cols-2">
           <label className="block"><span className="label">No. PO</span><input required className="input" value={noPoEdit} onChange={(e) => setNoPoEdit(e.target.value)} placeholder="Contoh: PO-0001/VII/2026" /></label>
-          <label className="block"><span className="label">Harga per kg</span><input required type="number" step="0.01" min="0" className="input" value={hargaEdit} onChange={(e) => setHargaEdit(e.target.value)} /></label>
+          <label className="block"><span className="label">Harga per kg</span><AngkaInput required value={hargaEdit} onChange={setHargaEdit} /></label>
           <label className="block"><span className="label">Total Kuantum</span><input className="input" readOnly value={`${formatNumber(totalKuantumSel)} kg`} /></label>
           <label className="block"><span className="label">Total harga</span><input className="input" readOnly value={formatMoney(totalKuantumSel * Number(hargaEdit || 0))} /></label>
         </div>

@@ -6,6 +6,7 @@ import { apiErrorMessage } from '../../lib/apiError'
 import { formatDate, formatMoney, formatNumber } from '../../lib/poFormat'
 import type { TransaksiListItem } from '../../hooks/useTransaksiList'
 import ConfirmDialog from '../ConfirmDialog'
+import AngkaInput from '../AngkaInput'
 
 // Kunci pengelompokan PO: transaksi hanya boleh digabung bila pemasok, tanggal bongkar, dan
 // kuantum berasal dari sumber yang konsisten (MPP dari data makloon MPP, TJP dari jemput pangan +
@@ -188,7 +189,7 @@ export default function GabungPoForm({
 
           <form className="grid gap-4 @md:grid-cols-2" onSubmit={(e) => { e.preventDefault(); setConfirmGabung(true) }}>
             <label className="block"><span className="label">No. PO</span><input required className="input" value={noPo} onChange={(e) => setNoPo(e.target.value)} placeholder="Contoh: PO-0001/VII/2026" /></label>
-            <label className="block"><span className="label">Harga per kg</span><input required type="number" step="0.01" min="0" className="input" value={harga} onChange={(e) => setHarga(e.target.value)} /></label>
+            <label className="block"><span className="label">Harga per kg</span><AngkaInput required value={harga} onChange={setHarga} /></label>
             <label className="block"><span className="label">Total Kuantum</span><input className="input" readOnly value={`${formatNumber(totalSelectedKuantum)} kg`} /></label>
             <label className="block"><span className="label">Total harga</span><input className="input" readOnly value={formatMoney(totalSelectedKuantum * Number(harga || 0))} /></label>
             <div className="@md:col-span-2 flex flex-wrap items-center justify-between gap-3">
