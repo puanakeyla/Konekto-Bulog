@@ -54,6 +54,7 @@ Route::middleware('auth:sanctum')->group(function () {
     // dicocokkan lebih dulu (first-match-wins berdasar urutan registrasi).
     Route::patch('/transaksi/{transaksi}/admin-rekap', [TransaksiController::class, 'adminUpdateRekap'])
         ->middleware('role:admin');
+    Route::get('/transaksi/{transaksi}/foto', [FotoController::class, 'index']);
     Route::get('/transaksi/{transaksi}/foto/{jenisFoto}', [FotoController::class, 'link']);
     Route::delete('/transaksi/{transaksi}/foto/{jenisFoto}', [FotoController::class, 'destroy'])
         ->middleware('role:admin');

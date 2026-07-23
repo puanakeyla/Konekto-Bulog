@@ -44,13 +44,27 @@ class FotoController extends Controller
     }
 
     /**
+     * Daftar foto yang tersimpan untuk transaksi ini (disaring per izin peminta). Dipakai
+     * galeri dokumen di Rekap agar hanya menampilkan slot foto yang benar-benar ada, tanpa
+     * harus menembak satu per satu. URL tetap diterbitkan lazy lewat link() saat dibuka.
+     */
+    public function index(Request $request, Transaksi $transaksi)
+    {
+        return response()->json([
+            'data' => $this->accessService->daftarTersedia($transaksi, $request->user()),
+        ]);
+    }
+
+    /**
      * Bagian 6: bukan URL publik langsung -- endpoint ini (di belakang auth:sanctum) mengecek
      * permission peminta lalu menerbitkan signed URL berumur pendek ke route streaming terpisah.
+     * `download=1` menandai URL agar stream mengirim file sebagai attachment (unduhan), bukan inline.
      */
     public function link(Request $request, Transaksi $transaksi, string $jenisFoto)
     {
         $validated = $request->validate([
             'conversion' => ['sometimes', Rule::in(['thumb'])],
+            'download' => ['sometimes', 'boolean'],
         ]);
 
         $media = $this->accessService->resolveDanOtorisasi($transaksi, $jenisFoto, $request->user());
@@ -62,6 +76,7 @@ class FotoController extends Controller
         $url = URL::temporarySignedRoute('foto.stream', now()->addMinutes(5), array_filter([
             'media' => $media->id,
             'conversion' => $validated['conversion'] ?? null,
+            'download' => ($validated['download'] ?? false) ? 1 : null,
         ]));
 
         return response()->json(['url' => $url]);

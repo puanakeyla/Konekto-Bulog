@@ -22,6 +22,20 @@ class FotoStreamController extends Controller
             abort(404);
         }
 
+        // download=1 (ikut ditandatangani saat link diterbitkan) memaksa unduhan dengan nama
+        // ramah "{id_transaksi}-{jenis_foto}.ext", bukan tampil inline di tab.
+        if ($request->boolean('download')) {
+            $ext = pathinfo($media->file_name, PATHINFO_EXTENSION) ?: 'jpg';
+            // id_transaksi mengandung "/" (mis. 00001/07/2026/...) yang ilegal untuk nama file,
+            // jadi diganti "-" agar Content-Disposition valid.
+            $transaksiId = str_replace(['/', '\\'], '-', (string) $media->model?->transaksi_id);
+            $base = $transaksiId !== '' ? "{$transaksiId}-{$media->collection_name}" : $media->collection_name;
+
+            return response()->download($path, "{$base}.{$ext}", [
+                'Content-Type' => $media->mime_type,
+            ]);
+        }
+
         return response()->file($path, [
             'Content-Type' => $media->mime_type,
         ]);

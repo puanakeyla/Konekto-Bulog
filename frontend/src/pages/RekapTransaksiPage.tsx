@@ -3,6 +3,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import FormHero from '../components/FormHero'
 import DataSpreadsheet, { type SheetColumn } from '../components/DataSpreadsheet'
+import DokumenGaleriModal from '../components/DokumenGaleriModal'
 import KabupatenSelect from '../components/KabupatenSelect'
 import { useAuth } from '../hooks/useAuth'
 import { useRekapTransaksi, type RekapTransaksi } from '../hooks/useRekapTransaksi'
@@ -389,6 +390,7 @@ export default function RekapTransaksiPage() {
   const rows = data?.items ?? []
   const [editing, setEditing] = useState<RekapTransaksi | null>(null)
   const [editForm, setEditForm] = useState<RekapEditForm | null>(null)
+  const [dokumenTransaksi, setDokumenTransaksi] = useState<string | null>(null)
 
   const columns = kolomUntukRole(role)
   const judul = JUDUL[role] ?? { title: 'Rekap Transaksi', badge: 'Rekap', sub: 'Rekap data transaksi lintas tahap.' }
@@ -464,29 +466,40 @@ export default function RekapTransaksiPage() {
             errorMessage={pesanKegagalan(error)}
             emptyTitle="Belum ada transaksi"
             emptyCopy="Data muncul setelah transaksi dibuat pada alur TJP atau MPP."
-            renderRowActions={role === 'admin' ? (row) => (
+            renderRowActions={(row) => (
               <div className="flex justify-center gap-2">
                 <button
                   type="button"
-                  onClick={() => mulaiEdit(row)}
-                  className="rounded-lg border border-primary/20 bg-primary-tint px-3 py-1.5 text-xs font-bold text-primary transition-colors hover:border-primary hover:bg-primary hover:text-white"
+                  onClick={() => setDokumenTransaksi(row.id_transaksi)}
+                  className="rounded-lg border border-border bg-white px-3 py-1.5 text-xs font-bold text-primary-dark transition-colors hover:border-primary hover:bg-primary-tint"
                 >
-                  Edit
+                  Dokumen
                 </button>
-                <button
-                  type="button"
-                  disabled={deleteMutation.isPending}
-                  onClick={() => {
-                    if (window.confirm(`Hapus transaksi ${row.id_transaksi}? Data tahap terkait ikut terhapus dari rekap.`)) {
-                      deleteMutation.mutate(row)
-                    }
-                  }}
-                  className="rounded-lg border border-danger/20 bg-danger-bg px-3 py-1.5 text-xs font-bold text-danger transition-colors hover:border-danger hover:bg-danger hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  Hapus
-                </button>
+                {role === 'admin' && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => mulaiEdit(row)}
+                      className="rounded-lg border border-primary/20 bg-primary-tint px-3 py-1.5 text-xs font-bold text-primary transition-colors hover:border-primary hover:bg-primary hover:text-white"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      type="button"
+                      disabled={deleteMutation.isPending}
+                      onClick={() => {
+                        if (window.confirm(`Hapus transaksi ${row.id_transaksi}? Data tahap terkait ikut terhapus dari rekap.`)) {
+                          deleteMutation.mutate(row)
+                        }
+                      }}
+                      className="rounded-lg border border-danger/20 bg-danger-bg px-3 py-1.5 text-xs font-bold text-danger transition-colors hover:border-danger hover:bg-danger hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      Hapus
+                    </button>
+                  </>
+                )}
               </div>
-            ) : undefined}
+            )}
           />
 
           <KuantumSummary items={kuantumSummaries} />
@@ -506,6 +519,10 @@ export default function RekapTransaksiPage() {
           }}
           onSubmit={() => updateMutation.mutate({ row: editing, form: editForm })}
         />
+      )}
+
+      {dokumenTransaksi && (
+        <DokumenGaleriModal transaksiId={dokumenTransaksi} onClose={() => setDokumenTransaksi(null)} />
       )}
     </div>
   )
