@@ -110,6 +110,112 @@ class PoGroupingService
     }
 
     /**
+     * Ubah anggota PO yang sudah dibuat (fitur "Kembali ke PO" -> pilih ulang transaksi) tanpa
+     * mengganti No. PO. Set transaksi baru harus satu kelompok, sudah diterima UB Jastasma, dan
+     * belum tergabung di PO lain. Transaksi yang dilepas kembali tersedia untuk digabung ulang.
+     * Total kuantum & harga dihitung ulang. Hanya boleh selama PO belum lengkap/dibatalkan/diterima.
+     *
+     * @param  list<string>  $transaksiIds
+     */
+    public function ubahAnggota(DataPengadaan $dataPengadaan, array $transaksiIds, ?float $harga = null, ?string $noPo = null): DataPengadaan
+    {
+        if (count($transaksiIds) < 1) {
+            abort(422, 'Pilih minimal satu transaksi untuk PO.');
+        }
+
+        if ($dataPengadaan->status === 'dibatalkan' || $dataPengadaan->status === 'lengkap' || $dataPengadaan->review_status === 'diterima') {
+            abort(422, 'PO ini sudah final dan anggotanya tidak bisa diubah lagi.');
+        }
+
+        return DB::transaction(function () use ($dataPengadaan, $transaksiIds, $harga, $noPo) {
+            $dataPengadaan = DataPengadaan::whereKey($dataPengadaan->id)->lockForUpdate()->firstOrFail();
+
+            $transaksiList = Transaksi::whereIn('id_transaksi', $transaksiIds)
+                ->lockForUpdate()
+                ->get()
+                ->keyBy('id_transaksi');
+
+            if ($transaksiList->count() !== count(array_unique($transaksiIds))) {
+                abort(422, 'Salah satu transaksi tidak ditemukan.');
+            }
+
+            $anggotaSaatIni = $dataPengadaan->poDetail()->pluck('transaksi_id')->all();
+
+            $rows = [];
+            $groupKey = null;
+
+            foreach ($transaksiIds as $id) {
+                $transaksi = $transaksiList[$id];
+
+                if ($transaksi->current_stage !== 'pengadaan') {
+                    abort(422, "Transaksi {$id} belum berada di tahap Pengadaan.");
+                }
+
+                $ubJastasma = DataUbJastasma::where('transaksi_id', $id)->first();
+                if (! $ubJastasma || $ubJastasma->status !== 'diterima') {
+                    abort(422, "Data UB Jastasma transaksi {$id} belum diterima Pengadaan.");
+                }
+
+                $adaDiPoLain = PoDetail::where('transaksi_id', $id)
+                    ->where('data_pengadaan_id', '!=', $dataPengadaan->id)
+                    ->exists();
+                if ($adaDiPoLain) {
+                    abort(422, "Transaksi {$id} sudah tergabung di PO lain.");
+                }
+
+                $makloonData = $this->resolveMakloonData($transaksi);
+
+                $key = [
+                    'tanggal_bongkar' => (string) $makloonData['tanggal_bongkar'],
+                    'id_pemasok' => $makloonData['id_pemasok'],
+                    'makloon_user_id' => $makloonData['makloon_user_id'],
+                ];
+
+                if ($groupKey === null) {
+                    $groupKey = $key;
+                } elseif ($key !== $groupKey) {
+                    abort(422, 'Transaksi yang dipilih tidak satu kelompok (tanggal bongkar/pemasok/makloon harus sama).');
+                }
+
+                $rows[$id] = $makloonData['kuantum'];
+            }
+
+            // Lepas anggota yang tidak lagi dipilih: baris po_detail dihapus, transaksi tetap di
+            // tahap 'pengadaan' sehingga otomatis muncul lagi sebagai kandidat gabung.
+            $dilepas = array_diff($anggotaSaatIni, $transaksiIds);
+            if (! empty($dilepas)) {
+                $dataPengadaan->poDetail()->whereIn('transaksi_id', $dilepas)->delete();
+            }
+
+            // Tambah anggota baru.
+            foreach ($transaksiIds as $id) {
+                if (! in_array($id, $anggotaSaatIni, true)) {
+                    PoDetail::create([
+                        'data_pengadaan_id' => $dataPengadaan->id,
+                        'transaksi_id' => $id,
+                        'kuantum_kontribusi' => number_format((float) $rows[$id], 2, '.', ''),
+                    ]);
+                    $transaksiList[$id]->current_stage = 'pengadaan';
+                    $transaksiList[$id]->save();
+                }
+            }
+
+            $totalKuantum = array_sum(array_map(fn ($kuantum) => (float) $kuantum, $rows));
+            $hargaValue = $harga ?? (float) $dataPengadaan->harga;
+
+            $dataPengadaan->total_kuantum = number_format($totalKuantum, 2, '.', '');
+            $dataPengadaan->harga = number_format($hargaValue, 2, '.', '');
+            $dataPengadaan->total_harga = number_format($totalKuantum * $hargaValue, 2, '.', '');
+            if ($noPo !== null) {
+                $dataPengadaan->no_po = $noPo;
+            }
+            $dataPengadaan->save();
+
+            return $dataPengadaan->fresh('poDetail');
+        });
+    }
+
+    /**
      * Isi nomor IN per baris po_detail (Bagian 3.4: "saat proses IN, PO dipecah kembali
      * ke baris transaksi asalnya"). Hanya boleh selama PO belum 'lengkap'/'dibatalkan';
      * begitu semua baris terisi, status PO otomatis jadi 'lengkap'.

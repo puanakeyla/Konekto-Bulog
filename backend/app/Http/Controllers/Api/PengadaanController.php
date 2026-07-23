@@ -82,6 +82,7 @@ class PengadaanController extends Controller
     public function update(Request $request, DataPengadaan $dataPengadaan)
     {
         $validated = $request->validate([
+            'no_po' => ['sometimes', 'string', 'max:255', Rule::unique('data_pengadaan', 'no_po')->ignore($dataPengadaan->id)],
             'harga' => ['sometimes', 'numeric', 'min:0', 'max:9999999999999.99'],
             'status' => ['sometimes', Rule::in(['proses', 'lengkap', 'kwitansi_belum_upload', 'foto_belum_lengkap', 'dibatalkan'])],
         ]);
@@ -90,11 +91,15 @@ class PengadaanController extends Controller
             abort(422, 'Data Pengadaan sudah diterima dan tidak dapat diubah.');
         }
 
-        $before = $dataPengadaan->only(['harga', 'total_harga', 'status']);
+        $before = $dataPengadaan->only(['no_po', 'harga', 'total_harga', 'status']);
         // Ditangkap lebih awal karena saat pembatalan po_detail dihapus (transaksi dilepas dari PO).
         $transaksiIds = $dataPengadaan->poDetail()->pluck('transaksi_id');
 
         return DB::transaction(function () use ($request, $dataPengadaan, $validated, $before, $transaksiIds) {
+            if (array_key_exists('no_po', $validated)) {
+                $dataPengadaan->no_po = $validated['no_po'];
+            }
+
             if (array_key_exists('harga', $validated)) {
                 $dataPengadaan->harga = number_format($validated['harga'], 2, '.', '');
                 $dataPengadaan->total_harga = number_format(
@@ -136,11 +141,36 @@ class PengadaanController extends Controller
                 'data_pengadaan_id' => $dataPengadaan->id,
                 'no_po' => $dataPengadaan->no_po,
                 'before' => $before,
-                'after' => $dataPengadaan->only(['harga', 'total_harga', 'status']),
+                'after' => $dataPengadaan->only(['no_po', 'harga', 'total_harga', 'status']),
             ]);
 
             return response()->json(['data' => $dataPengadaan]);
         });
+    }
+
+    public function ubahAnggota(Request $request, DataPengadaan $dataPengadaan)
+    {
+        $validated = $request->validate([
+            'transaksi_ids' => ['required', 'array', 'min:1'],
+            'transaksi_ids.*' => ['required', 'string', Rule::exists('transaksi', 'id_transaksi')],
+            'harga' => ['sometimes', 'numeric', 'min:0', 'max:9999999999999.99'],
+            'no_po' => ['sometimes', 'string', 'max:255', Rule::unique('data_pengadaan', 'no_po')->ignore($dataPengadaan->id)],
+        ]);
+
+        $dataPengadaan = $this->service->ubahAnggota(
+            $dataPengadaan,
+            $validated['transaksi_ids'],
+            $validated['harga'] ?? null,
+            $validated['no_po'] ?? null,
+        );
+
+        $this->auditLog->logMany($request->user(), 'update_po', $validated['transaksi_ids'], [
+            'data_pengadaan_id' => $dataPengadaan->id,
+            'no_po' => $dataPengadaan->no_po,
+            'anggota' => $validated['transaksi_ids'],
+        ]);
+
+        return response()->json(['data' => $dataPengadaan]);
     }
 
     public function isiNomorIn(Request $request, DataPengadaan $dataPengadaan)

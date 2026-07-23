@@ -9,6 +9,7 @@ import { useAuth } from '../hooks/useAuth'
 import { useRekapTransaksi, type RekapTransaksi } from '../hooks/useRekapTransaksi'
 import { useMakloonOptions } from '../hooks/useMakloonOptions'
 import api, { pesanKegagalan } from '../lib/api'
+import { formatMoney, formatNumber } from '../lib/poFormat'
 
 /**
  * Rekap lintas tahap, kolomnya KUMULATIF sesuai role:
@@ -121,7 +122,7 @@ const COLS_JP: SheetColumn<RekapTransaksi>[] = [
   { key: 'jp_kec', label: 'JP · Kecamatan', value: (r) => r.data_jemput_pangan?.kecamatan ?? null, filterable: true },
   { key: 'jp_kab', label: 'JP · Kabupaten', value: (r) => r.data_jemput_pangan?.kabupaten ?? null, filterable: true },
   { key: 'jp_tgl', label: 'JP · Tanggal Kirim', value: (r) => tgl(r.data_jemput_pangan?.tanggal_kirim) },
-  { key: 'jp_kuantum', label: 'JP · Kuantum (kg)', value: (r) => num(r.data_jemput_pangan?.kuantum), align: 'right' },
+  { key: 'jp_kuantum', label: 'JP · Kuantum (kg)', value: (r) => num(r.data_jemput_pangan?.kuantum), render: (r) => r.data_jemput_pangan?.kuantum != null ? formatNumber(r.data_jemput_pangan.kuantum) : '-', align: 'right' },
   { key: 'jp_jarak', label: 'JP · Jarak (km)', value: (r) => num(r.data_jemput_pangan?.jarak_ke_makloon_km), align: 'right' },
 ]
 
@@ -129,7 +130,7 @@ const COLS_JP: SheetColumn<RekapTransaksi>[] = [
 // ada di tahap Jemput Pangan, jadi tak diulang di sini.
 const COLS_MAKLOON_TJP: SheetColumn<RekapTransaksi>[] = [
   { key: 'mk_tgl', label: 'Makloon · Tanggal Bongkar', value: (r) => tgl(r.data_makloon_tjp?.tanggal_bongkar) },
-  { key: 'mk_kuantum', label: 'Makloon · Kuantum Bongkar (kg)', value: (r) => num(r.data_makloon_tjp?.kuantum_bongkar), align: 'right' },
+  { key: 'mk_kuantum', label: 'Makloon · Kuantum Bongkar (kg)', value: (r) => num(r.data_makloon_tjp?.kuantum_bongkar), render: (r) => r.data_makloon_tjp?.kuantum_bongkar != null ? formatNumber(r.data_makloon_tjp.kuantum_bongkar) : '-', align: 'right' },
 ]
 
 // MPP: makloon adalah titik masuk data, jadi detail pemasok/kendaraan/lokasi ada di sini.
@@ -141,7 +142,7 @@ const COLS_MAKLOON_MPP: SheetColumn<RekapTransaksi>[] = [
   { key: 'mk_kec', label: 'Makloon · Kecamatan', value: (r) => r.data_makloon_mpp?.kecamatan ?? null },
   { key: 'mk_kab', label: 'Makloon · Kabupaten', value: (r) => r.data_makloon_mpp?.kabupaten ?? null },
   { key: 'mk_tgl', label: 'Makloon · Tanggal Bongkar', value: (r) => tgl(r.data_makloon_mpp?.tanggal_bongkar) },
-  { key: 'mk_kuantum', label: 'Makloon · Kuantum (kg)', value: (r) => num(r.data_makloon_mpp?.kuantum), align: 'right' },
+  { key: 'mk_kuantum', label: 'Makloon · Kuantum (kg)', value: (r) => num(r.data_makloon_mpp?.kuantum), render: (r) => r.data_makloon_mpp?.kuantum != null ? formatNumber(r.data_makloon_mpp.kuantum) : '-', align: 'right' },
 ]
 
 const COLS_UB: SheetColumn<RekapTransaksi>[] = [
@@ -171,9 +172,9 @@ const COLS_PENGADAAN: SheetColumn<RekapTransaksi>[] = [
     filterable: true,
   },
   { key: 'po_in', label: 'Pengadaan · No. IN', value: (r) => noIn(r) },
-  { key: 'po_harga', label: 'Pengadaan · Harga/kg', value: (r) => num(r.data_pengadaan?.harga), align: 'right' },
-  { key: 'po_kuantum', label: 'Pengadaan · Total Kuantum (kg)', value: (r) => num(r.data_pengadaan?.total_kuantum), align: 'right' },
-  { key: 'po_total', label: 'Pengadaan · Total Harga', value: (r) => num(r.data_pengadaan?.total_harga), align: 'right' },
+  { key: 'po_harga', label: 'Pengadaan · Harga/kg', value: (r) => r.data_pengadaan?.harga != null ? formatMoney(r.data_pengadaan.harga) : null, align: 'right' },
+  { key: 'po_kuantum', label: 'Pengadaan · Total Kuantum (kg)', value: (r) => num(r.data_pengadaan?.total_kuantum), render: (r) => r.data_pengadaan?.total_kuantum != null ? formatNumber(r.data_pengadaan.total_kuantum) : '-', align: 'right' },
+  { key: 'po_total', label: 'Pengadaan · Total Harga', value: (r) => r.data_pengadaan?.total_harga != null ? formatMoney(r.data_pengadaan.total_harga) : null, align: 'right' },
 ]
 
 const COLS_KEUANGAN: SheetColumn<RekapTransaksi>[] = [

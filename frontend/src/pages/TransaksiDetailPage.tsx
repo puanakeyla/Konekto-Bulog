@@ -7,6 +7,7 @@ import { pesanKegagalan } from '../lib/api'
 import { apiErrorMessage } from '../lib/apiError'
 import { useAuth } from '../hooks/useAuth'
 import { uploadSemuaFoto } from '../lib/uploadFoto'
+import { formatMoney, formatNumber } from '../lib/poFormat'
 import FotoPicker from '../components/FotoPicker'
 import FormHero from '../components/FormHero'
 import ConfirmDialog from '../components/ConfirmDialog'
@@ -221,8 +222,14 @@ function formatDateTime(value: string) {
   return new Intl.DateTimeFormat('id-ID', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }).format(new Date(value))
 }
 
-function formatValue(value: unknown) {
+// Field bernilai uang -> Rupiah; field kuantum (kg) -> pemisah ribuan tanpa desimal paksa.
+const MONEY_FIELDS = new Set(['harga', 'total_harga'])
+const KUANTUM_FIELDS = new Set(['kuantum', 'kuantum_bongkar', 'total_kuantum'])
+
+function formatValue(key: string, value: unknown) {
   if (value === null || value === undefined || value === '') return '-'
+  if (MONEY_FIELDS.has(key)) return formatMoney(value as string | number)
+  if (KUANTUM_FIELDS.has(key)) return `${formatNumber(value as string | number)} kg`
   if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}/.test(value)) return new Date(value).toLocaleDateString('id-ID')
   return String(value)
 }
@@ -706,7 +713,7 @@ export default function TransaksiDetailPage() {
                         {poRejected && po.catatan_penolakan && (
                           <div className="alert-danger mb-3">Ditolak Keuangan: {po.catatan_penolakan}. Perbaiki lalu kirim ulang.</div>
                         )}
-                        <PoInForm po={po} onChanged={invalidate} />
+                        <PoInForm po={po} kandidat={kandidatResult?.items ?? []} preselectId={transaksi.id_transaksi} onChanged={invalidate} />
                       </div>
                     )}
 
@@ -822,7 +829,7 @@ function StageReadOnly({ data, collapsed }: { data: StageData; collapsed: boolea
       {(collapsed ? entries.slice(0, 4) : entries).map(([key, value]) => (
         <div key={key} className="flex justify-between gap-4 border-t border-border/70 pt-2 first:border-t-0 first:pt-0">
           <span className="text-gray-500">{labelOf(key)}</span>
-          <span className="text-right font-medium text-primary-dark">{formatValue(value)}</span>
+          <span className="text-right font-medium text-primary-dark">{formatValue(key, value)}</span>
         </div>
       ))}
       {collapsed && entries.length > 4 && <p className="text-right text-xs text-muted">+{entries.length - 4} field lain</p>}

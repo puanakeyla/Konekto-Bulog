@@ -81,6 +81,8 @@ Route::middleware('auth:sanctum')->group(function () {
         ->middleware('role:pengadaan|keuangan|operasi|gudang|admin');
     Route::patch('/po/{dataPengadaan}', [PengadaanController::class, 'update'])
         ->middleware('role:pengadaan|admin');
+    Route::patch('/po/{dataPengadaan}/anggota', [PengadaanController::class, 'ubahAnggota'])
+        ->middleware('role:pengadaan|admin');
     Route::patch('/po/{dataPengadaan}/in', [PengadaanController::class, 'isiNomorIn'])
         ->middleware('role:pengadaan|admin');
     Route::patch('/po/{dataPengadaan}/pembayaran', [PengadaanController::class, 'pembayaran'])
