@@ -25,6 +25,7 @@ class DataMakloonMpp extends Model implements HasMedia
         'kabupaten',
         'tanggal_bongkar',
         'kuantum',
+        'kuantum_bongkar',
         'jarak_ke_makloon_km',
         'status',
         'catatan_penolakan',

@@ -209,6 +209,7 @@ class TransaksiController extends Controller
             'data_makloon_mpp.kabupaten' => ['nullable', 'string', 'max:255'],
             'data_makloon_mpp.tanggal_bongkar' => ['nullable', 'date'],
             'data_makloon_mpp.kuantum' => ['nullable', 'numeric', 'min:0', 'max:9999999999999.99'],
+            'data_makloon_mpp.kuantum_bongkar' => ['nullable', 'numeric', 'min:0', 'max:9999999999999.99'],
             'data_makloon_mpp.jarak_ke_makloon_km' => ['nullable', 'numeric', 'min:0', 'max:99999999.99'],
 
             'data_ub_jastasma' => ['sometimes', 'array'],
@@ -331,7 +332,7 @@ class TransaksiController extends Controller
             'status_keseluruhan' => $transaksi->status_keseluruhan,
             'data_jemput_pangan' => $transaksi->dataJemputPangan?->only(['id_pemasok', 'supir', 'plat_mobil', 'nama_poktan_gapoktan', 'desa', 'kecamatan', 'kabupaten', 'makloon_user_id', 'tanggal_kirim', 'kuantum', 'jarak_ke_makloon_km']),
             'data_makloon_tjp' => $transaksi->dataMakloonTjp?->only(['tanggal_bongkar', 'kuantum_bongkar']),
-            'data_makloon_mpp' => $transaksi->dataMakloonMpp?->only(['id_pemasok', 'supir', 'plat_mobil', 'desa', 'kecamatan', 'kabupaten', 'tanggal_bongkar', 'kuantum', 'jarak_ke_makloon_km']),
+            'data_makloon_mpp' => $transaksi->dataMakloonMpp?->only(['id_pemasok', 'supir', 'plat_mobil', 'desa', 'kecamatan', 'kabupaten', 'tanggal_bongkar', 'kuantum', 'kuantum_bongkar', 'jarak_ke_makloon_km']),
             'data_ub_jastasma' => $transaksi->dataUbJastasma?->only(['ka1', 'ka2', 'ka3', 'hampa', 'butir_hijau']),
             'data_pengadaan' => $pengadaan ? [
                 'no_po' => $pengadaan->no_po,
@@ -419,6 +420,18 @@ class TransaksiController extends Controller
 
     public function terima(Request $request, Transaksi $transaksi)
     {
+        // Makloon Terima (MPP): simpan kuantum_bongkar opsional sebelum menerima data.
+        if ($transaksi->skema === 'MPP' && $transaksi->current_stage === 'makloon_terima' && $request->has('kuantum_bongkar')) {
+            $validated = $request->validate([
+                'kuantum_bongkar' => ['required', 'numeric', 'min:0', 'max:9999999999999.99'],
+            ]);
+            $mpp = DataMakloonMpp::where('transaksi_id', $transaksi->id_transaksi)->first();
+            if ($mpp) {
+                $mpp->kuantum_bongkar = $validated['kuantum_bongkar'];
+                $mpp->save();
+            }
+        }
+
         $record = $this->service->terima($transaksi, $request->user());
 
         return response()->json(['data' => $record, 'transaksi' => $transaksi->fresh()]);

@@ -30,6 +30,7 @@ export type RekapMakloonMpp = StageBase & {
   kabupaten: string | null
   tanggal_bongkar: string | null
   kuantum: string | null
+  kuantum_bongkar: string | null
   jarak_ke_makloon_km: string | null
 }
 

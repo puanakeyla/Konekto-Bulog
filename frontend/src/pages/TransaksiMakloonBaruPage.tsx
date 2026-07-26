@@ -151,6 +151,7 @@ export default function TransaksiMakloonBaruPage() {
                 <input
                   required
                   className="input"
+                  placeholder="505374 - CV. CANDRA JAYA PRAKASA"
                   value={form.id_pemasok}
                   onChange={(e) => setField('id_pemasok', e.target.value)}
                 />

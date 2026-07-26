@@ -354,6 +354,7 @@ export default function TransaksiDetailPage() {
   const [fotosUb, setFotosUb] = useState<Record<string, File | null>>({})
   const [progressUb, setProgressUb] = useState<Record<string, number>>({})
   const [fotoUbGagal, setFotoUbGagal] = useState<string[]>([])
+  const [kuantumBongkarMpp, setKuantumBongkarMpp] = useState('')
 
   const { data: transaksi, isLoading, isError, error } = useQuery({
     queryKey: ['transaksi', id],
@@ -408,9 +409,17 @@ export default function TransaksiDetailPage() {
   }
 
   const terima = useMutation({
-    mutationFn: (_stageLabel: string) => api.post(`/api/transaksi/${encodeURIComponent(id!)}/terima`),
+    mutationFn: (_stageLabel: string) => {
+      const payload: Record<string, unknown> = {}
+      // Makloon Terima (MPP): sertakan kuantum_bongkar jika diisi.
+      if (transaksi?.skema === 'MPP' && transaksi?.current_stage === 'makloon_terima' && kuantumBongkarMpp) {
+        payload.kuantum_bongkar = Number(kuantumBongkarMpp)
+      }
+      return api.post(`/api/transaksi/${encodeURIComponent(id!)}/terima`, payload)
+    },
     onSuccess: (_res, stageLabel) => {
       setCatatan('')
+      setKuantumBongkarMpp('')
       invalidate()
       toast.success(`Data ${stageLabel} diterima & dikunci.`)
     },
@@ -691,16 +700,26 @@ export default function TransaksiDetailPage() {
                     {showUbForm && <UbForm form={ubForm} setForm={setUbForm} mutation={simpanUb} error={ubError} fotos={fotosUb} setFotos={setFotosUb} progress={progressUb} fotoGagal={fotoUbGagal} />}
 
                     {canReviewThis && (
-                      <ReviewActions
-                        stageLabel={stage.label}
-                        catatan={catatan}
-                        setCatatan={setCatatan}
-                        onAccept={() => terima.mutate(stage.label)}
-                        onReject={() => tolak.mutate(stage.label)}
-                        acceptPending={terima.isPending}
-                        rejectPending={tolak.isPending}
-                        actionError={actionError}
-                      />
+                      <>
+                        {stage.id === 'makloon_terima' && (
+                          <div className="mt-4 border-t border-border pt-4">
+                            <div className="section-title mb-2">Input kuantum bongkar</div>
+                            <div className="grid gap-4 @md:grid-cols-2">
+                              <Field label="Kuantum bongkar (kg)"><AngkaInput required placeholder="0" value={kuantumBongkarMpp} onChange={setKuantumBongkarMpp} /></Field>
+                            </div>
+                          </div>
+                        )}
+                        <ReviewActions
+                          stageLabel={stage.label}
+                          catatan={catatan}
+                          setCatatan={setCatatan}
+                          onAccept={() => terima.mutate(stage.label)}
+                          onReject={() => tolak.mutate(stage.label)}
+                          acceptPending={terima.isPending}
+                          rejectPending={tolak.isPending}
+                          actionError={actionError}
+                        />
+                      </>
                     )}
 
                     {showPengadaanCombine && (
@@ -845,7 +864,7 @@ function JemputPanganForm({ form, setForm, mutation, error, fotos, setFotos, pro
       {error && <div className="alert-danger">{error}</div>}
       {mutation.isSuccess && fotoGagal.length > 0 && <div className="alert-warning">Data tersimpan, tapi {fotoGagal.length} foto gagal terupload.</div>}
       <div className="grid gap-4 @md:grid-cols-2">
-        <Field label="ID pemasok"><input required className="input" value={form.id_pemasok} onChange={(e) => setForm((prev: JemputPanganFormState) => ({ ...prev, id_pemasok: e.target.value }))} /></Field>
+        <Field label="ID pemasok"><input required className="input" placeholder="505374 - CV. CANDRA JAYA PRAKASA" value={form.id_pemasok} onChange={(e) => setForm((prev: JemputPanganFormState) => ({ ...prev, id_pemasok: e.target.value }))} /></Field>
         <Field label="Nama Poktan/Gapoktan"><input required className="input" value={form.nama_poktan_gapoktan} onChange={(e) => setForm((prev: JemputPanganFormState) => ({ ...prev, nama_poktan_gapoktan: e.target.value }))} /></Field>
         <Field label="Supir"><input required className="input" value={form.supir} onChange={(e) => setForm((prev: JemputPanganFormState) => ({ ...prev, supir: e.target.value }))} /></Field>
         <Field label="Plat mobil"><input required className="input" value={form.plat_mobil} onChange={(e) => setForm((prev: JemputPanganFormState) => ({ ...prev, plat_mobil: e.target.value }))} /></Field>
@@ -870,7 +889,7 @@ function MakloonMppForm({ form, setForm, mutation, error, fotos, setFotos, progr
       {error && <div className="alert-danger">{error}</div>}
       {mutation.isSuccess && fotoGagal.length > 0 && <div className="alert-warning">Data tersimpan, tapi {fotoGagal.length} foto gagal terupload.</div>}
       <div className="grid gap-4 @md:grid-cols-2">
-        <Field label="ID pemasok"><input required className="input" value={form.id_pemasok} onChange={(e) => setForm((prev: MakloonMppFormState) => ({ ...prev, id_pemasok: e.target.value }))} /></Field>
+        <Field label="ID pemasok"><input required className="input" placeholder="505374 - CV. CANDRA JAYA PRAKASA" value={form.id_pemasok} onChange={(e) => setForm((prev: MakloonMppFormState) => ({ ...prev, id_pemasok: e.target.value }))} /></Field>
         <Field label="Supir"><input required className="input" value={form.supir} onChange={(e) => setForm((prev: MakloonMppFormState) => ({ ...prev, supir: e.target.value }))} /></Field>
         <Field label="Plat mobil"><input required className="input" value={form.plat_mobil} onChange={(e) => setForm((prev: MakloonMppFormState) => ({ ...prev, plat_mobil: e.target.value }))} /></Field>
         <Field label="Desa"><input required className="input" value={form.desa} onChange={(e) => setForm((prev: MakloonMppFormState) => ({ ...prev, desa: e.target.value }))} /></Field>

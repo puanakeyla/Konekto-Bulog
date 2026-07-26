@@ -283,10 +283,7 @@ export default function DashboardPage() {
       : transaksi.filter((t) => t.status_keseluruhan === 'selesai').length,
     [rekapTransaksi, role, transaksi],
   )
-  const makloonTerhubung = useMemo(
-    () => new Set(statSource.map((t) => t.nama_maklon ?? 'Tanpa makloon')).size,
-    [statSource],
-  )
+
   const perluTindakan = useMemo(
     () => role === 'admin'
       ? rekapTransaksi.filter((t) => ACTIVE_STAT_ROLES.has(t.current_stage) && t.status_keseluruhan === 'berjalan').length
@@ -304,14 +301,12 @@ export default function DashboardPage() {
         { label: 'Perlu diproses', value: perluTindakan, sub: 'tahap aktif', tone: 'warning' as const, icon: ICONS.berjalan },
         { label: 'Ditolak', value: rejectedTransaksi.length, sub: 'perlu revisi', tone: 'danger' as const, icon: ICONS.ditolak },
         { label: 'Selesai', value: selesai, sub: 'sudah rampung', tone: 'success' as const, icon: ICONS.selesai },
-        { label: 'Makloon terhubung', value: makloonTerhubung, sub: 'mitra pada rekap', tone: 'accent' as const, icon: ICONS.makloon },
       ]
     : [
         { label: 'Total transaksi', value: total, sub: 'keseluruhan', tone: 'primary' as const, icon: ICONS.total },
         { label: 'Sedang berjalan', value: berjalan, sub: 'menunggu tindakan', tone: 'warning' as const, icon: ICONS.berjalan },
         { label: 'Ditolak', value: rejectedTransaksi.length, sub: 'perlu revisi', tone: 'danger' as const, icon: ICONS.ditolak },
         { label: 'Selesai', value: selesai, sub: 'sudah rampung', tone: 'success' as const, icon: ICONS.selesai },
-        { label: 'Makloon terhubung', value: makloonTerhubung, sub: 'mitra pada daftar', tone: 'accent' as const, icon: ICONS.makloon },
       ]
   const pantauan = useMemo(
     () => pantauanRows(rekapTransaksi, HASIL_OLAH_KOSONG),
@@ -374,7 +369,7 @@ export default function DashboardPage() {
 
       {/* Kartu statistik ditarik naik menimpa hero. */}
       <div className="relative mx-auto -mt-16 max-w-6xl px-6">
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {statCards.map((card) => <StatCard key={card.label} {...card} />)}
         </div>
       </div>

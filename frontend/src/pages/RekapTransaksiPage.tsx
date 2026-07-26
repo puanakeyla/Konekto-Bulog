@@ -144,6 +144,7 @@ const COLS_MAKLOON_MPP: SheetColumn<RekapTransaksi>[] = [
   { key: 'mk_kab', label: 'Makloon · Kabupaten', value: (r) => r.data_makloon_mpp?.kabupaten ?? null },
   { key: 'mk_tgl', label: 'Makloon · Tanggal Bongkar', value: (r) => tgl(r.data_makloon_mpp?.tanggal_bongkar) },
   { key: 'mk_kuantum', label: 'Makloon · Kuantum (kg)', value: (r) => num(r.data_makloon_mpp?.kuantum), render: (r) => r.data_makloon_mpp?.kuantum != null ? formatNumber(r.data_makloon_mpp.kuantum) : '-', align: 'right' },
+  { key: 'mk_kuantum_bongkar', label: 'Makloon · Kuantum Bongkar (kg)', value: (r) => num(r.data_makloon_mpp?.kuantum_bongkar), render: (r) => r.data_makloon_mpp?.kuantum_bongkar != null ? formatNumber(r.data_makloon_mpp.kuantum_bongkar) : '-', align: 'right' },
 ]
 
 const COLS_UB: SheetColumn<RekapTransaksi>[] = [
@@ -300,6 +301,7 @@ type RekapEditForm = {
   mmpp_kabupaten: string
   mmpp_tanggal_bongkar: string
   mmpp_kuantum: string
+  mmpp_kuantum_bongkar: string
   mmpp_jarak: string
   ub_ka1: string
   ub_ka2: string
@@ -336,6 +338,7 @@ function formDariRekap(row: RekapTransaksi): RekapEditForm {
     mmpp_kabupaten: field(row.data_makloon_mpp?.kabupaten),
     mmpp_tanggal_bongkar: inputDate(row.data_makloon_mpp?.tanggal_bongkar),
     mmpp_kuantum: field(row.data_makloon_mpp?.kuantum),
+    mmpp_kuantum_bongkar: field(row.data_makloon_mpp?.kuantum_bongkar),
     mmpp_jarak: field(row.data_makloon_mpp?.jarak_ke_makloon_km),
     ub_ka1: field(row.data_ub_jastasma?.ka1),
     ub_ka2: field(row.data_ub_jastasma?.ka2),
@@ -378,6 +381,7 @@ function payloadDariForm(row: RekapTransaksi, form: RekapEditForm) {
       kabupaten: nullable(form.mmpp_kabupaten),
       tanggal_bongkar: nullable(form.mmpp_tanggal_bongkar),
       kuantum: numeric(form.mmpp_kuantum),
+      kuantum_bongkar: numeric(form.mmpp_kuantum_bongkar),
       jarak_ke_makloon_km: numeric(form.mmpp_jarak),
     } } : {}),
     ...(row.data_ub_jastasma ? { data_ub_jastasma: {
@@ -501,7 +505,6 @@ export default function RekapTransaksiPage() {
         {daftarSkema.map((skema) => {
           const rowsSkema = rows.filter((r) => r.skema === skema)
           const columns = kolomUntukRoleSkema(role, skema)
-          const summaries = kuantumSummaryUntukRole(role, rowsSkema)
 
           return (
             <section key={skema} className="panel panel-pad">
@@ -525,12 +528,13 @@ export default function RekapTransaksiPage() {
                 emptyCopy={`Data muncul setelah transaksi dibuat pada alur ${skema}.`}
                 renderRowActions={renderRowActions}
               />
-
-              <KuantumSummary items={summaries} />
             </section>
           )
         })}
+
+        <KuantumSummary items={kuantumSummaryUntukRole(role, rows)} />
       </div>
+
 
       {editing && editForm && (
         <RekapEditModal
@@ -612,7 +616,7 @@ function RekapEditModal({ row, form, makloonOptions, isSaving, onChange, onClose
         <div className="space-y-5 overflow-y-auto bg-surface px-6 py-5">
           {row.data_jemput_pangan && (
             <EditSection title="Jemput Pangan" badge="Data awal TJP">
-              <TextField label="ID Pemasok" value={form.jp_id_pemasok} onChange={(v) => onChange('jp_id_pemasok', v)} />
+              <TextField label="ID Pemasok" placeholder="505374 - CV. CANDRA JAYA PRAKASA" value={form.jp_id_pemasok} onChange={(v) => onChange('jp_id_pemasok', v)} />
               <TextField label="Poktan/Gapoktan" value={form.jp_poktan} onChange={(v) => onChange('jp_poktan', v)} />
               <TextField label="Supir" value={form.jp_supir} onChange={(v) => onChange('jp_supir', v)} />
               <TextField label="Plat Mobil" value={form.jp_plat} onChange={(v) => onChange('jp_plat', v)} />
@@ -643,7 +647,7 @@ function RekapEditModal({ row, form, makloonOptions, isSaving, onChange, onClose
 
           {row.data_makloon_mpp && (
             <EditSection title="Makloon MPP" badge="Input makloon">
-              <TextField label="ID Pemasok" value={form.mmpp_id_pemasok} onChange={(v) => onChange('mmpp_id_pemasok', v)} />
+              <TextField label="ID Pemasok" placeholder="505374 - CV. CANDRA JAYA PRAKASA" value={form.mmpp_id_pemasok} onChange={(v) => onChange('mmpp_id_pemasok', v)} />
               <TextField label="Supir" value={form.mmpp_supir} onChange={(v) => onChange('mmpp_supir', v)} />
               <TextField label="Plat Mobil" value={form.mmpp_plat} onChange={(v) => onChange('mmpp_plat', v)} />
               <TextField label="Desa" value={form.mmpp_desa} onChange={(v) => onChange('mmpp_desa', v)} />
@@ -651,6 +655,7 @@ function RekapEditModal({ row, form, makloonOptions, isSaving, onChange, onClose
               <SelectField label="Kabupaten"><KabupatenSelect required={false} value={form.mmpp_kabupaten} onChange={(v) => onChange('mmpp_kabupaten', v)} /></SelectField>
               <TextField type="date" label="Tanggal Bongkar" value={form.mmpp_tanggal_bongkar} onChange={(v) => onChange('mmpp_tanggal_bongkar', v)} />
               <AngkaField label="Kuantum (kg)" value={form.mmpp_kuantum} onChange={(v) => onChange('mmpp_kuantum', v)} />
+              <AngkaField label="Kuantum Bongkar (kg)" value={form.mmpp_kuantum_bongkar} onChange={(v) => onChange('mmpp_kuantum_bongkar', v)} />
               <TextField type="number" label="Jarak ke Makloon (km)" value={form.mmpp_jarak} onChange={(v) => onChange('mmpp_jarak', v)} />
             </EditSection>
           )}
@@ -806,7 +811,7 @@ function AngkaField({ label, value, onChange }: { label: string; value: string; 
   )
 }
 
-function TextField({ label, value, onChange, type = 'text' }: { label: string; value: string; onChange: (value: string) => void; type?: 'text' | 'number' | 'date' }) {
+function TextField({ label, value, onChange, type = 'text', placeholder }: { label: string; value: string; onChange: (value: string) => void; type?: 'text' | 'number' | 'date'; placeholder?: string }) {
   return (
     <label className="block">
       <span className="label">{label}</span>
@@ -815,6 +820,7 @@ function TextField({ label, value, onChange, type = 'text' }: { label: string; v
         step={type === 'number' ? '0.01' : undefined}
         min={type === 'number' ? '0' : undefined}
         className="input"
+        placeholder={placeholder}
         value={value}
         onChange={(event) => onChange(event.target.value)}
       />
