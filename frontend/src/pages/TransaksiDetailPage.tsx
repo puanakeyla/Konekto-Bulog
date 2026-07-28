@@ -23,6 +23,12 @@ import { useTransaksiList } from '../hooks/useTransaksiList'
 import type { PoItem } from '../hooks/usePoList'
 
 type StageData = Record<string, unknown> & { status: string }
+type AksiSimpan = 'draft' | 'submit'
+
+type FotoTersimpan = {
+  jenis_foto: string
+  role: string
+}
 
 type RiwayatPenolakan = {
   id: number
@@ -117,6 +123,8 @@ const STAGE_ICONS: Record<string, React.ReactNode> = {
 }
 
 const HIDDEN_FIELDS = new Set(['id', 'transaksi_id', 'locked_by', 'submitted_by', 'created_at', 'updated_at'])
+
+const angkaAtauNull = (value: string) => value === '' ? null : Number(value)
 
 const FIELD_LABELS: Record<string, string> = {
   status: 'Status',
@@ -364,6 +372,15 @@ export default function TransaksiDetailPage() {
     },
   })
 
+  const { data: dokumenTersimpan = [] } = useQuery({
+    queryKey: ['dokumen-transaksi', id],
+    queryFn: async () => {
+      const { data } = await api.get<{ data: FotoTersimpan[] }>(`/api/transaksi/${encodeURIComponent(id!)}/foto`)
+      return data.data
+    },
+    enabled: !!id,
+  })
+
   // Daftar transaksi kandidat untuk digabung menjadi PO (dipakai panel Pengadaan inline saat
   // transaksi ini belum tergabung). Sama sumbernya dengan halaman Pengadaan (mode siap_po).
   const { data: kandidatResult } = useTransaksiList(1, 100, true)
@@ -401,11 +418,20 @@ export default function TransaksiDetailPage() {
       kuantum: textField(transaksi.data_makloon_mpp, 'kuantum'),
       jarak_ke_makloon_km: textField(transaksi.data_makloon_mpp, 'jarak_ke_makloon_km'),
     })
+
+    setUbForm({
+      ka1: textField(transaksi.data_ub_jastasma, 'ka1'),
+      ka2: textField(transaksi.data_ub_jastasma, 'ka2'),
+      ka3: textField(transaksi.data_ub_jastasma, 'ka3'),
+      hampa: textField(transaksi.data_ub_jastasma, 'hampa'),
+      butir_hijau: textField(transaksi.data_ub_jastasma, 'butir_hijau'),
+    })
   }, [transaksi])
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ['transaksi-list'] })
     queryClient.invalidateQueries({ queryKey: ['transaksi', id] })
+    queryClient.invalidateQueries({ queryKey: ['dokumen-transaksi', id] })
   }
 
   const terima = useMutation({
@@ -437,66 +463,95 @@ export default function TransaksiDetailPage() {
   })
 
   const simpanJemputPangan = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (aksi: AksiSimpan) => {
       await api.patch(`/api/transaksi/${encodeURIComponent(id!)}/jemput-pangan`, {
         ...jemputPanganForm,
-        kuantum: Number(jemputPanganForm.kuantum),
-        jarak_ke_makloon_km: Number(jemputPanganForm.jarak_ke_makloon_km),
+        aksi: 'draft',
+        kuantum: angkaAtauNull(jemputPanganForm.kuantum),
+        jarak_ke_makloon_km: angkaAtauNull(jemputPanganForm.jarak_ke_makloon_km),
       })
       const { gagal } = await uploadSemuaFoto(id!, fotosJemputPangan, (jenisFoto, percent) => setProgressJemputPangan((prev) => ({ ...prev, [jenisFoto]: percent })))
-      return { gagal }
+
+      if (aksi === 'submit' && gagal.length === 0) {
+        await api.patch(`/api/transaksi/${encodeURIComponent(id!)}/jemput-pangan`, {
+          ...jemputPanganForm,
+          aksi: 'submit',
+          kuantum: Number(jemputPanganForm.kuantum),
+          jarak_ke_makloon_km: Number(jemputPanganForm.jarak_ke_makloon_km),
+        })
+      }
+
+      return { gagal, aksi }
     },
-    onSuccess: ({ gagal }) => {
+    onSuccess: ({ gagal, aksi }) => {
       setFotoJemputPanganGagal(gagal)
       invalidate()
-      toast.success('Data Jemput Pangan dikirim ulang ke Makloon.')
+      toast.success(aksi === 'draft' ? 'Data Jemput Pangan tersimpan sebagai draft.' : 'Data Jemput Pangan dikirim ulang ke Makloon.')
       gagal.forEach((f) => toast.error(`Foto "${fotoLabel(f)}" gagal diupload, coba ulangi.`))
     },
     onError: (err) => toast.error(apiErrorMessage(err, 'Gagal menyimpan data Jemput Pangan.')),
   })
 
   const simpanMakloon = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (aksi: AksiSimpan) => {
       const payload = transaksi?.skema === 'MPP'
         ? {
             ...makloonMppForm,
-            kuantum: Number(makloonMppForm.kuantum),
-            jarak_ke_makloon_km: Number(makloonMppForm.jarak_ke_makloon_km),
+            kuantum: aksi === 'draft' ? angkaAtauNull(makloonMppForm.kuantum) : Number(makloonMppForm.kuantum),
+            jarak_ke_makloon_km: aksi === 'draft' ? angkaAtauNull(makloonMppForm.jarak_ke_makloon_km) : Number(makloonMppForm.jarak_ke_makloon_km),
           }
         : {
             tanggal_bongkar: makloonForm.tanggal_bongkar,
-            kuantum_bongkar: Number(makloonForm.kuantum_bongkar),
+            kuantum_bongkar: aksi === 'draft' ? angkaAtauNull(makloonForm.kuantum_bongkar) : Number(makloonForm.kuantum_bongkar),
           }
 
-      await api.patch(`/api/transaksi/${encodeURIComponent(id!)}/makloon`, payload)
+      await api.patch(`/api/transaksi/${encodeURIComponent(id!)}/makloon`, { ...payload, aksi: 'draft' })
       const { gagal } = await uploadSemuaFoto(id!, fotosMakloon, (jenisFoto, percent) => setProgressMakloon((prev) => ({ ...prev, [jenisFoto]: percent })))
-      return { gagal }
+
+      if (aksi === 'submit' && gagal.length === 0) {
+        await api.patch(`/api/transaksi/${encodeURIComponent(id!)}/makloon`, { ...payload, aksi: 'submit' })
+      }
+
+      return { gagal, aksi }
     },
-    onSuccess: ({ gagal }) => {
+    onSuccess: ({ gagal, aksi }) => {
       setFotoMakloonGagal(gagal)
       invalidate()
-      toast.success(transaksi?.skema === 'MPP' ? 'Data Makloon dikirim untuk proses Makloon Terima.' : 'Data Makloon dikirim, transaksi diteruskan ke UB Jastasma.')
+      toast.success(aksi === 'draft' ? 'Data Makloon tersimpan sebagai draft.' : transaksi?.skema === 'MPP' ? 'Data Makloon dikirim untuk proses Makloon Terima.' : 'Data Makloon dikirim, transaksi diteruskan ke UB Jastasma.')
       gagal.forEach((f) => toast.error(`Foto "${fotoLabel(f)}" gagal diupload, coba ulangi.`))
     },
     onError: (err) => toast.error(apiErrorMessage(err, 'Gagal menyimpan data Makloon.')),
   })
 
   const simpanUb = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (aksi: AksiSimpan) => {
       await api.patch(`/api/transaksi/${encodeURIComponent(id!)}/ub-jastasma`, {
-        ka1: Number(ubForm.ka1),
-        ka2: Number(ubForm.ka2),
-        ka3: Number(ubForm.ka3),
-        hampa: Number(ubForm.hampa),
-        butir_hijau: Number(ubForm.butir_hijau),
+        aksi: 'draft',
+        ka1: angkaAtauNull(ubForm.ka1),
+        ka2: angkaAtauNull(ubForm.ka2),
+        ka3: angkaAtauNull(ubForm.ka3),
+        hampa: angkaAtauNull(ubForm.hampa),
+        butir_hijau: angkaAtauNull(ubForm.butir_hijau),
       })
       const { gagal } = await uploadSemuaFoto(id!, fotosUb, (jenisFoto, percent) => setProgressUb((prev) => ({ ...prev, [jenisFoto]: percent })))
-      return { gagal }
+
+      if (aksi === 'submit' && gagal.length === 0) {
+        await api.patch(`/api/transaksi/${encodeURIComponent(id!)}/ub-jastasma`, {
+          aksi: 'submit',
+          ka1: Number(ubForm.ka1),
+          ka2: Number(ubForm.ka2),
+          ka3: Number(ubForm.ka3),
+          hampa: Number(ubForm.hampa),
+          butir_hijau: Number(ubForm.butir_hijau),
+        })
+      }
+
+      return { gagal, aksi }
     },
-    onSuccess: ({ gagal }) => {
+    onSuccess: ({ gagal, aksi }) => {
       setFotoUbGagal(gagal)
       invalidate()
-      toast.success('Data UB Jastasma dikirim, transaksi diteruskan ke Pengadaan.')
+      toast.success(aksi === 'draft' ? 'Data UB Jastasma tersimpan sebagai draft.' : 'Data UB Jastasma dikirim, transaksi diteruskan ke Pengadaan.')
       gagal.forEach((f) => toast.error(`Foto "${fotoLabel(f)}" gagal diupload, coba ulangi.`))
     },
     onError: (err) => toast.error(apiErrorMessage(err, 'Gagal menyimpan data UB Jastasma.')),
@@ -525,13 +580,17 @@ export default function TransaksiDetailPage() {
   }
 
   const role = user?.role.nama_role
+  const fotoJemputPanganTersimpan = new Set(dokumenTersimpan.filter((foto) => foto.role === 'jemput_pangan').map((foto) => foto.jenis_foto))
+  const fotoMakloonTersimpan = new Set(dokumenTersimpan.filter((foto) => foto.role === 'makloon').map((foto) => foto.jenis_foto))
+  const fotoUbTersimpan = new Set(dokumenTersimpan.filter((foto) => foto.role === 'ub_jastasma').map((foto) => foto.jenis_foto))
   const activeStages = stagesFor(transaksi.skema)
   const currentIndex = activeStages.findIndex((stage) => stage.id === transaksi.current_stage)
   const pendingData = pendingReviewFor(activeStages, currentIndex, transaksi)
   const canAct = role === actorRoleFor(transaksi.current_stage) || role === 'admin'
-  const canFillJemputPangan = canAct && !pendingData && transaksi.skema === 'TJP' && transaksi.current_stage === 'jemput_pangan' && transaksi.data_jemput_pangan?.status === 'ditolak'
-  const canFillMakloon = canAct && !pendingData && ((transaksi.skema === 'TJP' && transaksi.current_stage === 'makloon') || (transaksi.skema === 'MPP' && transaksi.current_stage === 'makloon_kirim'))
-  const canFillUb = canAct && !pendingData && transaksi.current_stage === 'ub_jastasma'
+  const canFillJemputPangan = canAct && !pendingData && transaksi.skema === 'TJP' && transaksi.current_stage === 'jemput_pangan' && (!transaksi.data_jemput_pangan || ['draft', 'ditolak'].includes(String(transaksi.data_jemput_pangan.status)))
+  const makloonStageData = transaksi.skema === 'MPP' ? transaksi.data_makloon_mpp : transaksi.data_makloon_tjp
+  const canFillMakloon = canAct && !pendingData && ((transaksi.skema === 'TJP' && transaksi.current_stage === 'makloon') || (transaksi.skema === 'MPP' && transaksi.current_stage === 'makloon_kirim')) && (!makloonStageData || ['draft', 'ditolak'].includes(String(makloonStageData.status)))
+  const canFillUb = canAct && !pendingData && transaksi.current_stage === 'ub_jastasma' && (!transaksi.data_ub_jastasma || ['draft', 'ditolak'].includes(String(transaksi.data_ub_jastasma.status)))
   // Tahap PO (level PO, dikerjakan inline). po = PO tempat transaksi ini bernaung (null bila belum).
   // PENTING: setelah digabung, backend memindahkan current_stage transaksi langsung ke 'keuangan'
   // (lihat PoGroupingService), padahal pengisian No. IN masih tugas Pengadaan selama PO 'proses'.
@@ -540,7 +599,7 @@ export default function TransaksiDetailPage() {
   const isPengadaanRole = role === 'pengadaan' || role === 'admin'
   const isKeuanganRole = role === 'keuangan' || role === 'admin'
   const poRejected = !!po && po.review_status === 'ditolak'
-  const poFillingIn = !!po && transaksi.current_stage === 'pengadaan' && (po.status === 'proses' || poRejected) // fase Pengadaan mengisi/memperbaiki PO
+  const poFillingIn = !!po && transaksi.current_stage === 'pengadaan' && ['proses', 'kwitansi_belum_upload', 'foto_belum_lengkap'].includes(po.status) // fase Pengadaan mengisi/memperbaiki PO
   const poWaitingReview = !!po && transaksi.current_stage === 'keuangan' && po.review_status === 'menunggu_review'
   const poAccepted = !!po && po.review_status === 'diterima'
   const poPaid = po?.data_keuangan?.status_bayar === 'dibayarkan' || po?.data_keuangan?.review_status === 'diterima'
@@ -548,7 +607,7 @@ export default function TransaksiDetailPage() {
   const showCombine = !po && transaksi.current_stage === 'pengadaan' && !pendingData && isPengadaanRole
   const showIsiIn = poFillingIn && isPengadaanRole
   const pengadaanCurrent = showCombine || poFillingIn
-  const pengadaanComplete = !!po && !poFillingIn
+  const pengadaanComplete = !!po && !poFillingIn && po.status === 'lengkap'
   // Keuangan: review data Pengadaan lalu pembayaran.
   const showKeuanganReview = poWaitingReview && isKeuanganRole
   const showBayar = poAccepted && !poPaid && isKeuanganRole
@@ -695,9 +754,9 @@ export default function TransaksiDetailPage() {
                       </>
                     ))}
                     {isRejected && <div className="alert-danger mt-4">Tahap ini ditolak. Perbaiki data pada role terkait lalu kirim ulang.</div>}
-                    {showJemputPanganForm && <JemputPanganForm form={jemputPanganForm} setForm={setJemputPanganForm} mutation={simpanJemputPangan} error={jemputPanganError} fotos={fotosJemputPangan} setFotos={setFotosJemputPangan} progress={progressJemputPangan} fotoGagal={fotoJemputPanganGagal} />}
-                    {showMakloonForm && (transaksi.skema === 'MPP' ? <MakloonMppForm form={makloonMppForm} setForm={setMakloonMppForm} mutation={simpanMakloon} error={makloonError} fotos={fotosMakloon} setFotos={setFotosMakloon} progress={progressMakloon} fotoGagal={fotoMakloonGagal} /> : <MakloonTjpForm form={makloonForm} setForm={setMakloonForm} mutation={simpanMakloon} error={makloonError} fotos={fotosMakloon} setFotos={setFotosMakloon} progress={progressMakloon} fotoGagal={fotoMakloonGagal} />)}
-                    {showUbForm && <UbForm form={ubForm} setForm={setUbForm} mutation={simpanUb} error={ubError} fotos={fotosUb} setFotos={setFotosUb} progress={progressUb} fotoGagal={fotoUbGagal} />}
+                    {showJemputPanganForm && <JemputPanganForm form={jemputPanganForm} setForm={setJemputPanganForm} mutation={simpanJemputPangan} error={jemputPanganError} fotos={fotosJemputPangan} setFotos={setFotosJemputPangan} progress={progressJemputPangan} fotoGagal={fotoJemputPanganGagal} fotoTersimpan={fotoJemputPanganTersimpan} />}
+                    {showMakloonForm && (transaksi.skema === 'MPP' ? <MakloonMppForm form={makloonMppForm} setForm={setMakloonMppForm} mutation={simpanMakloon} error={makloonError} fotos={fotosMakloon} setFotos={setFotosMakloon} progress={progressMakloon} fotoGagal={fotoMakloonGagal} fotoTersimpan={fotoMakloonTersimpan} /> : <MakloonTjpForm form={makloonForm} setForm={setMakloonForm} mutation={simpanMakloon} error={makloonError} fotos={fotosMakloon} setFotos={setFotosMakloon} progress={progressMakloon} fotoGagal={fotoMakloonGagal} fotoTersimpan={fotoMakloonTersimpan} />)}
+                    {showUbForm && <UbForm form={ubForm} setForm={setUbForm} mutation={simpanUb} error={ubError} fotos={fotosUb} setFotos={setFotosUb} progress={progressUb} fotoGagal={fotoUbGagal} fotoTersimpan={fotoUbTersimpan} />}
 
                     {canReviewThis && (
                       <>
@@ -857,10 +916,33 @@ function StageReadOnly({ data, collapsed }: { data: StageData; collapsed: boolea
   )
 }
 
-function JemputPanganForm({ form, setForm, mutation, error, fotos, setFotos, progress, fotoGagal }: any) {
+function dokumenKurang(fields: { key: string; label: string }[], fotos: Record<string, File | null>, fotoTersimpan: Set<string>) {
+  return fields.filter(({ key }) => !fotos[key] && !fotoTersimpan.has(key)).map(({ label }) => label)
+}
+
+function JemputPanganForm({ form, setForm, mutation, error, fotos, setFotos, progress, fotoGagal, fotoTersimpan }: any) {
+  const [warning, setWarning] = useState<string | null>(null)
   const ready = form.id_pemasok && form.supir && form.plat_mobil && form.nama_poktan_gapoktan && form.desa && form.kecamatan && form.kabupaten && form.makloon_user_id && form.tanggal_kirim && form.kuantum && form.jarak_ke_makloon_km
+  const missingDocs = dokumenKurang(JEMPUT_PANGAN_FOTO_FIELDS, fotos, fotoTersimpan)
+  const simpan = (aksi: AksiSimpan) => {
+    if (aksi === 'submit') {
+      if (!ready) {
+        setWarning('Data belum lengkap. Lengkapi semua field sebelum mengirim.')
+        toast.error('Data belum lengkap. Lengkapi semua field sebelum mengirim.')
+        return
+      }
+      if (missingDocs.length > 0) {
+        setWarning(`Dokumen belum lengkap: ${missingDocs.join(', ')}.`)
+        toast.error('Dokumen belum lengkap, transaksi belum dapat dikirim.')
+        return
+      }
+    }
+    setWarning(null)
+    mutation.mutate(aksi)
+  }
   return (
-    <form className="mt-4 @container space-y-4" onSubmit={(e) => { e.preventDefault(); mutation.mutate() }}>
+    <form className="mt-4 @container space-y-4" onSubmit={(e) => e.preventDefault()}>
+      {warning && <div className="alert-warning">{warning}</div>}
       {error && <div className="alert-danger">{error}</div>}
       {mutation.isSuccess && fotoGagal.length > 0 && <div className="alert-warning">Data tersimpan, tapi {fotoGagal.length} foto gagal terupload.</div>}
       <div className="grid gap-4 @md:grid-cols-2">
@@ -876,16 +958,38 @@ function JemputPanganForm({ form, setForm, mutation, error, fotos, setFotos, pro
         <Field label="Kuantum (kg)"><AngkaInput required value={form.kuantum} onChange={(v) => setForm((prev: JemputPanganFormState) => ({ ...prev, kuantum: v }))} /></Field>
         <Field label="Jarak ke Makloon (km)"><input required type="number" step="0.01" min="0" className="input" value={form.jarak_ke_makloon_km} onChange={(e) => setForm((prev: JemputPanganFormState) => ({ ...prev, jarak_ke_makloon_km: e.target.value }))} /></Field>
       </div>
-      <DokumenGrid fields={JEMPUT_PANGAN_FOTO_FIELDS} fotos={fotos} setFotos={setFotos} progress={progress} fotoGagal={fotoGagal} />
-      <div className="flex justify-end border-t border-border pt-4"><button type="submit" disabled={mutation.isPending || !ready} className="btn btn-primary">{mutation.isPending ? 'Mengirim...' : 'Kirim ulang ke Makloon'}</button></div>
+      <DokumenGrid fields={JEMPUT_PANGAN_FOTO_FIELDS} fotos={fotos} setFotos={setFotos} progress={progress} fotoGagal={fotoGagal} fotoTersimpan={fotoTersimpan} />
+      <div className="flex flex-wrap justify-end gap-2 border-t border-border pt-4">
+        <button type="button" disabled={mutation.isPending} onClick={() => simpan('draft')} className="btn btn-ghost border border-border bg-white">{mutation.isPending ? 'Menyimpan...' : 'Simpan'}</button>
+        <button type="button" disabled={mutation.isPending} onClick={() => simpan('submit')} className={`btn btn-primary ${(!ready || missingDocs.length > 0) ? 'opacity-80' : ''}`}>{mutation.isPending ? 'Mengirim...' : 'Kirim ke Makloon'}</button>
+      </div>
     </form>
   )
 }
 
-function MakloonMppForm({ form, setForm, mutation, error, fotos, setFotos, progress, fotoGagal }: any) {
+function MakloonMppForm({ form, setForm, mutation, error, fotos, setFotos, progress, fotoGagal, fotoTersimpan }: any) {
+  const [warning, setWarning] = useState<string | null>(null)
   const ready = form.id_pemasok && form.supir && form.plat_mobil && form.desa && form.kecamatan && form.kabupaten && form.tanggal_bongkar && form.kuantum && form.jarak_ke_makloon_km
+  const missingDocs = dokumenKurang(MAKLOON_MPP_FOTO_FIELDS, fotos, fotoTersimpan)
+  const simpan = (aksi: AksiSimpan) => {
+    if (aksi === 'submit') {
+      if (!ready) {
+        setWarning('Data belum lengkap. Lengkapi semua field sebelum mengirim.')
+        toast.error('Data belum lengkap. Lengkapi semua field sebelum mengirim.')
+        return
+      }
+      if (missingDocs.length > 0) {
+        setWarning(`Dokumen belum lengkap: ${missingDocs.join(', ')}.`)
+        toast.error('Dokumen belum lengkap, transaksi belum dapat dikirim.')
+        return
+      }
+    }
+    setWarning(null)
+    mutation.mutate(aksi)
+  }
   return (
-    <form className="mt-4 @container space-y-4" onSubmit={(e) => { e.preventDefault(); mutation.mutate() }}>
+    <form className="mt-4 @container space-y-4" onSubmit={(e) => e.preventDefault()}>
+      {warning && <div className="alert-warning">{warning}</div>}
       {error && <div className="alert-danger">{error}</div>}
       {mutation.isSuccess && fotoGagal.length > 0 && <div className="alert-warning">Data tersimpan, tapi {fotoGagal.length} foto gagal terupload.</div>}
       <div className="grid gap-4 @md:grid-cols-2">
@@ -899,48 +1003,101 @@ function MakloonMppForm({ form, setForm, mutation, error, fotos, setFotos, progr
         <Field label="Kuantum (kg)"><AngkaInput required value={form.kuantum} onChange={(v) => setForm((prev: MakloonMppFormState) => ({ ...prev, kuantum: v }))} /></Field>
         <Field label="Jarak ke Makloon (km)"><input required type="number" step="0.01" min="0" className="input" value={form.jarak_ke_makloon_km} onChange={(e) => setForm((prev: MakloonMppFormState) => ({ ...prev, jarak_ke_makloon_km: e.target.value }))} /></Field>
       </div>
-      <DokumenGrid fields={MAKLOON_MPP_FOTO_FIELDS} fotos={fotos} setFotos={setFotos} progress={progress} fotoGagal={fotoGagal} />
-      <div className="flex justify-end border-t border-border pt-4"><button type="submit" disabled={mutation.isPending || !ready} className="btn btn-primary">{mutation.isPending ? 'Mengirim...' : 'Kirim ke Makloon Terima'}</button></div>
+      <DokumenGrid fields={MAKLOON_MPP_FOTO_FIELDS} fotos={fotos} setFotos={setFotos} progress={progress} fotoGagal={fotoGagal} fotoTersimpan={fotoTersimpan} />
+      <div className="flex flex-wrap justify-end gap-2 border-t border-border pt-4">
+        <button type="button" disabled={mutation.isPending} onClick={() => simpan('draft')} className="btn btn-ghost border border-border bg-white">{mutation.isPending ? 'Menyimpan...' : 'Simpan'}</button>
+        <button type="button" disabled={mutation.isPending} onClick={() => simpan('submit')} className={`btn btn-primary ${(!ready || missingDocs.length > 0) ? 'opacity-80' : ''}`}>{mutation.isPending ? 'Mengirim...' : 'Kirim ke Makloon Terima'}</button>
+      </div>
     </form>
   )
 }
 
-function MakloonTjpForm({ form, setForm, mutation, error, fotos, setFotos, progress, fotoGagal }: any) {
+function MakloonTjpForm({ form, setForm, mutation, error, fotos, setFotos, progress, fotoGagal, fotoTersimpan }: any) {
+  const [warning, setWarning] = useState<string | null>(null)
+  const ready = form.tanggal_bongkar && form.kuantum_bongkar
+  const missingDocs = dokumenKurang(MAKLOON_FOTO_FIELDS, fotos, fotoTersimpan)
+  const simpan = (aksi: AksiSimpan) => {
+    if (aksi === 'submit') {
+      if (!ready) {
+        setWarning('Data belum lengkap. Lengkapi semua field sebelum mengirim.')
+        toast.error('Data belum lengkap. Lengkapi semua field sebelum mengirim.')
+        return
+      }
+      if (missingDocs.length > 0) {
+        setWarning(`Dokumen belum lengkap: ${missingDocs.join(', ')}.`)
+        toast.error('Dokumen belum lengkap, transaksi belum dapat dikirim.')
+        return
+      }
+    }
+    setWarning(null)
+    mutation.mutate(aksi)
+  }
   return (
-    <form className="mt-4 @container space-y-4" onSubmit={(e) => { e.preventDefault(); mutation.mutate() }}>
+    <form className="mt-4 @container space-y-4" onSubmit={(e) => e.preventDefault()}>
+      {warning && <div className="alert-warning">{warning}</div>}
       {error && <div className="alert-danger">{error}</div>}
       {mutation.isSuccess && fotoGagal.length > 0 && <div className="alert-warning">Data tersimpan, tapi {fotoGagal.length} foto gagal terupload.</div>}
       <div className="grid gap-4 @md:grid-cols-2">
         <Field label="Tanggal bongkar"><input required type="date" className="input" value={form.tanggal_bongkar} onChange={(e) => setForm((prev: any) => ({ ...prev, tanggal_bongkar: e.target.value }))} /></Field>
         <Field label="Kuantum bongkar (kg)"><AngkaInput required placeholder="0" value={form.kuantum_bongkar} onChange={(v) => setForm((prev: any) => ({ ...prev, kuantum_bongkar: v }))} /></Field>
       </div>
-      <DokumenGrid fields={MAKLOON_FOTO_FIELDS} fotos={fotos} setFotos={setFotos} progress={progress} fotoGagal={fotoGagal} />
-      <div className="flex justify-end border-t border-border pt-4"><button type="submit" disabled={mutation.isPending || !form.tanggal_bongkar || !form.kuantum_bongkar} className="btn btn-primary">{mutation.isPending ? 'Mengirim...' : 'Kirim ke UB Jastasma'}</button></div>
+      <DokumenGrid fields={MAKLOON_FOTO_FIELDS} fotos={fotos} setFotos={setFotos} progress={progress} fotoGagal={fotoGagal} fotoTersimpan={fotoTersimpan} />
+      <div className="flex flex-wrap justify-end gap-2 border-t border-border pt-4">
+        <button type="button" disabled={mutation.isPending} onClick={() => simpan('draft')} className="btn btn-ghost border border-border bg-white">{mutation.isPending ? 'Menyimpan...' : 'Simpan'}</button>
+        <button type="button" disabled={mutation.isPending} onClick={() => simpan('submit')} className={`btn btn-primary ${(!ready || missingDocs.length > 0) ? 'opacity-80' : ''}`}>{mutation.isPending ? 'Mengirim...' : 'Kirim ke UB Jastasma'}</button>
+      </div>
     </form>
   )
 }
 
-function UbForm({ form, setForm, mutation, error, fotos, setFotos, progress, fotoGagal }: any) {
+function UbForm({ form, setForm, mutation, error, fotos, setFotos, progress, fotoGagal, fotoTersimpan }: any) {
+  const [warning, setWarning] = useState<string | null>(null)
   const ready = form.ka1 && form.ka2 && form.ka3 && form.hampa && form.butir_hijau
+  const missingDocs = dokumenKurang(UB_FOTO_FIELDS, fotos, fotoTersimpan)
+  const simpan = (aksi: AksiSimpan) => {
+    if (aksi === 'submit') {
+      if (!ready) {
+        setWarning('Data belum lengkap. Lengkapi semua field sebelum mengirim.')
+        toast.error('Data belum lengkap. Lengkapi semua field sebelum mengirim.')
+        return
+      }
+      if (missingDocs.length > 0) {
+        setWarning(`Dokumen belum lengkap: ${missingDocs.join(', ')}.`)
+        toast.error('Dokumen belum lengkap, transaksi belum dapat dikirim.')
+        return
+      }
+    }
+    setWarning(null)
+    mutation.mutate(aksi)
+  }
   return (
-    <form className="mt-4 @container space-y-4" onSubmit={(e) => { e.preventDefault(); mutation.mutate() }}>
+    <form className="mt-4 @container space-y-4" onSubmit={(e) => e.preventDefault()}>
+      {warning && <div className="alert-warning">{warning}</div>}
       {error && <div className="alert-danger">{error}</div>}
       {mutation.isSuccess && fotoGagal.length > 0 && <div className="alert-warning">Data tersimpan, tapi {fotoGagal.length} foto gagal terupload.</div>}
       <div className="grid gap-4 @md:grid-cols-2">
         {(['ka1', 'ka2', 'ka3', 'hampa', 'butir_hijau'] as const).map((key) => <Field key={key} label={labelOf(key)}><input required type="number" step="0.01" min="0" max="100" className="input" value={form[key]} onChange={(e) => setForm((prev: any) => ({ ...prev, [key]: e.target.value }))} /></Field>)}
       </div>
-      <DokumenGrid fields={UB_FOTO_FIELDS} fotos={fotos} setFotos={setFotos} progress={progress} fotoGagal={fotoGagal} />
-      <div className="flex justify-end border-t border-border pt-4"><button type="submit" disabled={mutation.isPending || !ready} className="btn btn-primary">{mutation.isPending ? 'Mengirim...' : 'Kirim ke Pengadaan'}</button></div>
+      <DokumenGrid fields={UB_FOTO_FIELDS} fotos={fotos} setFotos={setFotos} progress={progress} fotoGagal={fotoGagal} fotoTersimpan={fotoTersimpan} />
+      <div className="flex flex-wrap justify-end gap-2 border-t border-border pt-4">
+        <button type="button" disabled={mutation.isPending} onClick={() => simpan('draft')} className="btn btn-ghost border border-border bg-white">{mutation.isPending ? 'Menyimpan...' : 'Simpan'}</button>
+        <button type="button" disabled={mutation.isPending} onClick={() => simpan('submit')} className={`btn btn-primary ${(!ready || missingDocs.length > 0) ? 'opacity-80' : ''}`}>{mutation.isPending ? 'Mengirim...' : 'Kirim ke Pengadaan'}</button>
+      </div>
     </form>
   )
 }
 
-function DokumenGrid({ fields, fotos, setFotos, progress, fotoGagal }: any) {
+function DokumenGrid({ fields, fotos, setFotos, progress, fotoGagal, fotoTersimpan }: any) {
   return (
     <div className="@container">
       <div className="section-title mb-2">Dokumen</div>
       <div className="grid gap-4 @md:grid-cols-2">
-        {fields.map(({ key, label }: { key: string; label: string }) => <FotoPicker key={key} label={label} file={fotos[key] ?? null} onChange={(file) => setFotos((prev: Record<string, File | null>) => ({ ...prev, [key]: file }))} progress={progress[key]} error={fotoGagal.includes(key) ? 'Gagal terupload' : undefined} />)}
+        {fields.map(({ key, label }: { key: string; label: string }) => (
+          <div key={key} className="space-y-1.5">
+            <FotoPicker label={label} file={fotos[key] ?? null} onChange={(file) => setFotos((prev: Record<string, File | null>) => ({ ...prev, [key]: file }))} progress={progress[key]} error={fotoGagal.includes(key) ? 'Gagal terupload' : undefined} />
+            {!fotos[key] && fotoTersimpan?.has(key) && <p className="text-xs font-semibold text-success">Sudah tersimpan. Pilih foto baru hanya kalau ingin mengganti.</p>}
+          </div>
+        ))}
       </div>
     </div>
   )
