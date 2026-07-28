@@ -26,7 +26,7 @@ export default function KeuanganPage() {
     <div className="min-h-screen bg-surface">
       <FormHero
         title="Keuangan — Pembayaran PO"
-        subtitle="Tinjau data Pengadaan, lalu input No. SPP dan tanggal bayar untuk PO yang diterima."
+        subtitle="Tinjau data Pengadaan, lalu input tanggal bayar untuk PO yang diterima."
         badge="Role Keuangan"
       />
 
@@ -55,7 +55,7 @@ export default function KeuanganPage() {
 
           <section className="panel panel-pad">
             <div className="toolbar-card mb-4">
-              <div><h2 className="section-title">PO Siap Dibayar</h2><p className="page-subtitle">Data ini tersambung ke PATCH /api/po/:id/pembayaran.</p></div>
+              <div><h2 className="section-title">PO Siap Dibayar</h2><p className="page-subtitle">No. SPP dan status Sergab berasal dari Pengadaan; Keuangan melanjutkan pembayaran.</p></div>
               <span className="badge badge-warning">{siapBayar.length} antrean</span>
             </div>
 

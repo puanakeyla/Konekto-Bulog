@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import api from '../../lib/api'
@@ -16,8 +16,16 @@ export default function PembayaranForm({ po, onChanged }: { po: PoItem; onChange
   const [noSpp, setNoSpp] = useState(po.no_spp ?? '')
   const [confirmBayar, setConfirmBayar] = useState(false)
 
+  useEffect(() => {
+    setNoSpp(po.no_spp ?? '')
+  }, [po.no_spp])
+
   const mutation = useMutation({
-    mutationFn: () => api.patch(`/api/po/${po.id}/pembayaran`, { status_bayar: 'dibayarkan', tanggal_bayar: tanggalBayar, no_spp: noSpp || undefined }),
+    mutationFn: () => api.patch(`/api/po/${po.id}/pembayaran`, {
+      status_bayar: 'dibayarkan',
+      tanggal_bayar: tanggalBayar,
+      no_spp: noSpp.trim(),
+    }),
     onSuccess: () => {
       setConfirmBayar(false)
       queryClient.invalidateQueries({ queryKey: ['po-list'] })
@@ -51,10 +59,10 @@ export default function PembayaranForm({ po, onChanged }: { po: PoItem; onChange
         </table>
       </div>
       <div className="grid gap-4 @md:grid-cols-2">
-        <label className="block"><span className="label">No. SPP (berlaku untuk seluruh PO)</span><input className="input" value={noSpp} onChange={(e) => setNoSpp(e.target.value)} placeholder="Nomor SPP" /></label>
+        <label className="block"><span className="label">No. SPP (berlaku untuk seluruh PO)</span><input required className="input" value={noSpp} onChange={(e) => setNoSpp(e.target.value)} placeholder="Nomor SPP" /></label>
         <label className="block"><span className="label">Tanggal Bayar (berlaku untuk seluruh PO)</span><input required type="date" className="input" value={tanggalBayar} onChange={(e) => setTanggalBayar(e.target.value)} /></label>
       </div>
-      <div className="mt-4 flex justify-end"><button type="submit" disabled={!tanggalBayar || mutation.isPending} className="btn btn-primary">{mutation.isPending ? 'Menyimpan...' : 'Tandai Dibayarkan'}</button></div>
+      <div className="mt-4 flex justify-end"><button type="submit" disabled={!tanggalBayar || !noSpp.trim() || mutation.isPending} className="btn btn-primary">{mutation.isPending ? 'Menyimpan...' : 'Tandai Dibayarkan'}</button></div>
 
       <ConfirmDialog
         open={confirmBayar}
