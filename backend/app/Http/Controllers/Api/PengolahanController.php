@@ -71,20 +71,22 @@ class PengolahanController extends Controller
 
     private function validatePengolahan(Request $request, ?Pengolahan $pengolahan = null): array
     {
-        $max = 999999999999.99;
+        // Kuantum & hasil olah dalam kg selalu bilangan bulat (lihat AngkaInput di frontend),
+        // jadi batas atasnya ikut bulat. Persentase KA tetap boleh berkoma.
+        $maxBulat = 999999999999;
 
         return $request->validate([
             'makloon_user_id' => ['required', 'integer', Rule::exists('users', 'id')],
-            'kuantum_olah' => ['required', 'numeric', 'min:0.01', "max:{$max}"],
+            'kuantum_olah' => ['required', 'integer', 'min:1', "max:{$maxBulat}"],
             'no_lhpk' => ['required', 'string', 'max:255', Rule::unique('pengolahan', 'no_lhpk')->ignore($pengolahan?->id)],
             'tanggal' => ['required', 'date'],
             'ka1' => ['nullable', 'numeric', 'min:0', 'max:9999.99'],
             'ka2' => ['nullable', 'numeric', 'min:0', 'max:9999.99'],
             'ka3' => ['nullable', 'numeric', 'min:0', 'max:9999.99'],
-            'hgl' => ['nullable', 'numeric', 'min:0', "max:{$max}"],
-            'broken' => ['nullable', 'numeric', 'min:0', "max:{$max}"],
-            'menir' => ['nullable', 'numeric', 'min:0', "max:{$max}"],
-            'katul' => ['nullable', 'numeric', 'min:0', "max:{$max}"],
+            'hgl' => ['nullable', 'integer', 'min:0', "max:{$maxBulat}"],
+            'broken' => ['nullable', 'integer', 'min:0', "max:{$maxBulat}"],
+            'menir' => ['nullable', 'integer', 'min:0', "max:{$maxBulat}"],
+            'katul' => ['nullable', 'integer', 'min:0', "max:{$maxBulat}"],
         ]);
     }
 }

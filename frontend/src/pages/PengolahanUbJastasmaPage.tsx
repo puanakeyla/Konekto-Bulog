@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { apiErrorMessage } from '../lib/apiError'
+import AngkaInput from '../components/AngkaInput'
 import FormHero from '../components/FormHero'
 import MakloonCombobox from '../components/MakloonCombobox'
 import Pagination from '../components/Pagination'
@@ -139,7 +140,7 @@ export default function PengolahanUbJastasmaPage() {
             </label>
             <label className="block">
               <span className="label">Kuantum Olah (kg)</span>
-              <input className="input" type="number" step="0.01" min="0" value={form.kuantumOlah} onChange={set('kuantumOlah')} />
+              <AngkaInput value={form.kuantumOlah} onChange={(v) => setForm((p) => ({ ...p, kuantumOlah: v }))} />
             </label>
             <label className="block">
               <span className="label">No. LHPK</span>
@@ -158,10 +159,10 @@ export default function PengolahanUbJastasmaPage() {
           </div>
 
           <div className="grid gap-4 sm:grid-cols-4">
-            <label className="block"><span className="label">HGL (kg)</span><input className="input" type="number" step="0.01" value={form.hgl} onChange={set('hgl')} /></label>
-            <label className="block"><span className="label">Broken (kg)</span><input className="input" type="number" step="0.01" value={form.broken} onChange={set('broken')} /></label>
-            <label className="block"><span className="label">Menir (kg)</span><input className="input" type="number" step="0.01" value={form.menir} onChange={set('menir')} /></label>
-            <label className="block"><span className="label">Katul (kg)</span><input className="input" type="number" step="0.01" value={form.katul} onChange={set('katul')} /></label>
+            <label className="block"><span className="label">HGL (kg)</span><AngkaInput value={form.hgl} onChange={(v) => setForm((p) => ({ ...p, hgl: v }))} /></label>
+            <label className="block"><span className="label">Broken (kg)</span><AngkaInput value={form.broken} onChange={(v) => setForm((p) => ({ ...p, broken: v }))} /></label>
+            <label className="block"><span className="label">Menir (kg)</span><AngkaInput value={form.menir} onChange={(v) => setForm((p) => ({ ...p, menir: v }))} /></label>
+            <label className="block"><span className="label">Katul (kg)</span><AngkaInput value={form.katul} onChange={(v) => setForm((p) => ({ ...p, katul: v }))} /></label>
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2">

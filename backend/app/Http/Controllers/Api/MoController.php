@@ -78,7 +78,7 @@ class MoController extends Controller
             // gudang tapi tak ada akun gudang yang bisa menerima (tersangkut).
             'tujuan_gudang_user_id' => ['required', 'integer', Rule::exists('users', 'id')->where('role_id', $gudangRoleId)->where('is_active', true)],
             'no_tm_gudang' => ['required', 'string', 'max:255'],
-            'kuantum_total' => ['required', 'numeric', 'min:0.01', 'max:999999999999.99'],
+            'kuantum_total' => ['required', 'integer', 'min:1', 'max:999999999999'],
         ]);
 
         $mo = $this->service->kirimGudang($mo, $validated, $request->user());

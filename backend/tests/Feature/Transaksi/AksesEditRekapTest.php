@@ -158,6 +158,20 @@ class AksesEditRekapTest extends TestCase
         $this->assertEquals(95, $transaksi->dataMakloonTjp->fresh()->kuantum_bongkar);
     }
 
+    /** Kuantum & harga selalu bilangan bulat -- penjaganya di server, bukan cuma di form. */
+    public function test_kuantum_berkoma_ditolak(): void
+    {
+        $transaksi = $this->buatTjpTerkunci();
+
+        Sanctum::actingAs($this->admin);
+
+        $this->patchJson($this->urlRekap($transaksi), [
+            'data_makloon_tjp' => ['kuantum_bongkar' => 90.5],
+        ])->assertStatus(422);
+
+        $this->assertEquals(90, $transaksi->dataMakloonTjp->fresh()->kuantum_bongkar);
+    }
+
     public function test_koreksi_kuantum_ikut_menyesuaikan_total_po(): void
     {
         $transaksi = $this->buatTjpTerkunci();

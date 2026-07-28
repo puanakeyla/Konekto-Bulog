@@ -58,7 +58,7 @@ class PengadaanController extends Controller
             'transaksi_ids' => ['required', 'array', 'min:1'],
             'transaksi_ids.*' => ['required', 'string', Rule::exists('transaksi', 'id_transaksi')],
             'no_po' => ['required', 'string', 'max:255', 'unique:data_pengadaan,no_po'],
-            'harga' => ['nullable', 'numeric', 'min:0', 'max:9999999999999.99'],
+            'harga' => ['nullable', 'integer', 'min:0', 'max:9999999999999'],
             'status' => ['sometimes', Rule::in(['proses', 'lengkap', 'kwitansi_belum_upload', 'foto_belum_lengkap', 'dibatalkan'])],
         ]);
 
@@ -83,7 +83,7 @@ class PengadaanController extends Controller
     {
         $validated = $request->validate([
             'no_po' => ['sometimes', 'string', 'max:255', Rule::unique('data_pengadaan', 'no_po')->ignore($dataPengadaan->id)],
-            'harga' => ['sometimes', 'numeric', 'min:0', 'max:9999999999999.99'],
+            'harga' => ['sometimes', 'integer', 'min:0', 'max:9999999999999'],
             'status' => ['sometimes', Rule::in(['proses', 'lengkap', 'kwitansi_belum_upload', 'foto_belum_lengkap', 'dibatalkan'])],
         ]);
 
@@ -153,7 +153,7 @@ class PengadaanController extends Controller
         $validated = $request->validate([
             'transaksi_ids' => ['required', 'array', 'min:1'],
             'transaksi_ids.*' => ['required', 'string', Rule::exists('transaksi', 'id_transaksi')],
-            'harga' => ['sometimes', 'numeric', 'min:0', 'max:9999999999999.99'],
+            'harga' => ['sometimes', 'integer', 'min:0', 'max:9999999999999'],
             'no_po' => ['sometimes', 'string', 'max:255', Rule::unique('data_pengadaan', 'no_po')->ignore($dataPengadaan->id)],
         ]);
 

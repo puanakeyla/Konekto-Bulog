@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { apiErrorMessage } from '../lib/apiError'
+import AngkaInput from '../components/AngkaInput'
 import FormHero from '../components/FormHero'
 import ConfirmDialog from '../components/ConfirmDialog'
 import Pagination from '../components/Pagination'
@@ -277,7 +278,7 @@ function MoKirimGudangCard({ mo }: { mo: Mo }) {
               </select>
             </label>
             <label className="block"><span className="label">No. TM Gudang</span><input className="input" value={noTmGudang} onChange={(e) => setNoTmGudang(e.target.value)} placeholder="Nomor TM gudang" /></label>
-            <label className="block"><span className="label">Kuantum Total (kg)</span><input className="input" type="number" step="0.01" min="0" value={kuantumTotal} onChange={(e) => setKuantumTotal(e.target.value)} /></label>
+            <label className="block"><span className="label">Kuantum Total (kg)</span><AngkaInput value={kuantumTotal} onChange={setKuantumTotal} /></label>
           </div>
           <div className="mt-4 flex justify-end">
             <button type="button" disabled={!valid || kirim.isPending} onClick={submit} className="btn btn-primary">
