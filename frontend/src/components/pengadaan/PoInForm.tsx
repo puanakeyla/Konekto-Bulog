@@ -140,6 +140,8 @@ export default function PoInForm({
       setValues({})
       afterChange()
       const lengkap = (res.data as { data?: { status?: string } })?.data?.status === 'lengkap'
+      setNoSpp((res.data as { data?: { no_spp?: string | null } })?.data?.no_spp ?? noSpp)
+      setStatusPo((res.data as { data?: { status?: PoItem['status'] } })?.data?.status ?? statusPo)
       toast.success(lengkap ? `PO ${po.no_po} lengkap, diteruskan ke Keuangan.` : `Data Pengadaan PO ${po.no_po} tersimpan.`)
     },
     onError: (err) => toast.error(apiErrorMessage(err, 'Gagal menyimpan nomor IN.')),

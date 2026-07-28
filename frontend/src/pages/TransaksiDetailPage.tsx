@@ -599,7 +599,7 @@ export default function TransaksiDetailPage() {
   const isPengadaanRole = role === 'pengadaan' || role === 'admin'
   const isKeuanganRole = role === 'keuangan' || role === 'admin'
   const poRejected = !!po && po.review_status === 'ditolak'
-  const poFillingIn = !!po && transaksi.current_stage === 'pengadaan' && ['proses', 'kwitansi_belum_upload', 'foto_belum_lengkap'].includes(po.status) // fase Pengadaan mengisi/memperbaiki PO
+  const poFillingIn = !!po && transaksi.current_stage === 'pengadaan' && (['proses', 'kwitansi_belum_upload', 'foto_belum_lengkap'].includes(po.status) || poRejected) // fase Pengadaan mengisi/memperbaiki PO
   const poWaitingReview = !!po && transaksi.current_stage === 'keuangan' && po.review_status === 'menunggu_review'
   const poAccepted = !!po && po.review_status === 'diterima'
   const poPaid = po?.data_keuangan?.status_bayar === 'dibayarkan' || po?.data_keuangan?.review_status === 'diterima'
