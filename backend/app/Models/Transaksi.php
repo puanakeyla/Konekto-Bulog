@@ -75,4 +75,28 @@ class Transaksi extends Model
     {
         return $this->hasMany(AuditLog::class, 'transaksi_id', 'id_transaksi');
     }
+
+    /**
+     * Transaksi ini ditangani oleh user tersebut? Dipakai saat user non-admin dibukakan
+     * akses edit rekap: dia hanya boleh menyentuh transaksinya sendiri, bukan seluruh
+     * baris role-nya (rekap difilter per role, bukan per user).
+     *
+     * Kepemilikan hanya terekam untuk dua role: Jemput Pangan lewat `created_by`, dan
+     * Makloon lewat creator (MPP dibuat makloon sendiri) atau tunjukan JP (TJP). Role
+     * lain (UB Jastasma, Pengadaan, Keuangan) tidak punya kolom pemilik -- datanya
+     * memang milik bersama/level PO -- jadi pembatasnya tinggal scope field di
+     * TransaksiController::SCOPE_EDIT_REKAP.
+     */
+    public function dimilikiOleh(User $user): bool
+    {
+        $this->loadMissing('dataJemputPangan');
+
+        return match ($user->role?->nama_role) {
+            'jemput_pangan' => (int) $this->created_by === (int) $user->id,
+            'makloon' => $this->skema === 'MPP'
+                ? (int) $this->created_by === (int) $user->id
+                : (int) $this->dataJemputPangan?->makloon_user_id === (int) $user->id,
+            default => true,
+        };
+    }
 }

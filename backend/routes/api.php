@@ -40,6 +40,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/users/import-makloon', [AdminUserController::class, 'importMakloon']);
         Route::patch('/users/{user}/reset-password', [AdminUserController::class, 'resetPassword']);
         Route::patch('/users/{user}/deactivate', [AdminUserController::class, 'deactivate']);
+        Route::patch('/users/{user}/akses-edit', [AdminUserController::class, 'aksesEdit']);
         Route::apiResource('users', AdminUserController::class);
     });
 
@@ -52,8 +53,11 @@ Route::middleware('auth:sanctum')->group(function () {
     // sebelum GET /transaksi/{transaksi} (show) -- kalau tidak, show akan menelan seluruh
     // sisa path (mis. "/foto/foto_petani") sebagai bagian dari {transaksi} karena ia
     // dicocokkan lebih dulu (first-match-wins berdasar urutan registrasi).
-    Route::patch('/transaksi/{transaksi}/admin-rekap', [TransaksiController::class, 'adminUpdateRekap'])
-        ->middleware('role:admin');
+    // Sengaja tanpa middleware `role:admin`: selain admin, user yang aksesnya sedang dibuka
+    // admin (users.akses_edit_dibuka_at) juga boleh masuk, tapi hanya untuk blok data
+    // miliknya sendiri. Keputusan itu butuh konteks transaksi + payload, jadi ditegakkan di
+    // adminUpdateRekap(), bukan di daftar role.
+    Route::patch('/transaksi/{transaksi}/admin-rekap', [TransaksiController::class, 'adminUpdateRekap']);
     Route::get('/transaksi/{transaksi}/foto', [FotoController::class, 'index']);
     Route::get('/transaksi/{transaksi}/foto/{jenisFoto}', [FotoController::class, 'link']);
     Route::delete('/transaksi/{transaksi}/foto/{jenisFoto}', [FotoController::class, 'destroy'])

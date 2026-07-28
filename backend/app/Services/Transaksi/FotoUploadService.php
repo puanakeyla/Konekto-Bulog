@@ -51,8 +51,16 @@ class FotoUploadService
             abort(422, "Tidak ada data {$role} untuk transaksi ini.");
         }
 
-        if ($model->locked_at !== null && $actor->role->nama_role !== 'admin') {
-            abort(422, 'Data tahap ini sudah dikunci, foto tidak bisa diubah.');
+        // Tahap terkunci: hanya admin, atau user yang aksesnya sedang dibuka admin lewat
+        // Kelola User -- dan user seperti itu tetap dibatasi ke transaksinya sendiri.
+        if ($model->locked_at !== null) {
+            if (! $actor->bolehEditRekap()) {
+                abort(422, 'Data tahap ini sudah dikunci, foto tidak bisa diubah.');
+            }
+
+            if ($actor->role->nama_role !== 'admin' && ! $transaksi->dimilikiOleh($actor)) {
+                abort(403, 'Anda hanya boleh memperbaiki transaksi yang Anda tangani.');
+            }
         }
 
         $validCollections = $model->getRegisteredMediaCollections()->pluck('name');

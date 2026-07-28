@@ -16,6 +16,8 @@ export type AdminUser = {
   kecamatan: string | null
   kabupaten: string | null
   is_active: boolean
+  /** Non-null = akses edit rekap sementara sedang terbuka untuk user ini. */
+  akses_edit_dibuka_at: string | null
   created_at: string
   updated_at: string
 }

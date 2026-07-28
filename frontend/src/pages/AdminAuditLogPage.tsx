@@ -190,6 +190,21 @@ const AKSI_CONFIG: Record<string, AksiConfig> = {
     label: 'Edit data transaksi (admin)',
     kalimat: () => 'Mengedit data transaksi terkunci lewat rekap admin',
   },
+  rekap_update_akses: {
+    kategori: 'ubah',
+    label: 'Perbaikan data (akses sementara)',
+    kalimat: (log) => `Memperbaiki data tahap ${d(log.detail, 'role') || 'sendiri'} lewat akses yang dibuka Admin`,
+  },
+  admin_akses_edit_buka: {
+    kategori: 'ubah',
+    label: 'Buka akses perbaikan',
+    kalimat: (log) => `Membuka akses perbaikan data untuk user "${d(log.detail, 'username')}"`,
+  },
+  admin_akses_edit_kunci: {
+    kategori: 'ubah',
+    label: 'Kunci akses perbaikan',
+    kalimat: (log) => `Mengunci kembali akses perbaikan data user "${d(log.detail, 'username')}"`,
+  },
   admin_rekap_delete: {
     kategori: 'hapus',
     label: 'Hapus transaksi (admin)',

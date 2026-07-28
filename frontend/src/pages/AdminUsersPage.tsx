@@ -102,6 +102,19 @@ export default function AdminUsersPage() {
     onError: (err) => toast.error(errorMessage(err)),
   })
 
+  // Buka/kunci akses perbaikan data terkunci milik satu user. Dipakai saat petugas salah
+  // input (mis. foto keliru): akses dibuka, user memperbaiki bagiannya sendiri, lalu
+  // tertutup sendiri setelah satu kali simpan.
+  const aksesMutation = useMutation({
+    mutationFn: ({ target, buka }: { target: AdminUser; buka: boolean }) =>
+      api.patch(`/api/admin/users/${target.id}/akses-edit`, { buka }),
+    onSuccess: (_data, { target, buka }) => {
+      toast.success(`Akses edit ${target.username} ${buka ? 'dibuka' : 'dikunci'}.`)
+      queryClient.invalidateQueries({ queryKey: ['admin-users'] })
+    },
+    onError: (err) => toast.error(errorMessage(err)),
+  })
+
   const importMutation = useMutation({
     mutationFn: async () => {
       if (!importFile) throw new Error('Pilih file CSV atau Excel terlebih dahulu.')
@@ -397,25 +410,56 @@ export default function AdminUsersPage() {
                     </td>
                   </tr>
                 )}
-                {users?.map((target) => (
-                  <tr key={target.id} className="transition-colors hover:bg-surface">
+                {users?.map((target) => {
+                  const aksesTerbuka = target.akses_edit_dibuka_at !== null
+                  const isAdminRow = target.role.nama_role === 'admin'
+
+                  return (
+                  // Baris ditandai merah selama akses perbaikan masih terbuka, supaya yang
+                  // lupa dikunci kelihatan sekali lihat.
+                  <tr key={target.id} className={aksesTerbuka ? 'bg-danger-bg/60' : 'transition-colors hover:bg-surface'}>
                     <td className="px-5 py-3 font-semibold text-primary-dark">{target.username}</td>
                     <td className="px-5 py-3 capitalize text-gray-600">{target.role.nama_role.replaceAll('_', ' ')}</td>
                     <td className="px-5 py-3 text-gray-600">{target.nama_maklon ?? target.nama_gudang ?? '-'}</td>
                     <td className="px-5 py-3">
-                      <span
-                        className={
-                          'inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ' +
-                          (target.is_active
-                            ? 'bg-success-bg text-success'
-                            : 'bg-danger-bg text-danger')
-                        }
-                      >
-                        {target.is_active ? 'Aktif' : 'Nonaktif'}
-                      </span>
+                      <div className="flex flex-col items-start gap-1">
+                        <span
+                          className={
+                            'inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ' +
+                            (target.is_active
+                              ? 'bg-success-bg text-success'
+                              : 'bg-danger-bg text-danger')
+                          }
+                        >
+                          {target.is_active ? 'Aktif' : 'Nonaktif'}
+                        </span>
+                        {aksesTerbuka && (
+                          <span className="inline-flex rounded-full bg-danger px-2.5 py-1 text-xs font-semibold text-white">
+                            Akses edit terbuka
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td className="px-5 py-3">
                       <div className="flex justify-center gap-2">
+                        {!isAdminRow && (
+                          <button
+                            type="button"
+                            disabled={aksesMutation.isPending}
+                            title={aksesTerbuka
+                              ? 'Kunci kembali akses perbaikan user ini'
+                              : 'Izinkan user ini memperbaiki data tahapnya sendiri yang sudah terkunci'}
+                            className={
+                              'rounded-lg px-3 py-1.5 text-xs font-bold transition-colors disabled:cursor-not-allowed disabled:opacity-50 ' +
+                              (aksesTerbuka
+                                ? 'border border-danger bg-danger text-white hover:bg-danger/90'
+                                : 'border border-border bg-white text-primary-dark hover:border-primary hover:bg-primary-tint')
+                            }
+                            onClick={() => aksesMutation.mutate({ target, buka: !aksesTerbuka })}
+                          >
+                            {aksesTerbuka ? 'Kunci Akses' : 'Buka Akses'}
+                          </button>
+                        )}
                         <button
                           type="button"
                           className="rounded-lg border border-primary/20 bg-primary-tint px-3 py-1.5 text-xs font-bold text-primary transition-colors hover:border-primary hover:bg-primary hover:text-white"
@@ -438,7 +482,8 @@ export default function AdminUsersPage() {
                       </div>
                     </td>
                   </tr>
-                ))}
+                  )
+                })}
               </tbody>
             </table>
           </div>

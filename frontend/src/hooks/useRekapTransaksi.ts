@@ -69,6 +69,7 @@ export type RekapTransaksi = {
   skema: 'TJP' | 'MPP'
   current_stage: string
   status_keseluruhan: string
+  created_by: number | null
   created_at: string
   nama_maklon: string | null
   makloon_kecamatan: string | null

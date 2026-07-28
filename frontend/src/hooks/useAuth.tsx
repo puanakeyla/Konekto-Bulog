@@ -10,6 +10,8 @@ type User = {
   nama_maklon: string | null
   kecamatan: string | null
   kabupaten: string | null
+  /** Diisi admin lewat Kelola User saat user perlu memperbaiki datanya yang sudah terkunci. */
+  akses_edit_dibuka_at: string | null
   role: Role
 }
 

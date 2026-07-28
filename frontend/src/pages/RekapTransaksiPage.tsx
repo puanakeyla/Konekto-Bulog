@@ -281,6 +281,39 @@ function kuantumSummaryUntukRole(role: string, rows: RekapTransaksi[]): KuantumS
   return items
 }
 
+/**
+ * Cermin TransaksiController::SCOPE_EDIT_REKAP — blok yang boleh disentuh tiap role saat
+ * aksesnya dibuka admin. Ini cuma untuk merapikan tampilan; penyaring sebenarnya ada di
+ * backend, jadi menambah blok di sini tidak memberi izin apa pun.
+ */
+const SCOPE_EDIT: Record<string, string[]> = {
+  jemput_pangan: ['jp'],
+  makloon: ['makloon'],
+  ub_jastasma: ['ub'],
+  pengadaan: ['pengadaan'],
+  keuangan: ['keuangan'],
+}
+
+function bolehBlok(role: string, blok: string) {
+  return role === 'admin' || (SCOPE_EDIT[role] ?? []).includes(blok)
+}
+
+/**
+ * Cermin Transaksi::dimilikiOleh() di backend. Rekap menampilkan seluruh baris se-role
+ * (bukan cuma milik user), jadi tanpa ini tombol Edit muncul di baris yang pasti ditolak
+ * server. Murni kosmetik — penolakannya tetap terjadi di backend.
+ */
+function dimilikiUser(row: RekapTransaksi, role: string, userId?: number) {
+  if (role === 'jemput_pangan') return row.created_by === userId
+  if (role === 'makloon') {
+    return row.skema === 'MPP'
+      ? row.created_by === userId
+      : row.data_jemput_pangan?.makloon_user_id === userId
+  }
+
+  return true
+}
+
 type RekapEditForm = {
   jp_id_pemasok: string
   jp_poktan: string
@@ -428,6 +461,9 @@ export default function RekapTransaksiPage() {
       toast.success(`Transaksi ${vars.row.id_transaksi} diperbarui.`)
       setEditing(null)
       setEditForm(null)
+      // Akses sementara hangus setelah satu kali simpan (backend menutupnya), jadi data
+      // user harus disegarkan supaya tombol Edit ikut hilang tanpa perlu reload.
+      queryClient.invalidateQueries({ queryKey: ['me'] })
       queryClient.invalidateQueries({ queryKey: ['rekap-transaksi'] })
       queryClient.invalidateQueries({ queryKey: ['transaksi-list'] })
       queryClient.invalidateQueries({ queryKey: ['po-list'] })
@@ -451,6 +487,12 @@ export default function RekapTransaksiPage() {
     setEditForm(formDariRekap(row))
   }
 
+  // Admin selalu; role lain hanya selama admin membukakan aksesnya di Kelola User, dan
+  // hanya untuk blok data miliknya sendiri (dibatasi lagi di backend).
+  const aksesSementara = role !== 'admin' && !!user?.akses_edit_dibuka_at
+  const bolehEditBaris = (row: RekapTransaksi) =>
+    role === 'admin' || (aksesSementara && dimilikiUser(row, role, user?.id))
+
   // Aksi per baris dipakai ulang oleh tabel TJP maupun MPP.
   const renderRowActions = (row: RekapTransaksi) => (
     <div className="flex justify-center gap-2">
@@ -461,15 +503,17 @@ export default function RekapTransaksiPage() {
       >
         Dokumen
       </button>
+      {bolehEditBaris(row) && (
+        <button
+          type="button"
+          onClick={() => mulaiEdit(row)}
+          className="rounded-lg border border-primary/20 bg-primary-tint px-3 py-1.5 text-xs font-bold text-primary transition-colors hover:border-primary hover:bg-primary hover:text-white"
+        >
+          Edit
+        </button>
+      )}
       {role === 'admin' && (
         <>
-          <button
-            type="button"
-            onClick={() => mulaiEdit(row)}
-            className="rounded-lg border border-primary/20 bg-primary-tint px-3 py-1.5 text-xs font-bold text-primary transition-colors hover:border-primary hover:bg-primary hover:text-white"
-          >
-            Edit
-          </button>
           <button
             type="button"
             disabled={deleteMutation.isPending}
@@ -497,6 +541,12 @@ export default function RekapTransaksiPage() {
       />
 
       <div className="relative mx-auto -mt-16 max-w-6xl space-y-6 px-6 pb-16">
+        {aksesSementara && (
+          <div className="alert-warning">
+            Admin membuka akses perbaikan untuk Anda. Tekan <strong>Edit</strong> pada transaksi yang salah, perbaiki data atau ganti fotonya, lalu simpan — akses langsung terkunci kembali setelah satu kali simpan.
+          </div>
+        )}
+
         <div className="stats-grid">
           <div className="stat-card"><div className="stat-label">Total transaksi</div><div className="stat-value">{rows.length}</div></div>
           <div className="stat-card"><div className="stat-label">TJP</div><div className="stat-value">{rows.filter((r) => r.skema === 'TJP').length}</div></div>
@@ -542,6 +592,7 @@ export default function RekapTransaksiPage() {
         <RekapEditModal
           row={editing}
           form={editForm}
+          role={role}
           makloonOptions={makloonOptions}
           isSaving={updateMutation.isPending}
           onChange={(key, value) => setEditForm((prev) => prev ? { ...prev, [key]: value } : prev)}
@@ -584,6 +635,7 @@ function KuantumSummary({ items }: { items: KuantumSummaryItem[] }) {
 type RekapEditModalProps = {
   row: RekapTransaksi
   form: RekapEditForm
+  role: string
   makloonOptions: { id: number; nama_maklon: string; kecamatan: string | null; kabupaten: string | null }[]
   isSaving: boolean
   onChange: (key: keyof RekapEditForm, value: string) => void
@@ -591,7 +643,10 @@ type RekapEditModalProps = {
   onSubmit: () => void
 }
 
-function RekapEditModal({ row, form, makloonOptions, isSaving, onChange, onClose, onSubmit }: RekapEditModalProps) {
+function RekapEditModal({ row, form, role, makloonOptions, isSaving, onChange, onClose, onSubmit }: RekapEditModalProps) {
+  const isAdmin = role === 'admin'
+  const boleh = (blok: string) => bolehBlok(role, blok)
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-sm">
       <form
@@ -604,9 +659,13 @@ function RekapEditModal({ row, form, makloonOptions, isSaving, onChange, onClose
         <div className="border-b border-border bg-gradient-to-r from-primary-dark via-primary to-primary-dark px-6 py-5 text-white">
           <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
             <div>
-              <p className="text-[0.68rem] font-bold uppercase tracking-[0.2em] text-accent">Edit Rekap Admin</p>
+              <p className="text-[0.68rem] font-bold uppercase tracking-[0.2em] text-accent">{isAdmin ? 'Edit Rekap Admin' : 'Perbaikan Data Anda'}</p>
               <h2 className="mt-1 text-2xl font-extrabold">{row.id_transaksi}</h2>
-              <p className="mt-1 text-sm text-white/70">Koreksi data terkunci tanpa mengulang alur transaksi.</p>
+              <p className="mt-1 text-sm text-white/70">
+                {isAdmin
+                  ? 'Koreksi data terkunci tanpa mengulang alur transaksi.'
+                  : 'Akses dibuka Admin dan berlaku sekali: setelah disimpan, data terkunci kembali.'}
+              </p>
             </div>
             <div className="flex gap-2">
               <span className="rounded-lg border border-white/15 bg-white/10 px-3 py-1.5 text-xs font-bold">{row.skema}</span>
@@ -616,7 +675,7 @@ function RekapEditModal({ row, form, makloonOptions, isSaving, onChange, onClose
         </div>
 
         <div className="space-y-5 overflow-y-auto bg-surface px-6 py-5">
-          {row.data_jemput_pangan && (
+          {row.data_jemput_pangan && boleh('jp') && (
             <EditSection title="Jemput Pangan" badge="Data awal TJP">
               <TextField label="ID Pemasok" placeholder="505374 - CV. CANDRA JAYA PRAKASA" value={form.jp_id_pemasok} onChange={(v) => onChange('jp_id_pemasok', v)} />
               <TextField label="Poktan/Gapoktan" value={form.jp_poktan} onChange={(v) => onChange('jp_poktan', v)} />
@@ -640,14 +699,14 @@ function RekapEditModal({ row, form, makloonOptions, isSaving, onChange, onClose
             </EditSection>
           )}
 
-          {row.data_makloon_tjp && (
+          {row.data_makloon_tjp && boleh('makloon') && (
             <EditSection title="Makloon TJP" badge="Bongkar makloon">
               <TextField type="date" label="Tanggal Bongkar" value={form.mtjp_tanggal_bongkar} onChange={(v) => onChange('mtjp_tanggal_bongkar', v)} />
               <AngkaField label="Kuantum Bongkar (kg)" value={form.mtjp_kuantum_bongkar} onChange={(v) => onChange('mtjp_kuantum_bongkar', v)} />
             </EditSection>
           )}
 
-          {row.data_makloon_mpp && (
+          {row.data_makloon_mpp && boleh('makloon') && (
             <EditSection title="Makloon MPP" badge="Input makloon">
               <TextField label="ID Pemasok" placeholder="505374 - CV. CANDRA JAYA PRAKASA" value={form.mmpp_id_pemasok} onChange={(v) => onChange('mmpp_id_pemasok', v)} />
               <TextField label="Supir" value={form.mmpp_supir} onChange={(v) => onChange('mmpp_supir', v)} />
@@ -662,7 +721,7 @@ function RekapEditModal({ row, form, makloonOptions, isSaving, onChange, onClose
             </EditSection>
           )}
 
-          {row.data_ub_jastasma && (
+          {row.data_ub_jastasma && boleh('ub') && (
             <EditSection title="UB Jastasma" badge="Mutu gabah">
               <TextField type="number" label="KA1" value={form.ub_ka1} onChange={(v) => onChange('ub_ka1', v)} />
               <TextField type="number" label="KA2" value={form.ub_ka2} onChange={(v) => onChange('ub_ka2', v)} />
@@ -672,17 +731,19 @@ function RekapEditModal({ row, form, makloonOptions, isSaving, onChange, onClose
             </EditSection>
           )}
 
-          {row.data_pengadaan && (
+          {/* Satu blok data_pengadaan dipakai dua role: Pengadaan memegang PO/IN/harga,
+              Keuangan memegang SPP/tanggal bayar. */}
+          {row.data_pengadaan && (boleh('pengadaan') || boleh('keuangan')) && (
             <EditSection title="Pengadaan & Keuangan" badge="PO, IN, dan pembayaran">
-              <TextField label="No. PO" value={form.po_no} onChange={(v) => onChange('po_no', v)} />
-              <TextField label="No. IN" value={form.po_in} onChange={(v) => onChange('po_in', v)} />
-              <AngkaField label="Harga/kg" value={form.po_harga} onChange={(v) => onChange('po_harga', v)} />
-              <TextField label="No. SPP" value={form.po_spp} onChange={(v) => onChange('po_spp', v)} />
-              <TextField type="date" label="Tanggal Bayar" value={form.po_tanggal_bayar} onChange={(v) => onChange('po_tanggal_bayar', v)} />
+              {boleh('pengadaan') && <TextField label="No. PO" value={form.po_no} onChange={(v) => onChange('po_no', v)} />}
+              {boleh('pengadaan') && <TextField label="No. IN" value={form.po_in} onChange={(v) => onChange('po_in', v)} />}
+              {boleh('pengadaan') && <AngkaField label="Harga/kg" value={form.po_harga} onChange={(v) => onChange('po_harga', v)} />}
+              {boleh('keuangan') && <TextField label="No. SPP" value={form.po_spp} onChange={(v) => onChange('po_spp', v)} />}
+              {boleh('keuangan') && <TextField type="date" label="Tanggal Bayar" value={form.po_tanggal_bayar} onChange={(v) => onChange('po_tanggal_bayar', v)} />}
             </EditSection>
           )}
 
-          <DokumenAdminPanel row={row} />
+          <DokumenAdminPanel row={row} role={role} />
         </div>
 
         <div className="flex flex-col-reverse gap-3 border-t border-border bg-white px-6 py-4 sm:flex-row sm:justify-end">
@@ -696,12 +757,19 @@ function RekapEditModal({ row, form, makloonOptions, isSaving, onChange, onClose
   )
 }
 
-function DokumenAdminPanel({ row }: { row: RekapTransaksi }) {
+function DokumenAdminPanel({ row, role }: { row: RekapTransaksi; role: string }) {
   const [busyKey, setBusyKey] = useState<string | null>(null)
-  const fields = [
+  const isAdmin = role === 'admin'
+  const semuaField = [
     ...(row.skema === 'TJP' ? DOKUMEN_TJP : DOKUMEN_MPP),
     ...(row.data_ub_jastasma ? DOKUMEN_UB : []),
   ]
+  // Non-admin hanya melihat slot foto tahapnya sendiri — sejalan dengan blok data yang
+  // boleh dia ubah, dan dengan FotoUploadService yang menentukan model target dari role
+  // pengunggah. Role tanpa slot foto (Pengadaan/Keuangan) tidak dapat panel ini sama sekali.
+  const fields = isAdmin ? semuaField : semuaField.filter((f) => f.role === role)
+
+  if (fields.length === 0) return null
 
   const bukaDokumen = async (field: DokumenField) => {
     setBusyKey(`open:${field.key}`)
@@ -722,7 +790,9 @@ function DokumenAdminPanel({ row }: { row: RekapTransaksi }) {
       const formData = new FormData()
       formData.append('jenis_foto', field.key)
       formData.append('foto', file)
-      formData.append('role', field.role)
+      // `role` adalah override khusus admin (backend menolaknya dari role lain); untuk
+      // non-admin biarkan backend memakai role pengunggah itu sendiri.
+      if (isAdmin) formData.append('role', field.role)
       await api.post(`/api/transaksi/${encodeURIComponent(row.id_transaksi)}/foto`, formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       })
@@ -752,7 +822,11 @@ function DokumenAdminPanel({ row }: { row: RekapTransaksi }) {
       <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
         <div>
           <h3 className="text-sm font-extrabold text-primary-dark">Dokumen {row.skema}</h3>
-          <p className="mt-1 text-xs text-slate-500">Buka/download ulang, ganti file, atau hapus dokumen transaksi.</p>
+          <p className="mt-1 text-xs text-slate-500">
+            {isAdmin
+              ? 'Buka/download ulang, ganti file, atau hapus dokumen transaksi.'
+              : 'Buka/download ulang atau ganti file dokumen tahap Anda.'}
+          </p>
         </div>
         <span className="rounded-full bg-primary-tint px-3 py-1 text-[0.68rem] font-bold text-primary">{fields.length} slot dokumen</span>
       </div>
@@ -771,7 +845,8 @@ function DokumenAdminPanel({ row }: { row: RekapTransaksi }) {
                 {busyKey === `upload:${field.key}` ? 'Mengunggah...' : 'Ganti'}
                 <input type="file" accept="image/jpeg,image/png" className="hidden" disabled={busyKey === `upload:${field.key}`} onChange={(event) => gantiDokumen(field, event.target.files?.[0] ?? null)} />
               </label>
-              <button type="button" className="btn btn-ghost border border-danger/20 bg-danger-bg px-3 py-1.5 text-xs text-danger" disabled={busyKey === `delete:${field.key}`} onClick={() => hapusDokumen(field)}>
+              {/* Hapus foto tetap admin-only (route DELETE-nya juga role:admin). */}
+              <button type="button" hidden={!isAdmin} className="btn btn-ghost border border-danger/20 bg-danger-bg px-3 py-1.5 text-xs text-danger" disabled={busyKey === `delete:${field.key}`} onClick={() => hapusDokumen(field)}>
                 {busyKey === `delete:${field.key}` ? 'Menghapus...' : 'Hapus'}
               </button>
             </div>

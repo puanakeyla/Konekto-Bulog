@@ -16,6 +16,7 @@ use App\Services\Transaksi\TransaksiStageService;
 use App\Services\Transaksi\TransaksiStages;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 
@@ -178,9 +179,36 @@ class TransaksiController extends Controller
         return response()->json(['data' => new TransaksiResource($transaksi)]);
     }
 
+    /**
+     * Blok data yang boleh disentuh tiap role saat aksesnya dibuka admin. Nilai `null`
+     * berarti seluruh field blok itu; array berarti hanya field tersebut (Pengadaan dan
+     * Keuangan berbagi blok `data_pengadaan` tapi memiliki field yang berbeda).
+     * Admin tidak lewat peta ini -- dia boleh semuanya.
+     */
+    private const SCOPE_EDIT_REKAP = [
+        'jemput_pangan' => ['data_jemput_pangan' => null],
+        'makloon' => ['data_makloon_tjp' => null, 'data_makloon_mpp' => null],
+        'ub_jastasma' => ['data_ub_jastasma' => null],
+        'pengadaan' => ['data_pengadaan' => ['no_po', 'no_in', 'harga']],
+        'keuangan' => ['data_pengadaan' => ['no_spp', 'tanggal_bayar']],
+    ];
+
+    /**
+     * Koreksi data yang sudah terkunci. Dulu admin-only; kini juga terbuka untuk user yang
+     * aksesnya dibuka admin di Kelola User -- dengan tiga pembatas: hanya blok field milik
+     * role-nya (SCOPE_EDIT_REKAP), hanya transaksi yang dia tangani (dimilikiOleh), dan
+     * aksesnya tertutup otomatis begitu satu penyimpanan berhasil.
+     */
     public function adminUpdateRekap(Request $request, Transaksi $transaksi)
     {
-        abort_unless($request->user()->role->nama_role === 'admin', 403);
+        $user = $request->user();
+        $role = $user->role->nama_role;
+
+        abort_unless($user->bolehEditRekap(), 403, 'Akses edit rekap Anda belum dibuka Admin.');
+
+        if ($role !== 'admin') {
+            abort_unless($transaksi->dimilikiOleh($user), 403, 'Anda hanya boleh memperbaiki transaksi yang Anda tangani.');
+        }
 
         $validated = $request->validate([
             'data_jemput_pangan' => ['sometimes', 'array'],
@@ -227,7 +255,15 @@ class TransaksiController extends Controller
             'data_pengadaan.tanggal_bayar' => ['nullable', 'date'],
         ]);
 
-        return DB::transaction(function () use ($request, $transaksi, $validated) {
+        // Penjaga sebenarnya ada di sini, bukan di UI: apa pun yang dikirim non-admin
+        // disaring ke blok miliknya dulu, jadi payload yang dirakit manual pun tidak bisa
+        // menyentuh tahap role lain.
+        if ($role !== 'admin') {
+            $validated = $this->batasiScopeRekap($validated, $role);
+            abort_if($validated === [], 403, 'Tidak ada data tahap Anda yang bisa diubah di transaksi ini.');
+        }
+
+        return DB::transaction(function () use ($request, $user, $role, $transaksi, $validated) {
             $before = $this->adminSnapshot($transaksi);
 
             if (array_key_exists('data_jemput_pangan', $validated) && $transaksi->dataJemputPangan) {
@@ -273,10 +309,17 @@ class TransaksiController extends Controller
                 }
             }
 
-            $this->auditLog->log($request->user(), 'admin_rekap_update', $transaksi->id_transaksi, [
+            $this->auditLog->log($request->user(), $role === 'admin' ? 'admin_rekap_update' : 'rekap_update_akses', $transaksi->id_transaksi, [
                 'before' => $before,
                 'after' => $this->adminSnapshot($transaksi->fresh()),
+                'role' => $role,
             ]);
+
+            // Akses sementara sekali pakai: begitu koreksinya tersimpan, kuncinya balik
+            // seperti semula tanpa admin harus ingat menutupnya.
+            if ($role !== 'admin') {
+                $user->update(['akses_edit_dibuka_at' => null]);
+            }
 
             $transaksi->load(['dataJemputPangan.makloon', 'dataMakloonMpp', 'dataMakloonTjp', 'dataUbJastasma', 'poDetail.dataPengadaan.poDetail', 'poDetail.dataPengadaan.dataKeuangan', 'creator']);
 
@@ -318,6 +361,28 @@ class TransaksiController extends Controller
 
             return response()->json(['message' => 'Transaksi dihapus dari rekap.']);
         });
+    }
+
+    /**
+     * Buang seluruh blok/field di luar jatah role. Blok yang tidak dikirim tetap tidak
+     * dikirim (bukan dikosongkan), sehingga hasilnya aman dioper apa adanya ke update().
+     */
+    private function batasiScopeRekap(array $validated, string $role): array
+    {
+        $hasil = [];
+
+        foreach (self::SCOPE_EDIT_REKAP[$role] ?? [] as $blok => $fields) {
+            if (! array_key_exists($blok, $validated)) {
+                continue;
+            }
+
+            $isi = $fields === null ? $validated[$blok] : Arr::only($validated[$blok], $fields);
+            if ($isi !== []) {
+                $hasil[$blok] = $isi;
+            }
+        }
+
+        return $hasil;
     }
 
     private function adminSnapshot(Transaksi $transaksi): array

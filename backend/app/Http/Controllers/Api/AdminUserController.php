@@ -185,6 +185,31 @@ class AdminUserController extends Controller
         return response()->json(['data' => new AdminUserResource($user->fresh('role'))]);
     }
 
+    /**
+     * Buka/kunci akses edit rekap sementara milik satu user. Dipakai saat petugas salah
+     * input (mis. foto keliru) dan datanya sudah terkunci: admin membuka, user memperbaiki
+     * bagiannya sendiri, lalu akses tertutup otomatis setelah satu kali simpan
+     * (TransaksiController::adminUpdateRekap) atau dikunci manual lewat endpoint ini.
+     */
+    public function aksesEdit(Request $request, User $user)
+    {
+        $validated = $request->validate([
+            'buka' => ['required', 'boolean'],
+        ]);
+
+        abort_if($user->role->nama_role === 'admin', 422, 'Admin sudah punya akses penuh.');
+
+        $user->update(['akses_edit_dibuka_at' => $validated['buka'] ? now() : null]);
+
+        $this->auditLog->log($request->user(), $validated['buka'] ? 'admin_akses_edit_buka' : 'admin_akses_edit_kunci', null, [
+            'target_user_id' => $user->id,
+            'username' => $user->username,
+            'role' => $user->role->nama_role,
+        ]);
+
+        return response()->json(['data' => new AdminUserResource($user->fresh('role'))]);
+    }
+
     public function destroy(Request $request, User $user)
     {
         $before = $user->only(['username', 'role_id', 'nama_maklon', 'is_active']);

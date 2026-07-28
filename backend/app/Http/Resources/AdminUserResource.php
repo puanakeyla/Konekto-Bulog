@@ -19,6 +19,7 @@ class AdminUserResource extends JsonResource
             'kecamatan' => $this->kecamatan,
             'kabupaten' => $this->kabupaten,
             'is_active' => $this->is_active,
+            'akses_edit_dibuka_at' => $this->akses_edit_dibuka_at,
             'created_at' => $this->created_at,
             'updated_at' => $this->updated_at,
         ];
