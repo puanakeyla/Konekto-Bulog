@@ -96,6 +96,47 @@ class TransaksiStageService
         });
     }
 
+    public function saveDraft(Transaksi $transaksi, User $actor, string $role, string $modelClass, array $data): Model
+    {
+        if ($transaksi->skema === 'MPP' && $role === 'makloon' && $transaksi->current_stage === 'makloon_kirim') {
+            $role = 'makloon_kirim';
+        }
+
+        if ($transaksi->current_stage !== $role) {
+            abort(422, 'Transaksi bukan sedang berada di tahap ini.');
+        }
+
+        $index = TransaksiStages::indexOfRole($transaksi->skema, $role);
+        if ($index === null) {
+            abort(422, 'Tahap tidak dikenal untuk skema ini.');
+        }
+
+        $this->assertActorRole($actor, TransaksiStages::actorRole(TransaksiStages::stageAt($transaksi->skema, $index)));
+
+        $record = $modelClass::firstOrNew(['transaksi_id' => $transaksi->id_transaksi]);
+
+        if (in_array($record->status, ['menunggu_review', 'diterima'], true)) {
+            abort(422, 'Data tahap ini sudah dikirim dan tidak dapat diubah.');
+        }
+
+        return DB::transaction(function () use ($record, $data, $transaksi, $actor, $role) {
+            $record->fill($data);
+            $record->transaksi_id = $transaksi->id_transaksi;
+            $record->status = 'draft';
+            $record->submitted_by = null;
+            $record->submitted_at = null;
+            $record->save();
+
+            $this->auditLog->log($actor, 'save_stage_draft', $transaksi->id_transaksi, [
+                'stage' => $role,
+                'skema' => $transaksi->skema,
+                'model' => class_basename($record),
+            ]);
+
+            return $record;
+        });
+    }
+
     public function terima(Transaksi $transaksi, User $actor): Model
     {
         [$index, $prevStage, $record] = $this->pendingReview($transaksi, $actor);
