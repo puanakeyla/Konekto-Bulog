@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { downloadCsv, type ExportColumn } from '../lib/exportCsv'
 
 export type SheetColumn<T> = ExportColumn<T> & {
@@ -35,6 +35,12 @@ type Props<T> = {
   errorMessage?: string | null
   /** Kolom aksi khusus layar; tidak ikut ekspor CSV. */
   renderRowActions?: (row: T) => React.ReactNode
+  /**
+   * Dipanggil setiap hasil pencarian/filter berubah. Dipakai kartu ringkasan di luar tabel
+   * supaya totalnya ikut menyusut saat difilter -- state filter tinggal di sini, jadi ini
+   * satu-satunya cara induk tahu baris mana yang sedang tampil.
+   */
+  onFilteredChange?: (rows: T[]) => void
 }
 
 /**
@@ -76,6 +82,7 @@ export default function DataSpreadsheet<T>({
   isError = false,
   errorMessage = null,
   renderRowActions,
+  onFilteredChange,
 }: Props<T>) {
   const [q, setQ] = useState('')
   // key kolom -> daftar nilai yang dipilih. Kolom tanpa entri berarti tidak difilter.
@@ -133,6 +140,32 @@ export default function DataSpreadsheet<T>({
       return cariCols.some((c) => String(c.value(row) ?? '').toLowerCase().includes(key))
     })
   }, [rows, columns, q, efektifFilters])
+
+  // Callback disimpan di ref supaya efek di bawah tidak ikut bergantung pada identitas
+  // fungsinya (induk umumnya membuat fungsi baru tiap render).
+  const notifikasiRef = useRef(onFilteredChange)
+  notifikasiRef.current = onFilteredChange
+
+  /**
+   * Lapor ke induk hanya kalau ISI hasil filter benar-benar berubah, bukan sekadar
+   * identitas array-nya. Ini bukan optimasi: induk biasanya mengoper `rows`/`columns` yang
+   * dirakit ulang tiap render (mis. `rows.filter(...)` langsung di JSX), sehingga `filtered`
+   * selalu jadi array baru. Tanpa perbandingan isi, setiap laporan memicu render induk, yang
+   * memicu laporan lagi -- render tak berhenti.
+   */
+  const dilaporkanRef = useRef<T[] | null>(null)
+
+  useEffect(() => {
+    const sebelumnya = dilaporkanRef.current
+    const sama = sebelumnya !== null
+      && sebelumnya.length === filtered.length
+      && sebelumnya.every((row, i) => row === filtered[i])
+
+    if (sama) return
+
+    dilaporkanRef.current = filtered
+    notifikasiRef.current?.(filtered)
+  }, [filtered])
 
   // key kolom -> rowSpan per baris, hanya untuk kolom yang punya mergeKey.
   const rowSpans = useMemo(() => {

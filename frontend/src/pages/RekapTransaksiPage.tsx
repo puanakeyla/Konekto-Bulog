@@ -446,9 +446,18 @@ export default function RekapTransaksiPage() {
   const [editing, setEditing] = useState<RekapTransaksi | null>(null)
   const [editForm, setEditForm] = useState<RekapEditForm | null>(null)
   const [dokumenTransaksi, setDokumenTransaksi] = useState<string | null>(null)
+  // Baris yang lolos pencarian/filter tiap tabel, dilaporkan balik oleh DataSpreadsheet.
+  // Kartu total dihitung dari sini supaya angkanya selalu sama dengan yang terlihat.
+  const [barisTampil, setBarisTampil] = useState<Record<string, RekapTransaksi[]>>({})
 
   const judul = JUDUL[role] ?? { title: 'Rekap Transaksi', badge: 'Rekap', sub: 'Rekap data transaksi lintas tahap.' }
   const daftarSkema = skemaUntukRole(role)
+
+  // Sebelum tabel sempat melapor (render pertama), pakai seluruh baris skema itu supaya
+  // kartu tidak sempat berkedip 0.
+  const rowsTampil = daftarSkema.flatMap(
+    (skema) => barisTampil[skema] ?? rows.filter((r) => r.skema === skema),
+  )
 
   // Semua baris kini pasti terkunci (disaring backend), jadi kartu "terkunci" tak lagi
   // bermakna. Jumlah PO unik lebih informatif sekarang setelah kolom No. PO digabung.
@@ -579,12 +588,17 @@ export default function RekapTransaksiPage() {
                 emptyTitle={`Belum ada transaksi ${skema}`}
                 emptyCopy={`Data muncul setelah transaksi dibuat pada alur ${skema}.`}
                 renderRowActions={renderRowActions}
+                onFilteredChange={(hasil) => setBarisTampil((prev) => ({ ...prev, [skema]: hasil }))}
               />
             </section>
           )
         })}
 
-        <KuantumSummary items={kuantumSummaryUntukRole(role, rows)} />
+        <KuantumSummary
+          items={kuantumSummaryUntukRole(role, rowsTampil)}
+          jumlahTampil={rowsTampil.length}
+          jumlahTotal={rows.length}
+        />
       </div>
 
 
@@ -611,14 +625,18 @@ export default function RekapTransaksiPage() {
   )
 }
 
-function KuantumSummary({ items }: { items: KuantumSummaryItem[] }) {
+function KuantumSummary({ items, jumlahTampil, jumlahTotal }: { items: KuantumSummaryItem[]; jumlahTampil: number; jumlahTotal: number }) {
   if (items.length === 0) return null
 
   return (
     <div className="mt-4 rounded-lg border border-border bg-surface px-4 py-3">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <span className="section-title">Total keseluruhan kuantum</span>
-        <span className="text-xs font-semibold text-slate-500">Kuantum bongkar dari seluruh baris rekap yang tampil</span>
+        <span className="text-xs font-semibold text-slate-500">
+          {jumlahTampil === jumlahTotal
+            ? 'Kuantum bongkar dari seluruh baris rekap'
+            : `Kuantum bongkar mengikuti filter tabel — ${jumlahTampil} dari ${jumlahTotal} baris`}
+        </span>
       </div>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {items.map((item) => (

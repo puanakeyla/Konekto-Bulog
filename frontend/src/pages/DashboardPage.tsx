@@ -547,7 +547,11 @@ function StatCard({
 }
 
 function PantauanPengadaanTable({ rows }: { rows: PantauanRow[] }) {
-  const totals = rows.reduce(
+  // null = tabel belum sempat melapor (render pertama); pakai seluruh baris dulu.
+  const [barisTampil, setBarisTampil] = useState<PantauanRow[] | null>(null)
+  const rowsTampil = barisTampil ?? rows
+
+  const totals = rowsTampil.reduce(
     (acc, row) => ({
       gabahDiterima: acc.gabahDiterima + row.gabahDiterima,
       gabahAdministrasi: acc.gabahAdministrasi + row.gabahAdministrasi,
@@ -564,7 +568,7 @@ function PantauanPengadaanTable({ rows }: { rows: PantauanRow[] }) {
     { gabahDiterima: 0, gabahAdministrasi: 0, belumDiadministrasi: 0, gabahSudahDiolah: 0, stokGudangAdmAda: 0, hgl: 0, broken: 0, menir: 0, katul: 0, realisasiPenerimaanHgb: 0, hglBelumAdministrasi: 0 },
   )
   const totalRendemen = totals.gabahSudahDiolah > 0
-    ? rows.reduce((sum, row) => sum + (row.rataRendemen * row.gabahSudahDiolah), 0) / totals.gabahSudahDiolah
+    ? rowsTampil.reduce((sum, row) => sum + (row.rataRendemen * row.gabahSudahDiolah), 0) / totals.gabahSudahDiolah
     : 0
   const totalPersenDiolah = totals.gabahAdministrasi > 0 ? (totals.gabahSudahDiolah / totals.gabahAdministrasi) * 100 : 0
   const columns: SheetColumn<PantauanRow>[] = [
@@ -610,12 +614,17 @@ function PantauanPengadaanTable({ rows }: { rows: PantauanRow[] }) {
         namaFile="pantauan-pengadaan-gkp"
         emptyTitle="Belum ada data pantauan"
         emptyCopy="Data muncul setelah transaksi TJP atau MPP masuk rekap admin."
+        onFilteredChange={setBarisTampil}
       />
 
       <div className="mt-4 rounded-lg border border-border bg-surface px-4 py-3">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <span className="section-title">Total pantauan pengadaan</span>
-          <span className="text-xs font-semibold text-slate-500">Dihitung dari seluruh makloon pada pantauan</span>
+          <span className="text-xs font-semibold text-slate-500">
+            {rowsTampil.length === rows.length
+              ? 'Dihitung dari seluruh makloon pada pantauan'
+              : `Mengikuti filter tabel — ${rowsTampil.length} dari ${rows.length} makloon`}
+          </span>
         </div>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {summary.map((item) => (
