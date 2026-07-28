@@ -15,10 +15,12 @@ use App\Services\AuditLogService;
 use App\Services\Transaksi\TransaksiStageService;
 use App\Services\Transaksi\TransaksiStages;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
+use Spatie\MediaLibrary\HasMedia;
 
 class TransaksiController extends Controller
 {
@@ -458,69 +460,136 @@ class TransaksiController extends Controller
     public function jemputPangan(Request $request, Transaksi $transaksi)
     {
         $makloonRoleId = Role::where('nama_role', 'makloon')->value('id');
+        $aksi = $this->aksiSimpan($request);
+        $required = $aksi === 'submit' ? 'required' : 'nullable';
 
         $data = $request->validate([
-            'id_pemasok' => ['required', 'string', 'max:255'],
-            'supir' => ['required', 'string', 'max:255'],
-            'plat_mobil' => ['required', 'string', 'max:255'],
-            'nama_poktan_gapoktan' => ['required', 'string', 'max:255'],
-            'desa' => ['required', 'string', 'max:255'],
-            'kecamatan' => ['required', 'string', 'max:255'],
-            'kabupaten' => ['required', 'string', 'max:255'],
-            'makloon_user_id' => ['required', Rule::exists('users', 'id')->where('role_id', $makloonRoleId)],
-            'tanggal_kirim' => ['required', 'date'],
-            'kuantum' => ['required', 'integer', 'min:0', 'max:9999999999999'],
-            'jarak_ke_makloon_km' => ['required', 'numeric', 'min:0', 'max:99999999.99'],
+            'aksi' => ['sometimes', Rule::in(['draft', 'submit'])],
+            'id_pemasok' => [$required, 'string', 'max:255'],
+            'supir' => [$required, 'string', 'max:255'],
+            'plat_mobil' => [$required, 'string', 'max:255'],
+            'nama_poktan_gapoktan' => [$required, 'string', 'max:255'],
+            'desa' => [$required, 'string', 'max:255'],
+            'kecamatan' => [$required, 'string', 'max:255'],
+            'kabupaten' => [$required, 'string', 'max:255'],
+            'makloon_user_id' => [$required, Rule::exists('users', 'id')->where('role_id', $makloonRoleId)],
+            'tanggal_kirim' => [$required, 'date'],
+            'kuantum' => [$required, 'integer', 'min:0', 'max:9999999999999'],
+            'jarak_ke_makloon_km' => [$required, 'numeric', 'min:0', 'max:99999999.99'],
         ]);
+        unset($data['aksi']);
 
-        $record = $this->service->submitStage($transaksi, $request->user(), 'jemput_pangan', DataJemputPangan::class, $data);
+        if ($aksi === 'draft') {
+            $record = $this->service->saveDraft($transaksi, $request->user(), 'jemput_pangan', DataJemputPangan::class, $data);
+        } else {
+            $this->pastikanDokumenLengkap($transaksi, DataJemputPangan::class);
+            $record = $this->service->submitStage($transaksi, $request->user(), 'jemput_pangan', DataJemputPangan::class, $data);
+        }
 
         return response()->json(['data' => $record]);
     }
 
     public function makloon(Request $request, Transaksi $transaksi)
     {
+        $aksi = $this->aksiSimpan($request);
+        $required = $aksi === 'submit' ? 'required' : 'nullable';
+
         if ($transaksi->skema === 'TJP') {
             $data = $request->validate([
-                'tanggal_bongkar' => ['required', 'date'],
-                'kuantum_bongkar' => ['required', 'integer', 'min:0', 'max:9999999999999'],
+                'aksi' => ['sometimes', Rule::in(['draft', 'submit'])],
+                'tanggal_bongkar' => [$required, 'date'],
+                'kuantum_bongkar' => [$required, 'integer', 'min:0', 'max:9999999999999'],
             ]);
             $model = DataMakloonTjp::class;
         } else {
             $data = $request->validate([
-                'id_pemasok' => ['required', 'string', 'max:255'],
-                'supir' => ['required', 'string', 'max:255'],
-                'plat_mobil' => ['required', 'string', 'max:255'],
-                'desa' => ['required', 'string', 'max:255'],
-                'kecamatan' => ['required', 'string', 'max:255'],
-                'kabupaten' => ['required', 'string', 'max:255'],
-                'tanggal_bongkar' => ['required', 'date'],
-                'kuantum' => ['required', 'integer', 'min:0', 'max:9999999999999'],
-                'jarak_ke_makloon_km' => ['required', 'numeric', 'min:0', 'max:99999999.99'],
+                'aksi' => ['sometimes', Rule::in(['draft', 'submit'])],
+                'id_pemasok' => [$required, 'string', 'max:255'],
+                'supir' => [$required, 'string', 'max:255'],
+                'plat_mobil' => [$required, 'string', 'max:255'],
+                'desa' => [$required, 'string', 'max:255'],
+                'kecamatan' => [$required, 'string', 'max:255'],
+                'kabupaten' => [$required, 'string', 'max:255'],
+                'tanggal_bongkar' => [$required, 'date'],
+                'kuantum' => [$required, 'integer', 'min:0', 'max:9999999999999'],
+                'jarak_ke_makloon_km' => [$required, 'numeric', 'min:0', 'max:99999999.99'],
             ]);
             $model = DataMakloonMpp::class;
         }
+        unset($data['aksi']);
 
         $stage = $transaksi->skema === 'MPP' ? 'makloon_kirim' : 'makloon';
-        $record = $this->service->submitStage($transaksi, $request->user(), $stage, $model, $data);
+        if ($aksi === 'draft') {
+            $record = $this->service->saveDraft($transaksi, $request->user(), $stage, $model, $data);
+        } else {
+            $this->pastikanDokumenLengkap($transaksi, $model);
+            $record = $this->service->submitStage($transaksi, $request->user(), $stage, $model, $data);
+        }
 
         return response()->json(['data' => $record]);
     }
 
     public function ubJastasma(Request $request, Transaksi $transaksi)
     {
-        $data = $request->validate([
-            'ka1' => ['required', 'numeric', 'min:0', 'max:100'],
-            'ka2' => ['required', 'numeric', 'min:0', 'max:100'],
-            'ka3' => ['required', 'numeric', 'min:0', 'max:100'],
-            'hampa' => ['required', 'numeric', 'min:0', 'max:100'],
-            'butir_hijau' => ['required', 'numeric', 'min:0', 'max:100'],
-        ]);
+        $aksi = $this->aksiSimpan($request);
+        $required = $aksi === 'submit' ? 'required' : 'nullable';
 
-        $record = $this->service->submitStage($transaksi, $request->user(), 'ub_jastasma', DataUbJastasma::class, $data);
+        $data = $request->validate([
+            'aksi' => ['sometimes', Rule::in(['draft', 'submit'])],
+            'ka1' => [$required, 'numeric', 'min:0', 'max:100'],
+            'ka2' => [$required, 'numeric', 'min:0', 'max:100'],
+            'ka3' => [$required, 'numeric', 'min:0', 'max:100'],
+            'hampa' => [$required, 'numeric', 'min:0', 'max:100'],
+            'butir_hijau' => [$required, 'numeric', 'min:0', 'max:100'],
+        ]);
+        unset($data['aksi']);
+
+        if ($aksi === 'draft') {
+            $record = $this->service->saveDraft($transaksi, $request->user(), 'ub_jastasma', DataUbJastasma::class, $data);
+        } else {
+            $this->pastikanDokumenLengkap($transaksi, DataUbJastasma::class);
+            $record = $this->service->submitStage($transaksi, $request->user(), 'ub_jastasma', DataUbJastasma::class, $data);
+        }
 
         return response()->json(['data' => $record]);
     }
+
+    private function aksiSimpan(Request $request): string
+    {
+        return $request->input('aksi') === 'draft' ? 'draft' : 'submit';
+    }
+
+    private function pastikanDokumenLengkap(Transaksi $transaksi, string $modelClass): void
+    {
+        /** @var (Model&HasMedia)|null $record */
+        $record = $modelClass::where('transaksi_id', $transaksi->id_transaksi)->first();
+
+        if (! $record) {
+            abort(422, 'Dokumen belum lengkap. Simpan draft dan unggah semua dokumen terlebih dahulu.');
+        }
+
+        $missing = $record->getRegisteredMediaCollections()
+            ->filter(fn ($collection) => ! $record->getFirstMedia($collection->name))
+            ->map(fn ($collection) => self::FOTO_LABELS[$collection->name] ?? str($collection->name)->replace('_', ' ')->title()->toString())
+            ->values();
+
+        if ($missing->isNotEmpty()) {
+            abort(422, 'Dokumen belum lengkap: '.$missing->implode(', ').'.');
+        }
+    }
+
+    private const FOTO_LABELS = [
+        'foto_petani' => 'Foto Petani',
+        'foto_gabah' => 'Foto Gabah',
+        'foto_serah_terima' => 'Foto Serah Terima',
+        'foto_kwitansi' => 'Foto Kwitansi',
+        'foto_pembayaran' => 'Foto Pembayaran',
+        'foto_surat_pernyataan' => 'Foto Surat Pernyataan',
+        'foto_surat_jalan' => 'Foto Surat Jalan',
+        'foto_surat_jalan_paraf' => 'Foto Surat Jalan (Diparaf)',
+        'foto_nota_timbang' => 'Foto Nota Timbang',
+        'foto_lhpk_hpk' => 'Foto LHPK/HPK',
+    ];
 
     public function terima(Request $request, Transaksi $transaksi)
     {
