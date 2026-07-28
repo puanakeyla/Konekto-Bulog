@@ -108,7 +108,7 @@ export default function GabungPoForm({
         harga: harga ? Number(harga) : undefined,
       }),
     onSuccess: () => {
-      toast.success(`PO ${noPo} dibuat dari ${selected.size} transaksi. Silakan isi No. IN, No. SPP, dan status Sergab.`)
+      toast.success(`PO ${noPo} dibuat dari ${selected.size} transaksi. Silakan isi No. IN.`)
       setConfirmGabung(false)
       setSelected(new Set(preselectId ? [preselectId] : []))
       setNoPo('')

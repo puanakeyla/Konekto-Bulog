@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import api from '../../lib/api'
@@ -22,7 +22,8 @@ function candTanggal(t: TransaksiListItem): string {
 }
 
 // Kartu "PO Proses": alur dua langkah -- (1) PO: pilih ulang transaksi + koreksi No. PO & harga,
-// (2) IN: isi Nomor IN per detail + No. SPP + status. Tombol "Kembali ke PO" di langkah IN
+// (2) IN: isi Nomor IN per detail + No. SPP. Status Sergab baru muncul setelah IN lengkap.
+// Tombol "Kembali ke PO" di langkah IN
 // membuka lagi langkah PO sebelum data Pengadaan disimpan. Dipakai panel inline di timeline.
 export default function PoInForm({
   po,
@@ -38,10 +39,15 @@ export default function PoInForm({
   const queryClient = useQueryClient()
   const [step, setStep] = useState<'po' | 'in'>('in')
   const [values, setValues] = useState<Record<number, string>>({})
-  const [statusPo, setStatusPo] = useState(po.status)
   const [noSpp, setNoSpp] = useState(po.no_spp ?? '')
+  const [statusPo, setStatusPo] = useState<PoItem['status']>(po.status)
   const [confirmIn, setConfirmIn] = useState(false)
   const [confirmBatal, setConfirmBatal] = useState(false)
+
+  useEffect(() => {
+    setNoSpp(po.no_spp ?? '')
+    setStatusPo(po.status)
+  }, [po.no_spp, po.status])
 
   // State langkah PO (diisi ulang dari `po` tiap kali masuk langkah PO).
   const [noPoEdit, setNoPoEdit] = useState(po.no_po)
@@ -126,8 +132,8 @@ export default function PoInForm({
         items: po.po_detail
           .map((detail) => ({ po_detail_id: detail.id, no_in: (values[detail.id] ?? detail.no_in ?? '').trim() }))
           .filter((item) => item.no_in !== ''),
-        no_spp: noSpp || undefined,
-        status: statusPo,
+        no_spp: noSpp.trim() || undefined,
+        status: statusMuncul ? statusPo : undefined,
       }),
     onSuccess: (res) => {
       setConfirmIn(false)
@@ -140,11 +146,11 @@ export default function PoInForm({
   })
 
   const updatePo = useMutation({
-    mutationFn: () => api.patch(`/api/po/${po.id}`, { status: statusPo }),
+    mutationFn: () => api.patch(`/api/po/${po.id}`, { status: 'dibatalkan' }),
     onSuccess: () => {
       setConfirmBatal(false)
       afterChange()
-      toast.success(statusPo === 'dibatalkan' ? `PO ${po.no_po} dibatalkan.` : `PO ${po.no_po} diperbarui.`)
+      toast.success(`PO ${po.no_po} dibatalkan.`)
     },
     onError: (err) => toast.error(apiErrorMessage(err, 'Gagal memperbarui PO.')),
   })
@@ -154,6 +160,7 @@ export default function PoInForm({
     ((mutation.error || updatePo.error) as { response?: { data?: { message?: string } } } | null)?.response?.data?.message
   const isiCount = Object.values(values).filter((v) => v.trim() !== '').length
   const lengkapCount = po.po_detail.filter((d) => d.no_in || values[d.id]?.trim()).length
+  const statusMuncul = lengkapCount === po.po_detail.length
   const statusOptions: { value: PoItem['status']; label: string }[] = [
     { value: 'proses', label: 'Proses' },
     { value: 'lengkap', label: 'Lengkap' },
@@ -161,8 +168,8 @@ export default function PoInForm({
     { value: 'foto_belum_lengkap', label: 'Foto belum lengkap' },
     { value: 'dibatalkan', label: 'Dibatalkan' },
   ]
-  const siapKeKeuangan = statusPo === 'lengkap' && lengkapCount === po.po_detail.length && noSpp.trim() !== ''
-  const bisaSimpan = statusPo === 'lengkap' ? siapKeKeuangan : (isiCount > 0 || statusPo !== po.status || noSpp.trim() !== (po.no_spp ?? ''))
+  const siapKeKeuangan = statusPo === 'lengkap' && statusMuncul && noSpp.trim() !== ''
+  const bisaSimpan = isiCount > 0 || noSpp.trim() !== (po.no_spp ?? '') || (statusMuncul && statusPo !== po.status)
 
   // ---- Langkah 1: PO (pilih ulang transaksi + koreksi No. PO & harga) ----
   if (step === 'po') {
@@ -208,9 +215,9 @@ export default function PoInForm({
     )
   }
 
-  // ---- Langkah 2: IN (isi nomor IN + No. SPP + status) ----
+  // ---- Langkah 2: IN + SPP. Status Sergab muncul setelah IN lengkap. ----
   return (
-    <form className="po-card @container" onSubmit={(e) => { e.preventDefault(); if (statusPo === 'dibatalkan' && po.status !== 'dibatalkan') setConfirmBatal(true); else setConfirmIn(true) }}>
+    <form className="po-card @container" onSubmit={(e) => { e.preventDefault(); setConfirmIn(true) }}>
       <div className="po-card-header">
         <div><div className="po-title">{po.no_po}</div><div className="po-meta">Pemasok {po.id_pemasok} - {formatNumber(po.total_kuantum)} kg - {formatMoney(po.total_harga)}</div></div>
         <div className="flex items-center gap-2">
@@ -220,13 +227,17 @@ export default function PoInForm({
       </div>
       {errorMessage && <div className="alert-danger mb-3">{errorMessage}</div>}
       <div className="mb-4 rounded-lg border border-border bg-surface p-3">
-        <div className="section-title mb-3">No. SPP & Status Sergab</div>
-        <p className="page-subtitle mb-3">Status Lengkap akan mengirim PO ke Keuangan setelah semua nomor IN dan No. SPP terisi.</p>
-        <div className="grid gap-4 @md:grid-cols-2">
-          <label className="block"><span className="label">No. SPP</span><input className="input" value={noSpp} onChange={(e) => setNoSpp(e.target.value)} placeholder="Nomor SPP" /></label>
-          <label className="block"><span className="label">Status Sergab</span><select className="input" value={statusPo} onChange={(e) => setStatusPo(e.target.value as PoItem['status'])}>{statusOptions.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label>
-        </div>
-        {statusPo === 'lengkap' && !siapKeKeuangan && <div className="alert-warning mt-3">Lengkapi seluruh nomor IN dan No. SPP sebelum status dibuat Lengkap.</div>}
+        <div className="section-title mb-3">No. SPP</div>
+        <p className="page-subtitle mb-3">No. SPP tetap diisi oleh Pengadaan. Status Sergab akan muncul setelah semua nomor IN terisi.</p>
+        <label className="block"><span className="label">No. SPP</span><input className="input" value={noSpp} onChange={(e) => setNoSpp(e.target.value)} placeholder="Nomor SPP" /></label>
+        {statusMuncul ? (
+          <div className="mt-4">
+            <label className="block"><span className="label">Status Sergab</span><select className="input" value={statusPo} onChange={(e) => setStatusPo(e.target.value as PoItem['status'])}>{statusOptions.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label>
+            {statusPo === 'lengkap' && !siapKeKeuangan && <div className="alert-warning mt-3">No. SPP wajib diisi sebelum status dibuat Lengkap.</div>}
+          </div>
+        ) : (
+          <div className="alert-warning mt-3">Status Sergab akan muncul setelah semua nomor IN terisi.</div>
+        )}
       </div>
       <div className="data-table-wrap mb-3">
         <table className="data-table">
@@ -243,14 +254,17 @@ export default function PoInForm({
         </table>
       </div>
       <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4">
-        <button type="button" className="btn btn-ghost" onClick={bukaLangkahPo}>&larr; Kembali ke PO</button>
+        <div className="flex flex-wrap gap-2">
+          <button type="button" className="btn btn-ghost" onClick={bukaLangkahPo}>&larr; Kembali ke PO</button>
+          <button type="button" className="btn btn-outline-danger" onClick={() => setConfirmBatal(true)}>Batalkan PO</button>
+        </div>
         <button type="submit" disabled={!bisaSimpan || mutation.isPending} className="btn btn-primary">{mutation.isPending ? 'Menyimpan...' : 'Simpan Data Pengadaan'}</button>
       </div>
 
       <ConfirmDialog
         open={confirmIn}
-        title="Simpan nomor IN?"
-        description={<><strong>{lengkapCount} nomor IN</strong>, No. SPP, dan status Sergab akan disimpan. Jika status Lengkap, PO diteruskan ke tahap <strong>Keuangan</strong>. Lanjutkan?</>}
+        title="Simpan data Pengadaan?"
+        description={<><strong>{lengkapCount} dari {po.po_detail.length} nomor IN</strong> dan No. SPP akan disimpan. Jika status Sergab dibuat Lengkap, PO diteruskan ke tahap <strong>Keuangan</strong>. Lanjutkan?</>}
         confirmLabel="Simpan Data"
         loading={mutation.isPending}
         error={errorMessage}
