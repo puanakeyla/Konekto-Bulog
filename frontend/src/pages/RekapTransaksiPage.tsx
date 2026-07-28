@@ -59,7 +59,7 @@ function numberValue(v: string | number | null | undefined) {
 }
 
 function formatKg(value: number) {
-  return new Intl.NumberFormat('id-ID', { maximumFractionDigits: 2 }).format(value)
+  return new Intl.NumberFormat('id-ID', { maximumFractionDigits: 0 }).format(value)
 }
 
 type RejectInfo = { stage: string; catatan: string | null }
@@ -248,33 +248,35 @@ function kolomUntukRoleSkema(role: string, skema: 'TJP' | 'MPP'): SheetColumn<Re
 
 type KuantumSummaryItem = { key: string; label: string; value: number }
 
-function totalJemputPangan(rows: RekapTransaksi[]) {
-  return rows.reduce((total, row) => total + numberValue(row.data_jemput_pangan?.kuantum), 0)
+/**
+ * Semua kartu memakai KUANTUM BONGKAR (hasil timbang di makloon), bukan kuantum kirim,
+ * supaya TJP dan MPP dihitung dengan ukuran yang sama dan boleh dijumlahkan. Kolomnya
+ * beda per skema: TJP di data_makloon_tjp, MPP di data_makloon_mpp.
+ */
+function totalBongkar(rows: RekapTransaksi[], skema: 'TJP' | 'MPP') {
+  return rows.reduce((total, row) => {
+    if (row.skema !== skema) return total
+    const bongkar = skema === 'TJP' ? row.data_makloon_tjp?.kuantum_bongkar : row.data_makloon_mpp?.kuantum_bongkar
+    return total + numberValue(bongkar)
+  }, 0)
 }
 
-function totalMakloon(rows: RekapTransaksi[]) {
-  return rows.reduce((total, row) => total + numberValue(row.data_makloon_tjp?.kuantum_bongkar ?? row.data_makloon_mpp?.kuantum), 0)
-}
-
-function totalPengadaan(rows: RekapTransaksi[]) {
-  const byPo = new Map<string, number>()
-  rows.forEach((row) => {
-    const po = row.data_pengadaan
-    if (!po) return
-    const key = String(po.id ?? po.no_po ?? row.id_transaksi)
-    if (!byPo.has(key)) byPo.set(key, numberValue(po.total_kuantum))
-  })
-  return [...byPo.values()].reduce((total, value) => total + value, 0)
-}
-
+/** Kartu mengikuti skema yang relevan untuk role (JP cuma punya TJP), bukan tahapnya. */
 function kuantumSummaryUntukRole(role: string, rows: RekapTransaksi[]): KuantumSummaryItem[] {
-  const batas = role === 'admin' ? STAGE_ORDER.length - 1 : STAGE_ORDER.indexOf(role as StageKey)
-  const canSee = (stage: StageKey) => batas >= STAGE_ORDER.indexOf(stage)
-  const items: KuantumSummaryItem[] = []
+  const daftarSkema = skemaUntukRole(role)
+  const items: KuantumSummaryItem[] = daftarSkema.map((skema) => ({
+    key: skema.toLowerCase(),
+    label: `Total Kuantum ${skema}`,
+    value: totalBongkar(rows, skema),
+  }))
 
-  if (canSee('jemput_pangan')) items.push({ key: 'jp', label: 'Total Kuantum JP', value: totalJemputPangan(rows) })
-  if (canSee('makloon')) items.push({ key: 'makloon', label: 'Total Kuantum Makloon', value: totalMakloon(rows) })
-  if (canSee('pengadaan')) items.push({ key: 'po', label: 'Total Kuantum PO', value: totalPengadaan(rows) })
+  if (items.length > 1) {
+    items.push({
+      key: 'gabungan',
+      label: 'Total Gabungan TJP + MPP',
+      value: items.reduce((total, item) => total + item.value, 0),
+    })
+  }
 
   return items
 }
@@ -565,7 +567,7 @@ function KuantumSummary({ items }: { items: KuantumSummaryItem[] }) {
     <div className="mt-4 rounded-lg border border-border bg-surface px-4 py-3">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <span className="section-title">Total keseluruhan kuantum</span>
-        <span className="text-xs font-semibold text-slate-500">Dihitung dari seluruh baris rekap yang tampil</span>
+        <span className="text-xs font-semibold text-slate-500">Kuantum bongkar dari seluruh baris rekap yang tampil</span>
       </div>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {items.map((item) => (

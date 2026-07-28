@@ -269,7 +269,6 @@ export default function DashboardPage() {
 
   // Ringkasan dihitung dari data yang sudah di-fetch (tanpa endpoint baru).
   const role = user?.role.nama_role ?? ''
-  const statSource = role === 'admin' || role === 'keuangan' ? rekapTransaksi : transaksi
   const total = role === 'admin' || role === 'keuangan' ? rekapTransaksi.length : (meta?.total ?? transaksi.length)
   const berjalan = useMemo(
     () => role === 'admin'
