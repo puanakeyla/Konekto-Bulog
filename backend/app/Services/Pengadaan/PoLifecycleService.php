@@ -27,8 +27,9 @@ class PoLifecycleService
 
             if ($noSpp !== null) {
                 $dataPengadaan->no_spp = $noSpp;
-                $dataPengadaan->save();
             }
+
+            $dataPengadaan->save();
 
             $dataKeuangan = DataKeuangan::firstOrNew(['data_pengadaan_id' => $dataPengadaan->id]);
             if ($dataKeuangan->exists && $dataKeuangan->review_status === 'diterima') {

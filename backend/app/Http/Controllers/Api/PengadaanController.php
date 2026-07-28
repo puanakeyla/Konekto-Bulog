@@ -211,7 +211,7 @@ class PengadaanController extends Controller
             $dataPengadaan,
             $validated['status_bayar'],
             $validated['tanggal_bayar'] ?? null,
-            $validated['no_spp'] ?? null
+            $validated['no_spp'] ?? null,
         );
 
         $this->auditLog->logMany($request->user(), 'update_pembayaran', $dataPengadaan->poDetail()->pluck('transaksi_id'), [
