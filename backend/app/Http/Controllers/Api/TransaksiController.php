@@ -309,6 +309,8 @@ class TransaksiController extends Controller
                 }
             }
 
+            $this->sinkronkanKuantumPo($transaksi);
+
             $this->auditLog->log($request->user(), $role === 'admin' ? 'admin_rekap_update' : 'rekap_update_akses', $transaksi->id_transaksi, [
                 'before' => $before,
                 'after' => $this->adminSnapshot($transaksi->fresh()),
@@ -361,6 +363,43 @@ class TransaksiController extends Controller
 
             return response()->json(['message' => 'Transaksi dihapus dari rekap.']);
         });
+    }
+
+    /**
+     * Samakan kembali PO dengan kuantum transaksi setelah dikoreksi lewat rekap. Tanpa ini
+     * PO tetap memakai angka lama: mengoreksi 100 kg jadi 80 kg mengubah baris transaksi
+     * tapi total PO (dan total harganya) masih menghitung 100 kg.
+     *
+     * Sumber kuantum PO berbeda per skema — MPP memakai kuantum makloon, TJP memakai
+     * kuantum bongkar makloon — persis seperti PoGroupingService::resolveMakloonData().
+     * Kalau aturan di sana berubah, ubah di sini juga.
+     */
+    private function sinkronkanKuantumPo(Transaksi $transaksi): void
+    {
+        $poDetail = $transaksi->poDetail()->with('dataPengadaan')->first();
+        $pengadaan = $poDetail?->dataPengadaan;
+
+        if (! $pengadaan) {
+            return;
+        }
+
+        $transaksi->refresh();
+        $kuantum = $transaksi->skema === 'MPP'
+            ? $transaksi->dataMakloonMpp?->kuantum
+            : $transaksi->dataMakloonTjp?->kuantum_bongkar;
+
+        if ($kuantum !== null) {
+            $poDetail->update(['kuantum_kontribusi' => number_format((float) $kuantum, 2, '.', '')]);
+        }
+
+        // Harga bisa ikut diubah di request yang sama, jadi baca ulang sebelum mengalikan.
+        $pengadaan->refresh();
+        $totalKuantum = (float) $pengadaan->poDetail()->sum('kuantum_kontribusi');
+
+        $pengadaan->update([
+            'total_kuantum' => number_format($totalKuantum, 2, '.', ''),
+            'total_harga' => number_format($totalKuantum * (float) $pengadaan->harga, 2, '.', ''),
+        ]);
     }
 
     /**

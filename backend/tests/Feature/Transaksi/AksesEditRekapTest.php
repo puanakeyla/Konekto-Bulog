@@ -4,6 +4,8 @@ namespace Tests\Feature\Transaksi;
 
 use App\Models\DataJemputPangan;
 use App\Models\DataMakloonTjp;
+use App\Models\DataPengadaan;
+use App\Models\PoDetail;
 use App\Models\Role;
 use App\Models\Transaksi;
 use App\Models\User;
@@ -154,6 +156,61 @@ class AksesEditRekapTest extends TestCase
 
         $this->assertSame('Diperbaiki Admin', $transaksi->dataJemputPangan->fresh()->supir);
         $this->assertEquals(95, $transaksi->dataMakloonTjp->fresh()->kuantum_bongkar);
+    }
+
+    public function test_koreksi_kuantum_ikut_menyesuaikan_total_po(): void
+    {
+        $transaksi = $this->buatTjpTerkunci();
+        // PO berisi transaksi ini (90 kg) + satu baris lain (10 kg) supaya terlihat bahwa
+        // total dihitung ulang dari seluruh anggota, bukan ditimpa nilai satu transaksi.
+        $po = DataPengadaan::create([
+            'tanggal_bongkar' => '2026-07-12',
+            'id_pemasok' => 'PEMASOK-AKSES',
+            'makloon_user_id' => $this->makloon->id,
+            'total_kuantum' => '100.00',
+            'harga' => '6500.00',
+            'total_harga' => '650000.00',
+            'no_po' => 'PO-KUANTUM',
+            'status' => 'proses',
+        ]);
+        PoDetail::create(['data_pengadaan_id' => $po->id, 'transaksi_id' => $transaksi->id_transaksi, 'kuantum_kontribusi' => '90.00']);
+        PoDetail::create(['data_pengadaan_id' => $po->id, 'transaksi_id' => $this->buatTjpTerkunci()->id_transaksi, 'kuantum_kontribusi' => '10.00']);
+
+        Sanctum::actingAs($this->admin);
+
+        // 90 kg dikoreksi jadi 70 kg -> total PO 100 -> 80 kg, total harga ikut turun.
+        $this->patchJson($this->urlRekap($transaksi), [
+            'data_makloon_tjp' => ['kuantum_bongkar' => 70],
+        ])->assertOk();
+
+        $this->assertEquals(80, $po->fresh()->total_kuantum);
+        $this->assertEquals(520000, $po->fresh()->total_harga);
+    }
+
+    public function test_koreksi_kuantum_dan_harga_sekaligus_konsisten(): void
+    {
+        $transaksi = $this->buatTjpTerkunci();
+        $po = DataPengadaan::create([
+            'tanggal_bongkar' => '2026-07-12',
+            'id_pemasok' => 'PEMASOK-AKSES',
+            'makloon_user_id' => $this->makloon->id,
+            'total_kuantum' => '90.00',
+            'harga' => '6500.00',
+            'total_harga' => '585000.00',
+            'no_po' => 'PO-KUANTUM-HARGA',
+            'status' => 'proses',
+        ]);
+        PoDetail::create(['data_pengadaan_id' => $po->id, 'transaksi_id' => $transaksi->id_transaksi, 'kuantum_kontribusi' => '90.00']);
+
+        Sanctum::actingAs($this->admin);
+
+        $this->patchJson($this->urlRekap($transaksi), [
+            'data_makloon_tjp' => ['kuantum_bongkar' => 50],
+            'data_pengadaan' => ['harga' => 7000],
+        ])->assertOk();
+
+        $this->assertEquals(50, $po->fresh()->total_kuantum);
+        $this->assertEquals(350000, $po->fresh()->total_harga);
     }
 
     public function test_user_berakses_bisa_mengganti_fotonya_walau_tahap_terkunci(): void

@@ -106,7 +106,8 @@ class PoListingTest extends TestCase
             'jarak_ke_makloon_km' => 5,
         ]);
 
-        $this->stageService->terima($transaksi->fresh(), $this->ubJastasma);
+        // Tahap "Makloon Terima" (MPP) dikerjakan makloon sendiri, bukan UB Jastasma.
+        $this->stageService->terima($transaksi->fresh(), $this->makloon);
         $this->stageService->submitStage($transaksi->fresh(), $this->ubJastasma, 'ub_jastasma', DataUbJastasma::class, [
             'ka1' => 12.5,
             'ka2' => 12.6,

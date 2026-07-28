@@ -286,7 +286,8 @@ class RekapTerkunciTest extends TestCase
             'jarak_ke_makloon_km' => 7,
         ]);
 
-        $this->stageService->terima($transaksi->fresh(), $this->ubJastasma);
+        // Tahap "Makloon Terima" (MPP) dikerjakan makloon sendiri, bukan UB Jastasma.
+        $this->stageService->terima($transaksi->fresh(), $this->makloon);
 
         return $transaksi->fresh();
     }

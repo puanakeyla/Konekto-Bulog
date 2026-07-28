@@ -59,7 +59,12 @@ class IsiNomorInTest extends TestCase
         $this->assertSame('proses', $result->status);
     }
 
-    public function test_isi_nomor_in_mengubah_status_jadi_lengkap_setelah_semua_baris_terisi(): void
+    /**
+     * Sejak alur SERGAB, 'lengkap' tidak lagi diset otomatis begitu semua no. IN terisi --
+     * Pengadaan memilih statusnya sendiri (bisa juga 'kwitansi_belum_upload'/'foto_belum_lengkap')
+     * dan No. SPP wajib ikut terisi.
+     */
+    public function test_isi_nomor_in_jadi_lengkap_kalau_semua_baris_terisi_dan_status_lengkap_diminta(): void
     {
         $po = $this->buatPoDenganDuaBaris();
         $details = $po->poDetail;
@@ -67,10 +72,23 @@ class IsiNomorInTest extends TestCase
         $result = $this->poService->isiNomorIn($po, [
             ['po_detail_id' => $details[0]->id, 'no_in' => 'IN-001'],
             ['po_detail_id' => $details[1]->id, 'no_in' => 'IN-002'],
-        ]);
+        ], 'SPP-001', 'lengkap');
 
         $this->assertSame('lengkap', $result->status);
         $this->assertSame('lengkap', $po->fresh()->status);
+    }
+
+    public function test_status_lengkap_ditolak_kalau_no_spp_belum_diisi(): void
+    {
+        $po = $this->buatPoDenganDuaBaris();
+        $details = $po->poDetail;
+
+        $this->expectException(HttpException::class);
+
+        $this->poService->isiNomorIn($po, [
+            ['po_detail_id' => $details[0]->id, 'no_in' => 'IN-001'],
+            ['po_detail_id' => $details[1]->id, 'no_in' => 'IN-002'],
+        ], null, 'lengkap');
     }
 
     public function test_isi_nomor_in_menolak_duplikat_dalam_satu_request(): void
@@ -122,7 +140,7 @@ class IsiNomorInTest extends TestCase
         $this->poService->isiNomorIn($po, [
             ['po_detail_id' => $details[0]->id, 'no_in' => 'IN-001'],
             ['po_detail_id' => $details[1]->id, 'no_in' => 'IN-002'],
-        ]);
+        ], 'SPP-002', 'lengkap');
 
         $this->assertSame('lengkap', $po->fresh()->status);
 
@@ -145,6 +163,8 @@ class IsiNomorInTest extends TestCase
                 ['po_detail_id' => $details[0]->id, 'no_in' => 'IN-HTTP-1'],
                 ['po_detail_id' => $details[1]->id, 'no_in' => 'IN-HTTP-2'],
             ],
+            'no_spp' => 'SPP-HTTP-1',
+            'status' => 'lengkap',
         ]);
 
         $response->assertOk();
@@ -192,7 +212,8 @@ class IsiNomorInTest extends TestCase
             'jarak_ke_makloon_km' => 5,
         ]);
 
-        $this->stageService->terima($transaksi->fresh(), $this->ubJastasma);
+        // Tahap "Makloon Terima" (MPP) dikerjakan makloon sendiri, bukan UB Jastasma.
+        $this->stageService->terima($transaksi->fresh(), $this->makloon);
         $this->stageService->submitStage($transaksi->fresh(), $this->ubJastasma, 'ub_jastasma', DataUbJastasma::class, [
             'ka1' => 12.5,
             'ka2' => 12.6,

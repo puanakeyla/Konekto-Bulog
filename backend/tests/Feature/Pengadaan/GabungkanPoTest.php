@@ -64,8 +64,10 @@ class GabungkanPoTest extends TestCase
         $this->assertSame('proses', $po->status);
         $this->assertCount(2, $po->poDetail);
 
-        $this->assertSame('keuangan', $t1->fresh()->current_stage);
-        $this->assertSame('keuangan', $t2->fresh()->current_stage);
+        // Menggabungkan PO belum memindahkan transaksi ke Keuangan: transaksi tetap di
+        // Pengadaan sampai seluruh no. IN terisi dan PO ditandai 'lengkap' (alur SERGAB).
+        $this->assertSame('pengadaan', $t1->fresh()->current_stage);
+        $this->assertSame('pengadaan', $t2->fresh()->current_stage);
 
         $kontribusi = $po->poDetail->pluck('kuantum_kontribusi', 'transaksi_id');
         $this->assertSame('100.00', $kontribusi[$t1->id_transaksi]);
@@ -241,7 +243,8 @@ class GabungkanPoTest extends TestCase
 
         $this->stageService->submitStage($transaksi, $this->makloon, 'makloon', DataMakloonMpp::class, $this->dataMakloonMpp($idPemasok, $tanggalBongkar, $kuantum));
 
-        $this->stageService->terima($transaksi->fresh(), $this->ubJastasma);
+        // Tahap "Makloon Terima" (MPP) dikerjakan makloon sendiri, bukan UB Jastasma.
+        $this->stageService->terima($transaksi->fresh(), $this->makloon);
         $this->stageService->submitStage($transaksi->fresh(), $this->ubJastasma, 'ub_jastasma', DataUbJastasma::class, $this->dataUbJastasma());
 
         $this->stageService->terima($transaksi->fresh(), $this->pengadaan);

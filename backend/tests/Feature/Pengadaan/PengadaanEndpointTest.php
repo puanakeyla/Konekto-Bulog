@@ -38,7 +38,7 @@ class PengadaanEndpointTest extends TestCase
         $this->pengadaan = $this->buatUser('pengadaan');
     }
 
-    public function test_post_gabungkan_po_membuat_po_dan_memajukan_tahap_transaksi(): void
+    public function test_post_gabungkan_po_membuat_po_dan_transaksi_tetap_di_pengadaan(): void
     {
         $transaksi = $this->transaksiSampaiPengadaan('PEMASOK-X', '2026-07-10', 120);
 
@@ -55,7 +55,8 @@ class PengadaanEndpointTest extends TestCase
         $response->assertJsonPath('data.harga', '6500.00');
         $response->assertJsonPath('data.total_harga', '780000.00');
 
-        $this->assertSame('keuangan', $transaksi->fresh()->current_stage);
+        // Tetap di Pengadaan sampai no. IN lengkap + status PO 'lengkap' (alur SERGAB).
+        $this->assertSame('pengadaan', $transaksi->fresh()->current_stage);
     }
 
     public function test_post_gabungkan_po_ditolak_untuk_role_selain_pengadaan(): void
@@ -117,7 +118,8 @@ class PengadaanEndpointTest extends TestCase
             'jarak_ke_makloon_km' => 5,
         ]);
 
-        $this->stageService->terima($transaksi->fresh(), $this->ubJastasma);
+        // Tahap "Makloon Terima" (MPP) dikerjakan makloon sendiri, bukan UB Jastasma.
+        $this->stageService->terima($transaksi->fresh(), $this->makloon);
         $this->stageService->submitStage($transaksi->fresh(), $this->ubJastasma, 'ub_jastasma', DataUbJastasma::class, [
             'ka1' => 12.5,
             'ka2' => 12.6,
