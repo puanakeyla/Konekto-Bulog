@@ -422,23 +422,16 @@ export default function AdminUsersPage() {
                     <td className="px-5 py-3 capitalize text-gray-600">{target.role.nama_role.replaceAll('_', ' ')}</td>
                     <td className="px-5 py-3 text-gray-600">{target.nama_maklon ?? target.nama_gudang ?? '-'}</td>
                     <td className="px-5 py-3">
-                      <div className="flex flex-col items-start gap-1">
-                        <span
-                          className={
-                            'inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ' +
-                            (target.is_active
-                              ? 'bg-success-bg text-success'
-                              : 'bg-danger-bg text-danger')
-                          }
-                        >
-                          {target.is_active ? 'Aktif' : 'Nonaktif'}
-                        </span>
-                        {aksesTerbuka && (
-                          <span className="inline-flex rounded-full bg-danger px-2.5 py-1 text-xs font-semibold text-white">
-                            Akses edit terbuka
-                          </span>
-                        )}
-                      </div>
+                      <span
+                        className={
+                          'inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ' +
+                          (target.is_active
+                            ? 'bg-success-bg text-success'
+                            : 'bg-danger-bg text-danger')
+                        }
+                      >
+                        {target.is_active ? 'Aktif' : 'Nonaktif'}
+                      </span>
                     </td>
                     <td className="px-5 py-3">
                       <div className="flex justify-center gap-2">
