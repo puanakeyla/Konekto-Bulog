@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { toast } from 'sonner'
 import api from '../lib/api'
 import { uploadSemuaFoto } from '../lib/uploadFoto'
 import FotoPicker from '../components/FotoPicker'
@@ -20,6 +21,13 @@ const FOTO_FIELDS: { key: string; label: string }[] = [
   { key: 'foto_nota_timbang', label: 'Foto Nota Timbang' },
 ]
 
+type AksiSimpan = 'draft' | 'submit'
+
+const angkaAtauNull = (value: string) => value === '' ? null : Number(value)
+
+const fotoKurang = (fotos: Record<string, File | null>) =>
+  FOTO_FIELDS.filter(({ key }) => !fotos[key]).map(({ label }) => label)
+
 /**
  * Lanjutan skema TJP: transaksi sudah dibuat oleh Jemput Pangan, Makloon
  * melanjutkan mengisi data bongkar mereka sendiri di sini.
@@ -32,28 +40,42 @@ export default function TransaksiMakloonPage() {
   const [fotos, setFotos] = useState<Record<string, File | null>>({})
   const [progress, setProgress] = useState<Record<string, number>>({})
   const [fotoGagal, setFotoGagal] = useState<string[]>([])
+  const [warning, setWarning] = useState<string | null>(null)
+  const [aksiBerjalan, setAksiBerjalan] = useState<AksiSimpan | null>(null)
 
   const mutation = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (aksi: AksiSimpan) => {
+      setAksiBerjalan(aksi)
       await api.patch(`/api/transaksi/${encodeURIComponent(id!)}/makloon`, {
+        aksi: 'draft',
         tanggal_bongkar: form.tanggal_bongkar,
-        kuantum_bongkar: Number(form.kuantum_bongkar),
+        kuantum_bongkar: angkaAtauNull(form.kuantum_bongkar),
       })
 
       const { gagal } = await uploadSemuaFoto(id!, fotos, (jenisFoto, percent) =>
         setProgress((prev) => ({ ...prev, [jenisFoto]: percent })),
       )
 
-      return { gagal }
+      if (aksi === 'submit' && gagal.length === 0) {
+        await api.patch(`/api/transaksi/${encodeURIComponent(id!)}/makloon`, {
+          aksi: 'submit',
+          tanggal_bongkar: form.tanggal_bongkar,
+          kuantum_bongkar: Number(form.kuantum_bongkar),
+        })
+      }
+
+      return { gagal, aksi }
     },
-    onSuccess: ({ gagal }) => {
+    onSuccess: ({ gagal, aksi }) => {
       setFotoGagal(gagal)
       queryClient.invalidateQueries({ queryKey: ['transaksi-list'] })
+      toast.success(aksi === 'draft' ? 'Data Makloon tersimpan sebagai draft.' : 'Data Makloon dikirim ke UB Jastasma.')
       if (gagal.length === 0) {
         queryClient.invalidateQueries({ queryKey: ['transaksi', id] })
         navigate(`/transaksi/${encodeURIComponent(id!)}`)
       }
     },
+    onSettled: () => setAksiBerjalan(null),
   })
 
   const setField = <K extends keyof FormState>(key: K, value: FormState[K]) =>
@@ -62,6 +84,26 @@ export default function TransaksiMakloonPage() {
   const errorMessage =
     (mutation.error as { response?: { data?: { message?: string } } } | null)?.response?.data
       ?.message
+  const dataLengkap = !!(form.tanggal_bongkar && form.kuantum_bongkar)
+  const dokumenKurang = fotoKurang(fotos)
+
+  const simpan = (aksi: AksiSimpan) => {
+    if (aksi === 'submit') {
+      if (!dataLengkap) {
+        setWarning('Data belum lengkap. Lengkapi semua field sebelum mengirim.')
+        toast.error('Data belum lengkap. Lengkapi semua field sebelum mengirim.')
+        return
+      }
+      if (dokumenKurang.length > 0) {
+        setWarning(`Dokumen belum lengkap: ${dokumenKurang.join(', ')}.`)
+        toast.error('Dokumen belum lengkap, transaksi belum dapat dikirim.')
+        return
+      }
+    }
+
+    setWarning(null)
+    mutation.mutate(aksi)
+  }
 
   return (
     <div className="page-shell">
@@ -78,9 +120,10 @@ export default function TransaksiMakloonPage() {
           className="panel panel-pad space-y-4"
           onSubmit={(e) => {
             e.preventDefault()
-            mutation.mutate()
+            simpan('submit')
           }}
         >
+          {warning && <div className="alert-warning">{warning}</div>}
           {errorMessage && (
             <div className="alert-danger">{errorMessage}</div>
           )}
@@ -128,13 +171,19 @@ export default function TransaksiMakloonPage() {
             ))}
           </div>
 
-          <button
-            type="submit"
-            disabled={mutation.isPending}
-            className="btn btn-primary w-full"
-          >
-            {mutation.isPending ? 'Mengirim...' : 'Simpan & Kirim'}
-          </button>
+          <div className="grid gap-2 sm:grid-cols-2">
+            <button type="button" disabled={mutation.isPending} onClick={() => simpan('draft')} className="btn btn-ghost border border-border bg-white">
+              {mutation.isPending && aksiBerjalan === 'draft' ? 'Menyimpan...' : 'Simpan'}
+            </button>
+            <button
+              type="button"
+              disabled={mutation.isPending}
+              onClick={() => simpan('submit')}
+              className={`btn btn-primary w-full ${(!dataLengkap || dokumenKurang.length > 0) ? 'opacity-80' : ''}`}
+            >
+              {mutation.isPending && aksiBerjalan === 'submit' ? 'Mengirim...' : 'Kirim'}
+            </button>
+          </div>
         </form>
       </div>
     </div>
