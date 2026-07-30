@@ -35,17 +35,28 @@ class DataMakloonMpp extends Model implements HasMedia
         'submitted_at',
     ];
 
+    /**
+     * Dokumen dibagi per tahap MPP: Makloon Kirim mengunggah dokumen lapangan, sedangkan
+     * surat jalan & nota timbang baru ada saat barang dibongkar -- jadi diunggah di tahap
+     * Makloon Terima. Dua konstanta ini sumber tunggal pembagian itu: dipakai
+     * registerMediaCollections() di bawah dan pengecekan kelengkapan di TransaksiController.
+     */
+    public const FOTO_TAHAP_KIRIM = [
+        'foto_petani',
+        'foto_gabah',
+        'foto_serah_terima',
+        'foto_pembayaran',
+        'foto_surat_pernyataan',
+    ];
+
+    public const FOTO_TAHAP_TERIMA = [
+        'foto_surat_jalan',
+        'foto_nota_timbang',
+    ];
+
     public function registerMediaCollections(): void
     {
-        foreach ([
-            'foto_petani',
-            'foto_gabah',
-            'foto_serah_terima',
-            'foto_pembayaran',
-            'foto_surat_pernyataan',
-            'foto_surat_jalan',
-            'foto_nota_timbang',
-        ] as $collection) {
+        foreach ([...self::FOTO_TAHAP_KIRIM, ...self::FOTO_TAHAP_TERIMA] as $collection) {
             $this->addMediaCollection($collection)
                 ->singleFile()
                 ->acceptsMimeTypes(['image/jpeg', 'image/png']);

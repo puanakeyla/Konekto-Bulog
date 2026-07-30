@@ -522,7 +522,9 @@ class TransaksiController extends Controller
         if ($aksi === 'draft') {
             $record = $this->service->saveDraft($transaksi, $request->user(), $stage, $model, $data);
         } else {
-            $this->pastikanDokumenLengkap($transaksi, $model);
+            // MPP: surat jalan & nota timbang bukan dokumen tahap Makloon Kirim -- keduanya
+            // diunggah nanti di tahap Makloon Terima, jadi jangan dituntut di sini.
+            $this->pastikanDokumenLengkap($transaksi, $model, $transaksi->skema === 'MPP' ? DataMakloonMpp::FOTO_TAHAP_KIRIM : null);
             $record = $this->service->submitStage($transaksi, $request->user(), $stage, $model, $data);
         }
 
@@ -559,7 +561,12 @@ class TransaksiController extends Controller
         return $request->input('aksi') === 'draft' ? 'draft' : 'submit';
     }
 
-    private function pastikanDokumenLengkap(Transaksi $transaksi, string $modelClass): void
+    /**
+     * @param  list<string>|null  $jenis  Batasi pengecekan ke koleksi ini saja; null = semua
+     *                                    koleksi milik model. Dipakai skema MPP yang dokumennya
+     *                                    terbagi dua tahap (lihat DataMakloonMpp::FOTO_TAHAP_*).
+     */
+    private function pastikanDokumenLengkap(Transaksi $transaksi, string $modelClass, ?array $jenis = null): void
     {
         /** @var (Model&HasMedia)|null $record */
         $record = $modelClass::where('transaksi_id', $transaksi->id_transaksi)->first();
@@ -569,6 +576,7 @@ class TransaksiController extends Controller
         }
 
         $missing = $record->getRegisteredMediaCollections()
+            ->when($jenis !== null, fn ($collections) => $collections->filter(fn ($collection) => in_array($collection->name, $jenis, true)))
             ->filter(fn ($collection) => ! $record->getFirstMedia($collection->name))
             ->map(fn ($collection) => self::FOTO_LABELS[$collection->name] ?? str($collection->name)->replace('_', ' ')->title()->toString())
             ->values();
@@ -593,15 +601,20 @@ class TransaksiController extends Controller
 
     public function terima(Request $request, Transaksi $transaksi)
     {
-        // Makloon Terima (MPP): simpan kuantum_bongkar opsional sebelum menerima data.
-        if ($transaksi->skema === 'MPP' && $transaksi->current_stage === 'makloon_terima' && $request->has('kuantum_bongkar')) {
-            $validated = $request->validate([
-                'kuantum_bongkar' => ['required', 'integer', 'min:0', 'max:9999999999999'],
-            ]);
-            $mpp = DataMakloonMpp::where('transaksi_id', $transaksi->id_transaksi)->first();
-            if ($mpp) {
-                $mpp->kuantum_bongkar = $validated['kuantum_bongkar'];
-                $mpp->save();
+        // Makloon Terima (MPP): tahap ini punya dokumennya sendiri (surat jalan & nota timbang)
+        // yang wajib ada sebelum data dikunci, lalu simpan kuantum_bongkar opsional.
+        if ($transaksi->skema === 'MPP' && $transaksi->current_stage === 'makloon_terima') {
+            $this->pastikanDokumenLengkap($transaksi, DataMakloonMpp::class, DataMakloonMpp::FOTO_TAHAP_TERIMA);
+
+            if ($request->has('kuantum_bongkar')) {
+                $validated = $request->validate([
+                    'kuantum_bongkar' => ['required', 'integer', 'min:0', 'max:9999999999999'],
+                ]);
+                $mpp = DataMakloonMpp::where('transaksi_id', $transaksi->id_transaksi)->first();
+                if ($mpp) {
+                    $mpp->kuantum_bongkar = $validated['kuantum_bongkar'];
+                    $mpp->save();
+                }
             }
         }
 

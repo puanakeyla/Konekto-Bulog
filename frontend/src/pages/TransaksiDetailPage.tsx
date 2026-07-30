@@ -173,12 +173,17 @@ const JEMPUT_PANGAN_FOTO_FIELDS = [
   { key: 'foto_surat_jalan', label: 'Foto surat jalan' },
 ]
 
-const MAKLOON_MPP_FOTO_FIELDS = [
+// MPP: dokumen terbagi dua tahap (lihat DataMakloonMpp::FOTO_TAHAP_* di backend). Surat jalan
+// & nota timbang baru ada setelah barang dibongkar, jadi diunggah di tahap Makloon Terima.
+const MAKLOON_MPP_KIRIM_FOTO_FIELDS = [
   { key: 'foto_petani', label: 'Foto petani' },
   { key: 'foto_gabah', label: 'Foto gabah' },
   { key: 'foto_serah_terima', label: 'Foto serah terima' },
   { key: 'foto_pembayaran', label: 'Foto pembayaran' },
   { key: 'foto_surat_pernyataan', label: 'Foto surat pernyataan' },
+]
+
+const MAKLOON_TERIMA_FOTO_FIELDS = [
   { key: 'foto_surat_jalan', label: 'Foto surat jalan' },
   { key: 'foto_nota_timbang', label: 'Foto nota timbang' },
 ]
@@ -212,7 +217,7 @@ const emptyMakloonMppForm: MakloonMppFormState = {
 }
 
 const FOTO_LABELS: Record<string, string> = Object.fromEntries(
-  [...JEMPUT_PANGAN_FOTO_FIELDS, ...MAKLOON_MPP_FOTO_FIELDS, ...MAKLOON_FOTO_FIELDS, ...UB_FOTO_FIELDS].map((f) => [f.key, f.label]),
+  [...JEMPUT_PANGAN_FOTO_FIELDS, ...MAKLOON_MPP_KIRIM_FOTO_FIELDS, ...MAKLOON_TERIMA_FOTO_FIELDS, ...MAKLOON_FOTO_FIELDS, ...UB_FOTO_FIELDS].map((f) => [f.key, f.label]),
 )
 
 function fotoLabel(key: string) {
@@ -221,8 +226,9 @@ function fotoLabel(key: string) {
 
 function photoFieldsFor(stageId: string, skema: 'TJP' | 'MPP') {
   if (stageId === 'jemput_pangan') return JEMPUT_PANGAN_FOTO_FIELDS
-  if (stageId === 'makloon') return skema === 'MPP' ? MAKLOON_MPP_FOTO_FIELDS : MAKLOON_FOTO_FIELDS
-  if (stageId === 'makloon_kirim') return MAKLOON_MPP_FOTO_FIELDS
+  if (stageId === 'makloon') return skema === 'MPP' ? MAKLOON_MPP_KIRIM_FOTO_FIELDS : MAKLOON_FOTO_FIELDS
+  if (stageId === 'makloon_kirim') return MAKLOON_MPP_KIRIM_FOTO_FIELDS
+  if (stageId === 'makloon_terima') return MAKLOON_TERIMA_FOTO_FIELDS
   if (stageId === 'ub_jastasma') return UB_FOTO_FIELDS
   return []
 }
@@ -363,6 +369,9 @@ export default function TransaksiDetailPage() {
   const [progressUb, setProgressUb] = useState<Record<string, number>>({})
   const [fotoUbGagal, setFotoUbGagal] = useState<string[]>([])
   const [kuantumBongkarMpp, setKuantumBongkarMpp] = useState('')
+  // Dokumen milik tahap Makloon Terima (surat jalan & nota timbang), diunggah bersama aksi Terima.
+  const [fotosMakloonTerima, setFotosMakloonTerima] = useState<Record<string, File | null>>({})
+  const [progressMakloonTerima, setProgressMakloonTerima] = useState<Record<string, number>>({})
 
   const { data: transaksi, isLoading, isError, error } = useQuery({
     queryKey: ['transaksi', id],
@@ -435,21 +444,29 @@ export default function TransaksiDetailPage() {
   }
 
   const terima = useMutation({
-    mutationFn: (_stageLabel: string) => {
+    mutationFn: async (_stageLabel: string) => {
       const payload: Record<string, unknown> = {}
-      // Makloon Terima (MPP): sertakan kuantum_bongkar jika diisi.
-      if (transaksi?.skema === 'MPP' && transaksi?.current_stage === 'makloon_terima' && kuantumBongkarMpp) {
-        payload.kuantum_bongkar = Number(kuantumBongkarMpp)
+      // Makloon Terima (MPP): unggah dokumen tahap ini dulu (backend menolak Terima bila surat
+      // jalan/nota timbang belum ada), lalu sertakan kuantum_bongkar jika diisi.
+      if (transaksi?.skema === 'MPP' && transaksi?.current_stage === 'makloon_terima') {
+        const { gagal } = await uploadSemuaFoto(id!, fotosMakloonTerima, (jenisFoto, percent) =>
+          setProgressMakloonTerima((prev) => ({ ...prev, [jenisFoto]: percent })))
+        if (gagal.length > 0) {
+          throw new Error(`Foto ${gagal.map(fotoLabel).join(', ')} gagal diupload, coba ulangi.`)
+        }
+        if (kuantumBongkarMpp) payload.kuantum_bongkar = Number(kuantumBongkarMpp)
       }
       return api.post(`/api/transaksi/${encodeURIComponent(id!)}/terima`, payload)
     },
     onSuccess: (_res, stageLabel) => {
       setCatatan('')
       setKuantumBongkarMpp('')
+      setFotosMakloonTerima({})
+      setProgressMakloonTerima({})
       invalidate()
       toast.success(`Data ${stageLabel} diterima & dikunci.`)
     },
-    onError: (err) => toast.error(apiErrorMessage(err, 'Gagal menerima data tahap.')),
+    onError: (err) => toast.error(apiErrorMessage(err, err instanceof Error ? err.message : 'Gagal menerima data tahap.')),
   })
 
   const tolak = useMutation({
@@ -694,6 +711,13 @@ export default function TransaksiDetailPage() {
               const isFuture = stage.id === 'pengadaan' ? (!po && !pengadaanCurrent && !pengadaanComplete)
                 : stage.id === 'keuangan' ? (!keuanganCurrent && !keuanganComplete)
                 : (currentIndex >= 0 && index > currentIndex && !data)
+              // Makloon Terima tidak punya tabel sendiri (dataKeys kosong) -- data yang dicek dan
+              // dokumen yang diunggah di tahap ini menempel di record MPP milik Makloon Kirim.
+              // Dipisah dari `data` supaya status kartu (menunggu review/ditolak/giliran Anda)
+              // tetap dihitung seperti semula, hanya isi detailnya yang ikut ditampilkan.
+              const detailData = stage.id === 'makloon_terima'
+                ? (['menunggu_review', 'diterima'].includes(String(transaksi.data_makloon_mpp?.status)) ? transaksi.data_makloon_mpp : null)
+                : data
               const canReviewThis = canAct && !!pendingData?.data && stage.id === pendingData.stageId
               const showJemputPanganForm = stage.id === 'jemput_pangan' && canFillJemputPangan
               const showMakloonForm = (stage.id === 'makloon' || stage.id === 'makloon_kirim') && canFillMakloon
@@ -739,9 +763,9 @@ export default function TransaksiDetailPage() {
                       )}
                     </div>
 
-                    {data && (isComplete ? (
+                    {detailData && (isComplete ? (
                       <CompletedStageDetail
-                        data={data}
+                        data={detailData}
                         transaksiId={transaksi.id_transaksi}
                         fotoFields={photoFieldsFor(stage.id, transaksi.skema)}
                         expanded={expandedStages.has(stage.id)}
@@ -749,7 +773,7 @@ export default function TransaksiDetailPage() {
                       />
                     ) : (
                       <>
-                        {!showJemputPanganForm && !showMakloonForm && !showUbForm && <StageReadOnly data={data} collapsed={!isCurrent} />}
+                        {!showJemputPanganForm && !showMakloonForm && !showUbForm && <StageReadOnly data={detailData} collapsed={!isCurrent} />}
                         <FotoLinks transaksiId={transaksi.id_transaksi} fields={photoFieldsFor(stage.id, transaksi.skema)} />
                       </>
                     ))}
@@ -761,11 +785,21 @@ export default function TransaksiDetailPage() {
                     {canReviewThis && (
                       <>
                         {stage.id === 'makloon_terima' && (
-                          <div className="mt-4 border-t border-border pt-4">
-                            <div className="section-title mb-2">Input kuantum bongkar</div>
-                            <div className="grid gap-4 @md:grid-cols-2">
-                              <Field label="Kuantum bongkar (kg)"><AngkaInput required placeholder="0" value={kuantumBongkarMpp} onChange={setKuantumBongkarMpp} /></Field>
+                          <div className="mt-4 space-y-4 border-t border-border pt-4">
+                            <div>
+                              <div className="section-title mb-2">Input kuantum bongkar</div>
+                              <div className="grid gap-4 @md:grid-cols-2">
+                                <Field label="Kuantum bongkar (kg)"><AngkaInput required placeholder="0" value={kuantumBongkarMpp} onChange={setKuantumBongkarMpp} /></Field>
+                              </div>
                             </div>
+                            <DokumenGrid
+                              fields={MAKLOON_TERIMA_FOTO_FIELDS}
+                              fotos={fotosMakloonTerima}
+                              setFotos={setFotosMakloonTerima}
+                              progress={progressMakloonTerima}
+                              fotoGagal={[]}
+                              fotoTersimpan={fotoMakloonTersimpan}
+                            />
                           </div>
                         )}
                         <ReviewActions
@@ -970,7 +1004,7 @@ function JemputPanganForm({ form, setForm, mutation, error, fotos, setFotos, pro
 function MakloonMppForm({ form, setForm, mutation, error, fotos, setFotos, progress, fotoGagal, fotoTersimpan }: any) {
   const [warning, setWarning] = useState<string | null>(null)
   const ready = form.id_pemasok && form.supir && form.plat_mobil && form.desa && form.kecamatan && form.kabupaten && form.tanggal_bongkar && form.kuantum && form.jarak_ke_makloon_km
-  const missingDocs = dokumenKurang(MAKLOON_MPP_FOTO_FIELDS, fotos, fotoTersimpan)
+  const missingDocs = dokumenKurang(MAKLOON_MPP_KIRIM_FOTO_FIELDS, fotos, fotoTersimpan)
   const simpan = (aksi: AksiSimpan) => {
     if (aksi === 'submit') {
       if (!ready) {
@@ -1003,7 +1037,7 @@ function MakloonMppForm({ form, setForm, mutation, error, fotos, setFotos, progr
         <Field label="Kuantum (kg)"><AngkaInput required value={form.kuantum} onChange={(v) => setForm((prev: MakloonMppFormState) => ({ ...prev, kuantum: v }))} /></Field>
         <Field label="Jarak ke Makloon (km)"><input required type="number" step="0.01" min="0" className="input" value={form.jarak_ke_makloon_km} onChange={(e) => setForm((prev: MakloonMppFormState) => ({ ...prev, jarak_ke_makloon_km: e.target.value }))} /></Field>
       </div>
-      <DokumenGrid fields={MAKLOON_MPP_FOTO_FIELDS} fotos={fotos} setFotos={setFotos} progress={progress} fotoGagal={fotoGagal} fotoTersimpan={fotoTersimpan} />
+      <DokumenGrid fields={MAKLOON_MPP_KIRIM_FOTO_FIELDS} fotos={fotos} setFotos={setFotos} progress={progress} fotoGagal={fotoGagal} fotoTersimpan={fotoTersimpan} />
       <div className="flex flex-wrap justify-end gap-2 border-t border-border pt-4">
         <button type="button" disabled={mutation.isPending} onClick={() => simpan('draft')} className="btn btn-ghost border border-border bg-white">{mutation.isPending ? 'Menyimpan...' : 'Simpan'}</button>
         <button type="button" disabled={mutation.isPending} onClick={() => simpan('submit')} className={`btn btn-primary ${(!ready || missingDocs.length > 0) ? 'opacity-80' : ''}`}>{mutation.isPending ? 'Mengirim...' : 'Kirim ke Makloon Terima'}</button>

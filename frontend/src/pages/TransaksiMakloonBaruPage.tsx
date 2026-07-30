@@ -33,14 +33,15 @@ const initialState: FormState = {
   jarak_ke_makloon_km: '',
 }
 
+// Dokumen tahap Makloon Kirim saja. Surat jalan & nota timbang baru ada setelah barang
+// dibongkar, jadi diunggah di tahap Makloon Terima (lihat DataMakloonMpp::FOTO_TAHAP_* dan
+// kartu Makloon Terima di TransaksiDetailPage).
 const FOTO_FIELDS: { key: string; label: string }[] = [
   { key: 'foto_petani', label: 'Foto Petani' },
   { key: 'foto_gabah', label: 'Foto Gabah' },
   { key: 'foto_serah_terima', label: 'Foto Serah Terima' },
   { key: 'foto_pembayaran', label: 'Foto Pembayaran' },
   { key: 'foto_surat_pernyataan', label: 'Foto Surat Pernyataan' },
-  { key: 'foto_surat_jalan', label: 'Foto Surat Jalan' },
-  { key: 'foto_nota_timbang', label: 'Foto Nota Timbang' },
 ]
 
 const fotoLabel = (key: string) => FOTO_FIELDS.find((f) => f.key === key)?.label ?? key
