@@ -11,7 +11,7 @@ class TransaksiStages
 {
     /**
      * Urutan tahap per skema. Timeline transaksi berhenti di Keuangan (TJP 5 tahap, MPP 5 tahap);
-     * Operasi & Gudang bukan tahap timeline lagi — keduanya bagian dari modul Pengolahan terpisah.
+     * Operasi & Gudang bukan tahap timeline (modul Pengolahan yang dulu memakai keduanya sudah dihapus).
      * Tahap dengan 'model' null (pengadaan & keuangan) beroperasi di level PO (gabungan banyak
      * transaksi), bukan satu baris per transaksi — jadi tidak lewat TransaksiStageService::
      * submitStage/terima/tolak generik, melainkan endpoint khusus di PengadaanController yang

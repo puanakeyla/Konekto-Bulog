@@ -35,7 +35,6 @@ export default function AppNav() {
               <NavLink
                 key={action.to}
                 to={action.to}
-                end={action.to === '/operasi' || action.to === '/gudang'}
                 className={({ isActive }) =>
                   'inline-flex h-8 shrink-0 items-center rounded-md px-3 text-[0.72rem] font-bold leading-none transition-colors ' +
                   (isActive
@@ -73,7 +72,6 @@ export default function AppNav() {
               <NavLink
                 key={action.to}
                 to={action.to}
-                end={action.to === '/operasi' || action.to === '/gudang'}
                 className={({ isActive }) =>
                   'inline-flex h-8 shrink-0 items-center rounded-md px-3 text-xs font-bold ' +
                   (isActive ? 'bg-accent text-primary-dark' : 'border border-white/10 bg-white/[0.04] text-white/75')

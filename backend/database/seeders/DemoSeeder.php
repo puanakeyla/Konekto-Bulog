@@ -16,7 +16,7 @@ use Illuminate\Database\Seeder;
 
 /**
  * Data demo alur transaksi TJP -> PO -> keuangan. Idempoten — aman dijalankan ulang.
- * Modul Pengolahan (pengganti Operasi/Gudang lama) belum punya data demo di sini.
+ * Akun operasi/gudang tetap dibuat walau modul Pengolahan sudah dihapus (role-nya masih ada).
  * Jalankan manual: php artisan db:seed --class=DemoSeeder
  */
 class DemoSeeder extends Seeder

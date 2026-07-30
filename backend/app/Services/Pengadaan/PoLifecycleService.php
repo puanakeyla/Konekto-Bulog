@@ -13,8 +13,7 @@ class PoLifecycleService
     /**
      * Pembayaran PO oleh Keuangan (level PO). Keuangan adalah tahap TERAKHIR timeline transaksi
      * (TJP/MPP berhenti di Keuangan). Begitu PO dibayar penuh, seluruh transaksi anggotanya
-     * ditandai status_keseluruhan = 'selesai'. Operasi & Gudang bukan kelanjutan timeline ini —
-     * keduanya kini bagian dari modul Pengolahan terpisah.
+     * ditandai status_keseluruhan = 'selesai'. Operasi & Gudang bukan kelanjutan timeline ini.
      */
     public function updatePembayaran(DataPengadaan $dataPengadaan, string $statusBayar, ?string $tanggalBayar, ?string $noSpp): DataKeuangan
     {

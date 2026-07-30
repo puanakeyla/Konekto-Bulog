@@ -7,8 +7,9 @@ use App\Models\Role;
 use App\Models\User;
 
 /**
- * Daftar ringan akun gudang (satu user per gudang, ber-role gudang) untuk dropdown
- * "Tujuan Gudang" di modul Pengolahan — paralel dengan MakloonOptionController.
+ * Daftar ringan akun gudang (satu user per gudang, ber-role gudang) — paralel dengan
+ * MakloonOptionController. Konsumennya (dropdown "Tujuan Gudang" di modul Pengolahan) sudah
+ * dihapus; endpoint sengaja dipertahankan bersama role gudang & kolom users.nama_gudang.
  */
 class GudangOptionController extends Controller
 {
