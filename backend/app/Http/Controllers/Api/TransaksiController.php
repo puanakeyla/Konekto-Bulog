@@ -42,10 +42,22 @@ class TransaksiController extends Controller
             ->values()
             ->all();
 
-        $query = Transaksi::whereIn('current_stage', $stageRoles ?: [$role])
-            ->where('status_keseluruhan', 'berjalan')
+        // Urut tanggal lalu ID pemasok (ascending) -- keduanya beda tabel per skema, jadi
+        // dijoin dan di-COALESCE. Wajib di query, bukan di frontend: daftarnya paginated,
+        // pengurutan per halaman akan salah lintas halaman. Tanggal memakai tanggal bongkar
+        // (kunci penggabungan PO); transaksi yang tahap Makloon-nya belum diisi jatuh ke
+        // tanggal kirim (TJP) lalu tanggal dibuat supaya tidak tercecer di depan.
+        $query = Transaksi::query()
+            ->select('transaksi.*')
+            ->leftJoin('data_makloon_mpp', 'data_makloon_mpp.transaksi_id', '=', 'transaksi.id_transaksi')
+            ->leftJoin('data_makloon_tjp', 'data_makloon_tjp.transaksi_id', '=', 'transaksi.id_transaksi')
+            ->leftJoin('data_jemput_pangan', 'data_jemput_pangan.transaksi_id', '=', 'transaksi.id_transaksi')
+            ->whereIn('transaksi.current_stage', $stageRoles ?: [$role])
+            ->where('transaksi.status_keseluruhan', 'berjalan')
             ->with(['dataJemputPangan.makloon', 'dataMakloonMpp', 'dataMakloonTjp', 'dataUbJastasma', 'creator'])
-            ->orderBy('created_at');
+            ->orderByRaw('COALESCE(data_makloon_mpp.tanggal_bongkar, data_makloon_tjp.tanggal_bongkar, data_jemput_pangan.tanggal_kirim, DATE(transaksi.created_at))')
+            ->orderByRaw("COALESCE(data_makloon_mpp.id_pemasok, data_jemput_pangan.id_pemasok, '')")
+            ->orderBy('transaksi.id_transaksi');
 
         // Khusus daftar "siap PO" di Pengadaan: hanya transaksi yang UB Jastasma-nya
         // sudah diterima (menunggu_review = belum ditinjau Pengadaan, jangan dimunculkan).

@@ -33,13 +33,15 @@ export default function ConfirmDialog({
   if (!open) return null
 
   return (
+    // items-start + overflow-y-auto: dialog yang isinya panjang (mis. ringkasan PO) tidak
+    // terpotong di layar pendek, dan tetap ikut tinggi isinya, bukan dipaksa satu ukuran.
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-3 sm:items-center sm:p-6"
       role="dialog"
       aria-modal="true"
       onMouseDown={(e) => { if (e.target === e.currentTarget && !loading) onCancel() }}
     >
-      <div className="w-full max-w-md rounded-xl bg-white p-5 shadow-xl">
+      <div className="my-auto max-h-[92vh] w-full max-w-md overflow-y-auto rounded-xl bg-white p-5 shadow-xl sm:max-w-lg">
         <h3 className="text-base font-bold text-primary-dark">{title}</h3>
         <div className="mt-2 text-sm leading-6 text-gray-600">{description}</div>
         {children}

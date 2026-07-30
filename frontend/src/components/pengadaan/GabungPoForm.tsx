@@ -6,27 +6,20 @@ import { apiErrorMessage } from '../../lib/apiError'
 import { formatDate, formatMoney, formatNumber } from '../../lib/poFormat'
 import type { TransaksiListItem } from '../../hooks/useTransaksiList'
 import ConfirmDialog from '../ConfirmDialog'
+import TahapDialog from '../TahapDialog'
 import AngkaInput from '../AngkaInput'
+import { kunciTransaksi } from '../../lib/transaksiKunci'
 
 // Kunci pengelompokan PO: transaksi hanya boleh digabung bila pemasok, tanggal bongkar, dan
-// kuantum berasal dari sumber yang konsisten (MPP dari data makloon MPP, TJP dari jemput pangan +
-// bongkar TJP). Penggabungan PO dilakukan dari timeline transaksi (TransaksiDetailPage).
+// makloon sama (dijaga backend di PoGroupingService). Nilai per transaksi diambil dari helper
+// bersama supaya identik dengan yang ditampilkan daftar transaksi di dashboard.
 function groupKeyOf(t: TransaksiListItem) {
-  if (t.data_makloon_mpp) {
-    return {
-      id_pemasok: t.data_makloon_mpp.id_pemasok,
-      tanggal_bongkar: t.data_makloon_mpp.tanggal_bongkar,
-      kuantum: t.data_makloon_mpp.kuantum,
-    }
+  const k = kunciTransaksi(t)
+  return {
+    id_pemasok: k.id_pemasok ?? '-',
+    tanggal_bongkar: k.tanggal_bongkar ?? '-',
+    kuantum: k.kuantum ?? '-',
   }
-  if (t.data_makloon_tjp && t.data_jemput_pangan) {
-    return {
-      id_pemasok: t.data_jemput_pangan.id_pemasok,
-      tanggal_bongkar: t.data_makloon_tjp.tanggal_bongkar,
-      kuantum: t.data_makloon_tjp.kuantum_bongkar,
-    }
-  }
-  return { id_pemasok: '-', tanggal_bongkar: '-', kuantum: '-' }
 }
 
 function groupIdOf(t: TransaksiListItem) {
@@ -36,7 +29,12 @@ function groupIdOf(t: TransaksiListItem) {
 
 function groupLabelOf(t: TransaksiListItem) {
   const k = groupKeyOf(t)
-  return `${t.skema} - ${formatDate(k.tanggal_bongkar)} - ${k.id_pemasok} - ${t.nama_maklon ?? 'Tanpa makloon'}`
+  return `${t.skema} - ${k.tanggal_bongkar === '-' ? '-' : formatDate(k.tanggal_bongkar)} - ${k.id_pemasok} - ${t.nama_maklon ?? 'Tanpa makloon'}`
+}
+
+/** Nilai unik satu kolom untuk isi dropdown filter, diurutkan menaik. */
+function opsiUnik(rows: TransaksiListItem[], ambil: (t: TransaksiListItem) => string) {
+  return Array.from(new Set(rows.map(ambil))).sort((a, b) => a.localeCompare(b, 'id'))
 }
 
 // Form "Gabungkan Transaksi Menjadi PO". Dipakai halaman Pengadaan (daftar semua transaksi siap PO)
@@ -58,43 +56,56 @@ export default function GabungPoForm({
   const [noPo, setNoPo] = useState('')
   const [harga, setHarga] = useState('6500')
   const [confirmGabung, setConfirmGabung] = useState(false)
-  const [selectedGroup, setSelectedGroup] = useState('')
+  const [filterMakloon, setFilterMakloon] = useState('')
+  const [filterTanggal, setFilterTanggal] = useState('')
+  const [filterPemasok, setFilterPemasok] = useState('')
+  const [detailTahap, setDetailTahap] = useState<TransaksiListItem | null>(null)
 
   const selectedRows = useMemo(
     () => transaksiList.filter((item) => selected.has(item.id_transaksi)),
     [selected, transaksiList],
   )
-  const groupOptions = useMemo(() => {
-    const map = new Map<string, { id: string; label: string; count: number }>()
-    for (const t of transaksiList) {
-      const id = groupIdOf(t)
-      const current = map.get(id)
-      map.set(id, { id, label: groupLabelOf(t), count: (current?.count ?? 0) + 1 })
-    }
-    return Array.from(map.values()).sort((a, b) => a.label.localeCompare(b.label, 'id'))
-  }, [transaksiList])
-  useEffect(() => {
-    if (!preselectId) return
-    const preselected = transaksiList.find((item) => item.id_transaksi === preselectId)
-    if (preselected) setSelectedGroup(groupIdOf(preselected))
-  }, [preselectId, transaksiList])
+
+  // Satu PO = satu (tanggal, pemasok, makloon). Filter tidak menjamin itu, jadi kelompok
+  // dikunci oleh baris pertama yang tercentang (atau transaksi berjalan pada panel inline);
+  // baris kelompok lain ikut tampil tapi tidak bisa dicentang, bukan disembunyikan, supaya
+  // Pengadaan tetap melihat kenapa baris itu tidak boleh ikut.
+  const penentuKelompok = useMemo(
+    () => (preselectId ? transaksiList.find((item) => item.id_transaksi === preselectId) : selectedRows[0]) ?? null,
+    [preselectId, selectedRows, transaksiList],
+  )
+  const lockedGroup = penentuKelompok ? groupIdOf(penentuKelompok) : null
+
+  const makloonOptions = useMemo(() => opsiUnik(transaksiList, (t) => t.nama_maklon ?? 'Tanpa makloon'), [transaksiList])
+  const tanggalOptions = useMemo(() => opsiUnik(transaksiList, (t) => groupKeyOf(t).tanggal_bongkar), [transaksiList])
+  const pemasokOptions = useMemo(() => opsiUnik(transaksiList, (t) => groupKeyOf(t).id_pemasok), [transaksiList])
+
+  const filteredTransaksi = useMemo(
+    () => transaksiList.filter((t) => {
+      const k = groupKeyOf(t)
+      if (filterMakloon && (t.nama_maklon ?? 'Tanpa makloon') !== filterMakloon) return false
+      if (filterTanggal && k.tanggal_bongkar !== filterTanggal) return false
+      if (filterPemasok && k.id_pemasok !== filterPemasok) return false
+      return true
+    }),
+    [transaksiList, filterMakloon, filterTanggal, filterPemasok],
+  )
+
+  // Buang centang yang barisnya hilang dari daftar (mis. sudah tergabung PO lain).
   useEffect(() => {
     setSelected((prev) => {
       const next = new Set<string>()
       for (const id of prev) {
-        const row = transaksiList.find((item) => item.id_transaksi === id)
-        if (row && selectedGroup && groupIdOf(row) === selectedGroup) next.add(id)
+        if (transaksiList.some((item) => item.id_transaksi === id)) next.add(id)
       }
       if (preselectId) next.add(preselectId)
       return next
     })
-  }, [preselectId, selectedGroup, transaksiList])
-  const filteredTransaksi = useMemo(
-    () =>
-      selectedGroup ? transaksiList.filter((t) => groupIdOf(t) === selectedGroup) : [],
-    [transaksiList, selectedGroup],
-  )
-  const totalSelectedKuantum = selectedRows.reduce((sum, item) => sum + Number(groupKeyOf(item).kuantum || 0), 0)
+  }, [preselectId, transaksiList])
+  const totalSelectedKuantum = selectedRows.reduce((sum, item) => {
+    const kuantum = groupKeyOf(item).kuantum
+    return sum + (kuantum === '-' ? 0 : Number(kuantum) || 0)
+  }, 0)
 
   useEffect(() => {
     onSelectionChange?.(selected.size, totalSelectedKuantum)
@@ -127,9 +138,13 @@ export default function GabungPoForm({
     setSelected((prev) => {
       const next = new Set(prev)
       const row = transaksiList.find((item) => item.id_transaksi === id)
-      if (!row || (selectedGroup && groupIdOf(row) !== selectedGroup)) return next
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
+      if (!row) return next
+      if (next.has(id)) {
+        next.delete(id)
+        return next
+      }
+      if (lockedGroup && groupIdOf(row) !== lockedGroup) return next
+      next.add(id)
       return next
     })
   }
@@ -154,14 +169,33 @@ export default function GabungPoForm({
 
       {transaksiList.length > 0 && (
         <>
-          <div className="mb-4">
-            <label className="block"><span className="label">Kelompok PO</span>
-              <select className="input" value={selectedGroup} onChange={(e) => setSelectedGroup(e.target.value)}>
-                <option value="">Pilih kelompok skema/tanggal/pemasok/mitra</option>
-                {groupOptions.map((v) => <option key={v.id} value={v.id}>{v.label} ({v.count} transaksi)</option>)}
+          <div className="mb-4 grid gap-3 @md:grid-cols-3">
+            <label className="block"><span className="label">Makloon</span>
+              <select className="input" value={filterMakloon} onChange={(e) => setFilterMakloon(e.target.value)}>
+                <option value="">Semua makloon</option>
+                {makloonOptions.map((v) => <option key={v} value={v}>{v}</option>)}
+              </select>
+            </label>
+            <label className="block"><span className="label">Tanggal bongkar</span>
+              <select className="input" value={filterTanggal} onChange={(e) => setFilterTanggal(e.target.value)}>
+                <option value="">Semua tanggal</option>
+                {tanggalOptions.map((v) => <option key={v} value={v}>{v === '-' ? '-' : formatDate(v)}</option>)}
+              </select>
+            </label>
+            <label className="block"><span className="label">ID Pemasok</span>
+              <select className="input" value={filterPemasok} onChange={(e) => setFilterPemasok(e.target.value)}>
+                <option value="">Semua pemasok</option>
+                {pemasokOptions.map((v) => <option key={v} value={v}>{v}</option>)}
               </select>
             </label>
           </div>
+
+          {penentuKelompok && (
+            <p className="mb-3 text-xs text-muted">
+              Kelompok terkunci pada <strong>{groupLabelOf(penentuKelompok)}</strong>.
+              Baris di luar kelompok itu tidak bisa dicentang. Lepas semua centang untuk berpindah kelompok.
+            </p>
+          )}
 
           <div className="data-table-wrap mb-4">
             <table className="data-table">
@@ -169,14 +203,28 @@ export default function GabungPoForm({
               <tbody>
                 {filteredTransaksi.map((t) => {
                   const key = groupKeyOf(t)
+                  const bedaKelompok = !!lockedGroup && groupIdOf(t) !== lockedGroup
                   return (
-                    <tr key={t.id_transaksi}>
-                      <td><input type="checkbox" checked={selected.has(t.id_transaksi)} disabled={t.id_transaksi === preselectId} onChange={() => toggle(t.id_transaksi)} aria-label={`Pilih ${t.id_transaksi}`} /></td>
+                    <tr
+                      key={t.id_transaksi}
+                      onClick={() => setDetailTahap(t)}
+                      title="Klik untuk melihat progres 5 tahap"
+                      className={`cursor-pointer hover:bg-primary-tint/40 ${bedaKelompok ? 'opacity-45' : ''}`}
+                    >
+                      <td onClick={(e) => e.stopPropagation()}>
+                        <input
+                          type="checkbox"
+                          checked={selected.has(t.id_transaksi)}
+                          disabled={t.id_transaksi === preselectId || bedaKelompok}
+                          onChange={() => toggle(t.id_transaksi)}
+                          aria-label={`Pilih ${t.id_transaksi}`}
+                        />
+                      </td>
                       <td className="font-semibold text-primary-dark">{t.id_transaksi}</td>
                       <td><span className="badge">{t.skema}</span></td>
                       <td>{key.id_pemasok}</td>
                       <td>{key.tanggal_bongkar === '-' ? '-' : formatDate(key.tanggal_bongkar)}</td>
-                      <td className="text-right font-medium">{formatNumber(key.kuantum)} kg</td>
+                      <td className="text-right font-medium">{key.kuantum === '-' ? '-' : `${formatNumber(key.kuantum)} kg`}</td>
                     </tr>
                   )
                 })}
@@ -186,6 +234,8 @@ export default function GabungPoForm({
               </tbody>
             </table>
           </div>
+
+          <TahapDialog transaksi={detailTahap} onClose={() => setDetailTahap(null)} />
 
           <form className="grid gap-4 @md:grid-cols-2" onSubmit={(e) => { e.preventDefault(); setConfirmGabung(true) }}>
             <label className="block"><span className="label">No. PO</span><input required className="input" value={noPo} onChange={(e) => setNoPo(e.target.value)} placeholder="Contoh: PO-0001/VII/2026" /></label>

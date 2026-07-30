@@ -18,6 +18,13 @@ class FotoStreamController extends Controller
         $conversion = $request->query('conversion');
         $path = $conversion ? $media->getPath($conversion) : $media->getPath();
 
+        // Konversi (thumb) dibuat lewat queue; selama worker belum memprosesnya file itu belum
+        // ada. Jatuhkan ke berkas asli daripada 404 -- isinya sama, hanya lebih besar, sehingga
+        // pratinjau foto tetap tampil di mesin/deploy yang queue worker-nya belum jalan.
+        if ($conversion && ! file_exists($path)) {
+            $path = $media->getPath();
+        }
+
         if (! file_exists($path)) {
             abort(404);
         }

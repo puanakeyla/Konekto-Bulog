@@ -6,6 +6,12 @@ type Props = {
   onChange: (file: File | null) => void
   progress?: number
   error?: string
+  /**
+   * Foto yang sudah tersimpan di server (URL bertanda tangan). Ditampilkan sebagai pratinjau
+   * selama pengguna belum memilih file baru, supaya slot dokumen tidak terlihat kosong saat
+   * mengedit/mengirim ulang. File baru yang dipilih selalu menang atas nilai ini.
+   */
+  savedSrc?: string | null
 }
 
 // Ikon foto/galeri (bukan kamera) untuk tile "Tambah foto".
@@ -34,7 +40,7 @@ function UploadIcon({ className }: { className?: string }) {
   )
 }
 
-export default function FotoPicker({ label, file, onChange, progress, error }: Props) {
+export default function FotoPicker({ label, file, onChange, progress, error, savedSrc }: Props) {
   const rootRef = useRef<HTMLDivElement>(null)
   const galleryRef = useRef<HTMLInputElement>(null)
   const captureRef = useRef<HTMLInputElement>(null)
@@ -47,13 +53,13 @@ export default function FotoPicker({ label, file, onChange, progress, error }: P
 
   useEffect(() => {
     if (!file) {
-      setPreview(null)
+      setPreview(savedSrc ?? null)
       return
     }
     const url = URL.createObjectURL(file)
     setPreview(url)
     return () => URL.revokeObjectURL(url)
-  }, [file])
+  }, [file, savedSrc])
 
   useEffect(() => {
     if (!preview) setZoom(false)
@@ -144,7 +150,7 @@ export default function FotoPicker({ label, file, onChange, progress, error }: P
       <span className="label">{label}</span>
 
       <div className="relative">
-        {file ? (
+        {file || savedSrc ? (
           <div className="flex min-h-20 items-center gap-3 rounded-lg border border-border bg-white p-3">
             <button
               type="button"
@@ -161,7 +167,8 @@ export default function FotoPicker({ label, file, onChange, progress, error }: P
             </button>
 
             <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-medium text-primary-dark">{file.name}</p>
+              <p className="truncate text-sm font-medium text-primary-dark">{file ? file.name : 'Foto tersimpan'}</p>
+              {!file && <p className="text-xs text-success">Sudah tersimpan. Pilih foto baru hanya kalau ingin mengganti.</p>}
               <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
                 <button
                   type="button"
@@ -171,7 +178,7 @@ export default function FotoPicker({ label, file, onChange, progress, error }: P
                 >
                   Ganti
                 </button>
-                {!uploading && (
+                {file && !uploading && (
                   <button type="button" onClick={() => onChange(null)} className="text-sm text-danger">
                     Hapus
                   </button>

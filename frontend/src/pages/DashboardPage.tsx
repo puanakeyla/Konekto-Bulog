@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 import { useRekapTransaksi, type RekapTransaksi } from '../hooks/useRekapTransaksi'
 import { useTransaksiList, type TransaksiListItem } from '../hooks/useTransaksiList'
+import { kunciTransaksi, tanggalTransaksi } from '../lib/transaksiKunci'
 import { SkeletonMakloonGroups, SkeletonTable } from '../components/Skeleton'
 import DataSpreadsheet, { type SheetColumn } from '../components/DataSpreadsheet'
 
@@ -453,6 +454,17 @@ export default function DashboardPage() {
                   </summary>
                   <div className="border-t border-border bg-surface">
                     <table className="w-full text-sm">
+                      <thead className="text-left text-[0.68rem] font-bold uppercase tracking-wide text-muted">
+                        <tr>
+                          <th className="py-2 pl-16 pr-4">ID Transaksi</th>
+                          <th className="px-4">Skema</th>
+                          <th className="px-4">Tahap</th>
+                          <th className="px-4">Status</th>
+                          <th className="px-4">Tanggal</th>
+                          <th className="px-4">ID Pemasok</th>
+                          <th className="px-4"></th>
+                        </tr>
+                      </thead>
                       <tbody>
                         {group.transaksi.map((t) => <TransaksiRow key={t.id_transaksi} t={t} />)}
                       </tbody>
@@ -471,6 +483,7 @@ export default function DashboardPage() {
                     <th className="px-4 py-2">Tahap</th>
                     <th className="px-4 py-2">Status</th>
                     <th className="px-4 py-2">Tanggal</th>
+                    <th className="px-4 py-2">ID Pemasok</th>
                     <th className="px-4 py-2"></th>
                   </tr>
                 </thead>
@@ -679,7 +692,8 @@ function RejectedTransaksiRow({ t }: { t: TransaksiListItem }) {
       <td className="px-4"><SkemaBadge skema={t.skema} /></td>
       <td className="px-4 capitalize text-gray-600">{labelTahap(t.current_stage)}</td>
       <td className="px-4"><div className="flex flex-wrap gap-2"><StatusBadge status={t.status_keseluruhan} /><RejectedBadge items={rejected} /></div></td>
-      <td className="px-4 text-gray-500">{tanggalSingkat(t.created_at)}</td>
+      <td className="px-4 text-gray-500">{tanggalSingkat(tanggalTransaksi(t))}</td>
+      <td className="px-4 text-gray-600">{kunciTransaksi(t).id_pemasok ?? '-'}</td>
       <td className="py-3 pl-4 pr-4 text-right"><Link to={`/transaksi/${encodeURIComponent(t.id_transaksi)}`} className="font-medium text-primary hover:underline">Lihat</Link></td>
     </tr>
   )
@@ -693,7 +707,8 @@ function DashboardTableRow({ t }: { t: TransaksiListItem }) {
       <td className="px-4 py-2"><SkemaBadge skema={t.skema} /></td>
       <td className="px-4 py-2 capitalize">{labelTahap(t.current_stage)}</td>
       <td className="px-4 py-2"><div className="flex flex-wrap gap-2"><StatusBadge status={t.status_keseluruhan} /><RejectedBadge items={rejected} /></div></td>
-      <td className="px-4 py-2">{new Date(t.created_at).toLocaleDateString('id-ID')}</td>
+      <td className="px-4 py-2">{new Date(tanggalTransaksi(t)).toLocaleDateString('id-ID')}</td>
+      <td className="px-4 py-2">{kunciTransaksi(t).id_pemasok ?? '-'}</td>
       <td className="px-4 py-2 text-right"><Link to={`/transaksi/${encodeURIComponent(t.id_transaksi)}`} className="font-medium text-primary">Lihat</Link></td>
     </tr>
   )

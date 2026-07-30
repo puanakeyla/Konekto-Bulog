@@ -11,6 +11,7 @@ use App\Services\Transaksi\TransaksiStageService;
 use Database\Seeders\RoleSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Testing\File;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
@@ -156,6 +157,28 @@ class FotoStreamTest extends TestCase
         $response = $this->get($path);
 
         $response->assertOk();
+    }
+
+    /**
+     * Queue produksi bukan 'sync', jadi berkas thumb belum ada sampai worker memprosesnya.
+     * Permintaan thumb harus tetap mengembalikan gambar (jatuh ke berkas asli), bukan 404 --
+     * kalau tidak, semua pratinjau foto blank di lingkungan tanpa queue worker.
+     */
+    public function test_permintaan_thumb_jatuh_ke_berkas_asli_saat_konversi_belum_dibuat(): void
+    {
+        Queue::fake(); // konversi hanya dijadwalkan, tidak pernah dijalankan
+
+        $transaksi = $this->buatTransaksiTjp();
+        $media = $this->fotoService->upload($transaksi, $this->jemputPangan, 'foto_petani', File::image('petani.jpg', 800, 600));
+
+        $this->assertFileDoesNotExist($media->fresh()->getPath('thumb'));
+
+        Sanctum::actingAs($this->jemputPangan);
+        $url = $this->getJson("/api/transaksi/{$transaksi->id_transaksi}/foto/foto_petani?conversion=thumb")->json('url');
+
+        $path = parse_url($url, PHP_URL_PATH).'?'.parse_url($url, PHP_URL_QUERY);
+
+        $this->get($path)->assertOk();
     }
 
     private function buatUser(string $role): User

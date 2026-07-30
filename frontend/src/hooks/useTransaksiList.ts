@@ -21,7 +21,7 @@ export type TransaksiListItem = {
   makloon_kabupaten: string | null
   data_makloon_mpp?: { id_pemasok: string; tanggal_bongkar: string; kuantum: string; kuantum_bongkar?: string | null; status?: string; catatan_penolakan?: string | null } | null
   data_makloon_tjp?: { tanggal_bongkar: string; kuantum_bongkar: string; status?: string; catatan_penolakan?: string | null } | null
-  data_jemput_pangan?: { id_pemasok: string; makloon_user_id: number; status?: string; catatan_penolakan?: string | null } | null
+  data_jemput_pangan?: { id_pemasok: string; makloon_user_id: number; tanggal_kirim?: string | null; status?: string; catatan_penolakan?: string | null } | null
   data_ub_jastasma?: { status?: string; catatan_penolakan?: string | null } | null
   data_pengadaan?: { review_status?: string | null; data_keuangan?: { review_status?: string | null } | null } | null
 }

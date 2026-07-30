@@ -7,7 +7,7 @@ import { pesanKegagalan } from '../lib/api'
 import { apiErrorMessage } from '../lib/apiError'
 import { useAuth } from '../hooks/useAuth'
 import { uploadSemuaFoto } from '../lib/uploadFoto'
-import { formatMoney, formatNumber } from '../lib/poFormat'
+import { HIDDEN_FIELDS, formatValue, labelOf } from '../lib/stageField'
 import AngkaInput from '../components/AngkaInput'
 import FotoPicker from '../components/FotoPicker'
 import FormHero from '../components/FormHero'
@@ -20,6 +20,8 @@ import PoInForm from '../components/pengadaan/PoInForm'
 import PembayaranForm from '../components/pengadaan/PembayaranForm'
 import PoReviewCard from '../components/pengadaan/PoReviewCard'
 import { useTransaksiList } from '../hooks/useTransaksiList'
+import { useDokumenTransaksi, useFotoUrl } from '../hooks/useFotoTransaksi'
+import FotoThumb from '../components/FotoThumb'
 import type { PoItem } from '../hooks/usePoList'
 
 type StageData = Record<string, unknown> & { status: string }
@@ -122,42 +124,7 @@ const STAGE_ICONS: Record<string, React.ReactNode> = {
   keuangan: <path d="M2 5.5h14v8H2z M2 8.5h14 M12 11.5h2.5" />,
 }
 
-const HIDDEN_FIELDS = new Set(['id', 'transaksi_id', 'locked_by', 'submitted_by', 'created_at', 'updated_at'])
-
 const angkaAtauNull = (value: string) => value === '' ? null : Number(value)
-
-const FIELD_LABELS: Record<string, string> = {
-  status: 'Status',
-  catatan_penolakan: 'Catatan penolakan',
-  locked_at: 'Diterima pada',
-  submitted_at: 'Dikirim pada',
-  id_pemasok: 'ID pemasok',
-  supir: 'Supir',
-  plat_mobil: 'Plat mobil',
-  nama_poktan_gapoktan: 'Poktan/Gapoktan',
-  desa: 'Desa',
-  kecamatan: 'Kecamatan',
-  kabupaten: 'Kabupaten',
-  makloon_user_id: 'Makloon tujuan',
-  tanggal_kirim: 'Tanggal kirim',
-  tanggal_bongkar: 'Tanggal bongkar',
-  kuantum: 'Kuantum',
-  kuantum_bongkar: 'Kuantum bongkar',
-  jarak_ke_makloon_km: 'Jarak ke makloon',
-  ka1: 'KA1',
-  ka2: 'KA2',
-  ka3: 'KA3',
-  hampa: 'Hampa',
-  butir_hijau: 'Butir hijau',
-  no_po: 'No. PO',
-  no_spp: 'No. SPP',
-  status_po: 'Status PO',
-  total_kuantum: 'Total kuantum',
-  harga: 'Harga',
-  total_harga: 'Total harga',
-  status_bayar: 'Status bayar',
-  tanggal_bayar: 'Tanggal bayar',
-}
 
 const MAKLOON_FOTO_FIELDS = [
   { key: 'foto_surat_jalan_paraf', label: 'Surat jalan diparaf' },
@@ -235,22 +202,6 @@ function photoFieldsFor(stageId: string, skema: 'TJP' | 'MPP') {
 
 function formatDateTime(value: string) {
   return new Intl.DateTimeFormat('id-ID', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }).format(new Date(value))
-}
-
-// Field bernilai uang -> Rupiah; field kuantum (kg) -> pemisah ribuan tanpa desimal paksa.
-const MONEY_FIELDS = new Set(['harga', 'total_harga'])
-const KUANTUM_FIELDS = new Set(['kuantum', 'kuantum_bongkar', 'total_kuantum'])
-
-function formatValue(key: string, value: unknown) {
-  if (value === null || value === undefined || value === '') return '-'
-  if (MONEY_FIELDS.has(key)) return formatMoney(value as string | number)
-  if (KUANTUM_FIELDS.has(key)) return `${formatNumber(value as string | number)} kg`
-  if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}/.test(value)) return new Date(value).toLocaleDateString('id-ID')
-  return String(value)
-}
-
-function labelOf(key: string) {
-  return FIELD_LABELS[key] ?? key.replaceAll('_', ' ')
 }
 
 // Operasi & Gudang sengaja tidak dirender di timeline -- alurnya dikerjakan di halaman
@@ -441,6 +392,8 @@ export default function TransaksiDetailPage() {
     queryClient.invalidateQueries({ queryKey: ['transaksi-list'] })
     queryClient.invalidateQueries({ queryKey: ['transaksi', id] })
     queryClient.invalidateQueries({ queryKey: ['dokumen-transaksi', id] })
+    // URL foto ikut dibuang: setelah foto diganti, URL lama masih menunjuk berkas lama.
+    queryClient.invalidateQueries({ queryKey: ['foto-url', id] })
   }
 
   const terima = useMutation({
@@ -881,35 +834,23 @@ function RiwayatPenolakanPanel({ items }: { items: RiwayatPenolakan[] }) {
   )
 }
 
+/**
+ * Foto tahap ditampilkan sebagai pratinjau, bukan daftar tombol teks -- klik gambar membuka
+ * ukuran penuh di tab baru. Hanya foto yang benar-benar ada & boleh dilihat role ini yang
+ * dirender; daftarnya dari endpoint dokumen (satu query, dipakai bersama seluruh halaman).
+ */
 function FotoLinks({ transaksiId, fields }: { transaksiId: string; fields: { key: string; label: string }[] }) {
-  const [loadingKey, setLoadingKey] = useState<string | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  const { data: dokumen = [] } = useDokumenTransaksi(transaksiId)
+  const tersedia = fields.filter((field) => dokumen.some((item) => item.jenis_foto === field.key))
 
-  if (fields.length === 0) return null
-
-  const openFoto = async (jenisFoto: string) => {
-    setLoadingKey(jenisFoto)
-    setError(null)
-    try {
-      const { data } = await api.get<{ url: string }>(`/api/transaksi/${encodeURIComponent(transaksiId)}/foto/${jenisFoto}`)
-      window.open(data.url, '_blank', 'noopener,noreferrer')
-    } catch (err) {
-      const message = (err as { response?: { status?: number; data?: { message?: string } } }).response?.data?.message
-      setError(message ?? 'Foto belum tersedia atau tidak dapat diakses oleh role Anda.')
-    } finally {
-      setLoadingKey(null)
-    }
-  }
+  if (fields.length === 0 || tersedia.length === 0) return null
 
   return (
     <div className="mt-4 border-t border-border pt-3">
       <div className="section-title mb-2">Foto tersimpan</div>
-      {error && <div className="alert-warning mb-2">{error}</div>}
-      <div className="flex flex-wrap gap-2">
-        {fields.map((field) => (
-          <button key={field.key} type="button" className="btn btn-ghost border border-border bg-white" onClick={() => openFoto(field.key)} disabled={loadingKey === field.key}>
-            {loadingKey === field.key ? 'Membuka...' : field.label}
-          </button>
+      <div className="flex flex-wrap gap-3">
+        {tersedia.map((field) => (
+          <FotoThumb key={field.key} transaksiId={transaksiId} jenisFoto={field.key} label={field.label} />
         ))}
       </div>
     </div>
@@ -1126,14 +1067,43 @@ function DokumenGrid({ fields, fotos, setFotos, progress, fotoGagal, fotoTersimp
     <div className="@container">
       <div className="section-title mb-2">Dokumen</div>
       <div className="grid gap-4 @md:grid-cols-2">
-        {fields.map(({ key, label }: { key: string; label: string }) => (
-          <div key={key} className="space-y-1.5">
-            <FotoPicker label={label} file={fotos[key] ?? null} onChange={(file) => setFotos((prev: Record<string, File | null>) => ({ ...prev, [key]: file }))} progress={progress[key]} error={fotoGagal.includes(key) ? 'Gagal terupload' : undefined} />
-            {!fotos[key] && fotoTersimpan?.has(key) && <p className="text-xs font-semibold text-success">Sudah tersimpan. Pilih foto baru hanya kalau ingin mengganti.</p>}
-          </div>
+        {fields.map((field: { key: string; label: string }) => (
+          <DokumenSlot
+            key={field.key}
+            field={field}
+            fotos={fotos}
+            setFotos={setFotos}
+            progress={progress}
+            fotoGagal={fotoGagal}
+            tersimpan={fotoTersimpan?.has(field.key) ?? false}
+          />
         ))}
       </div>
     </div>
+  )
+}
+
+/**
+ * Satu slot dokumen. Dipisah dari DokumenGrid karena tiap slot menembak URL fotonya sendiri
+ * (hook tidak boleh dipanggil di dalam map). Foto yang sudah tersimpan ditampilkan sebagai
+ * pratinjau supaya slotnya tidak terlihat kosong saat mengedit/mengirim ulang; begitu pengguna
+ * memilih file baru, permintaan URL lama berhenti dan pratinjau ikut berganti.
+ */
+function DokumenSlot({ field, fotos, setFotos, progress, fotoGagal, tersimpan }: any) {
+  // Halaman ini selalu dirender di route /transaksi/:id, jadi id-nya pasti ada.
+  const { id } = useParams<{ id: string }>()
+  const fileBaru: File | null = fotos[field.key] ?? null
+  const { data: savedSrc } = useFotoUrl(id, field.key, tersimpan && !fileBaru, 'thumb')
+
+  return (
+    <FotoPicker
+      label={field.label}
+      file={fileBaru}
+      onChange={(file) => setFotos((prev: Record<string, File | null>) => ({ ...prev, [field.key]: file }))}
+      progress={progress[field.key]}
+      error={fotoGagal.includes(field.key) ? 'Gagal terupload' : undefined}
+      savedSrc={savedSrc ?? null}
+    />
   )
 }
 
