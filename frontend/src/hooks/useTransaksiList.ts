@@ -37,3 +37,25 @@ export function useTransaksiList(page = 1, perPage = 20, siapPo = false) {
     },
   })
 }
+
+/**
+ * Daftar antrean dashboard, dengan filter skema & kerjaan dikerjakan SERVER-side.
+ * Menyaring di browser hanya menyaring halaman yang kebetulan terbuka, sehingga jumlah baris
+ * tidak akan cocok dengan angka pada chip filter begitu antreannya lebih dari satu halaman.
+ */
+export function useAntreanTransaksi(page: number, skema: string, kerjaan: string, perPage = 25) {
+  return useQuery({
+    queryKey: ['antrean-transaksi', page, skema, kerjaan, perPage],
+    queryFn: async () => {
+      const { data } = await api.get<{ data: TransaksiListItem[]; meta: PaginationMeta }>('/api/transaksi', {
+        params: {
+          page,
+          per_page: perPage,
+          ...(skema === 'semua' ? {} : { skema }),
+          ...(kerjaan === 'semua' ? {} : { kerjaan }),
+        },
+      })
+      return { items: data.data, meta: data.meta }
+    },
+  })
+}

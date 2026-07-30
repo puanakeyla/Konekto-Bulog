@@ -1,9 +1,20 @@
 import { useMemo, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
-import { useRekapTransaksi, type RekapTransaksi } from '../hooks/useRekapTransaksi'
-import { useTransaksiList, type TransaksiListItem } from '../hooks/useTransaksiList'
+import { useAntreanTransaksi, type TransaksiListItem } from '../hooks/useTransaksiList'
+import { useRingkasanDashboard, usePantauan, type PantauanBaris } from '../hooks/useDashboard'
 import { kunciTransaksi, tanggalTransaksi } from '../lib/transaksiKunci'
+import {
+  KERJAAN_KETERANGAN,
+  KERJAAN_LABEL,
+  KERJAAN_URUT,
+  kerjaan,
+  labelTahap,
+  rejectedStages,
+  type KerjaanId,
+  type RejectInfo,
+} from '../lib/kerjaanTransaksi'
+import { namaTampilan } from '../lib/namaUser'
 import { SkeletonMakloonGroups, SkeletonTable } from '../components/Skeleton'
 import DataSpreadsheet, { type SheetColumn } from '../components/DataSpreadsheet'
 
@@ -36,7 +47,16 @@ const ROLE_SUBTITLE: Record<string, string> = {
   makloon: 'Kelola bongkar dan proses gabah dari mitra dengan rapi dan tepat waktu.',
 }
 
-const ACTIVE_STAT_ROLES = new Set(['jemput_pangan', 'ub_jastasma', 'pengadaan', 'keuangan'])
+// Urutan blok tahap pada tabel datar: TJP dulu baru MPP, sama seperti pengurutan rekap.
+const TAHAP_URUT = ['jemput_pangan', 'makloon', 'makloon_kirim', 'makloon_terima', 'ub_jastasma', 'pengadaan', 'keuangan']
+
+// Kalimat pembuka tiap blok tahap -- menjelaskan pekerjaannya sekali di kepala tabel, sehingga
+// badge per baris cukup menjawab "sudah sampai mana", bukan menjelaskan ulang tugasnya.
+const TAHAP_KETERANGAN: Record<string, string> = {
+  makloon: 'Cek data dari Jemput Pangan, lalu isi data bongkar dan kirim ke UB Jastasma.',
+  makloon_kirim: 'Isi data pengiriman gabah beserta dokumennya, lalu kirim.',
+  makloon_terima: 'Barang sudah sampai. Timbang & bongkar, catat kuantum bongkar, unggah surat jalan + nota timbang, lalu tekan Terima.',
+}
 
 type MakloonGroup = {
   nama: string
@@ -83,37 +103,24 @@ function SkemaCount({ skema, count }: { skema: 'TJP' | 'MPP'; count: number }) {
   return <span className={`inline-block rounded px-2 py-0.5 text-xs font-semibold ${cls}`}>{count} {skema}</span>
 }
 
-function StatusBadge({ status }: { status: string }) {
-  const cls = status === 'selesai' ? 'badge-success' : status === 'dibatalkan' ? 'badge-danger' : 'badge-warning'
-  return <span className={`badge ${cls} capitalize`}>{status.replaceAll('_', ' ')}</span>
+function KerjaanBadge({ row }: { row: TransaksiListItem }) {
+  const item = kerjaan(row)
+  return <span className={`badge ${item.cls}`} title={item.judul}>{item.label}</span>
 }
 
-type RejectInfo = { stage: string; catatan: string | null }
-
-const STAGE_LABELS: Record<string, string> = {
-  jemput_pangan: 'Jemput Pangan',
-  makloon: 'Makloon',
-  makloon_kirim: 'Makloon Kirim',
-  makloon_terima: 'Makloon Terima',
-  ub_jastasma: 'UB Jastasma',
-  pengadaan: 'Pengadaan',
-  keuangan: 'Keuangan',
-}
-
-function labelTahap(stage: string) {
-  return STAGE_LABELS[stage] ?? stage.replaceAll('_', ' ')
-}
-
-function rejectedStages(row: TransaksiListItem | RekapTransaksi): RejectInfo[] {
-  const items: RejectInfo[] = []
-  if (row.data_jemput_pangan?.status === 'ditolak') items.push({ stage: 'jemput_pangan', catatan: row.data_jemput_pangan.catatan_penolakan ?? null })
-  if (row.data_makloon_tjp?.status === 'ditolak' || row.data_makloon_mpp?.status === 'ditolak') {
-    items.push({ stage: row.skema === 'MPP' ? 'makloon_kirim' : 'makloon', catatan: (row.data_makloon_tjp?.catatan_penolakan ?? row.data_makloon_mpp?.catatan_penolakan) ?? null })
-  }
-  if (row.data_ub_jastasma?.status === 'ditolak') items.push({ stage: 'ub_jastasma', catatan: row.data_ub_jastasma.catatan_penolakan ?? null })
-  if (row.data_pengadaan?.review_status === 'ditolak') items.push({ stage: 'pengadaan', catatan: null })
-  if (row.data_pengadaan?.data_keuangan?.review_status === 'ditolak') items.push({ stage: 'keuangan', catatan: null })
-  return items
+/** Chip filter antrean, dengan jumlah supaya terlihat mana yang menumpuk tanpa perlu diklik. */
+function KerjaanChip({ label, jumlah, aktif, onClick }: { label: string; jumlah: number; aktif: boolean; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={aktif}
+      className={`inline-flex items-center gap-2 rounded-full border px-3.5 py-1.5 text-xs font-semibold transition-colors ${aktif ? 'border-primary bg-primary text-white' : 'border-border bg-white text-slate-600 hover:border-primary/40 hover:text-primary'}`}
+    >
+      {label}
+      <span className={`rounded-full px-1.5 py-0.5 text-[0.65rem] ${aktif ? 'bg-white/20' : 'bg-surface'}`}>{jumlah}</span>
+    </button>
+  )
 }
 
 function RejectedBadge({ items }: { items: RejectInfo[] }) {
@@ -161,14 +168,6 @@ type OperasiTotals = {
   realisasiPenerimaanHgb: number
 }
 
-function kontribusiPo(row: RekapTransaksi) {
-  return num(row.data_pengadaan?.po_detail?.find((detail) => detail.transaksi_id === row.id_transaksi)?.kuantum_kontribusi)
-}
-
-function kuantumMakloon(row: RekapTransaksi) {
-  return num(row.data_makloon_tjp?.kuantum_bongkar ?? row.data_makloon_mpp?.kuantum)
-}
-
 // Kolom "Hasil Olah" & "Realisasi HGB" pada Pantauan Admin dulunya diisi dari modul
 // Operasi/Gudang lama. Modul itu diganti alur Pengolahan (pengolahan/mo); rewiring tabel
 // pantauan ke sumber baru belum tercakup rencana ini, jadi sementara diisi nol.
@@ -183,40 +182,30 @@ const HASIL_OLAH_KOSONG: OperasiTotals = {
   realisasiPenerimaanHgb: 0,
 }
 
-function pantauanRows(rows: RekapTransaksi[], hasilOperasi: OperasiTotals): PantauanRow[] {
-  const map = new Map<string, PantauanRow>()
+/**
+ * Penjumlahan per makloon TIDAK lagi dilakukan di sini -- server yang mengirimkannya sudah
+ * teragregasi (GET /api/dashboard/pantauan). Menjumlahkannya di browser berarti hanya baris
+ * yang kebetulan ter-fetch yang terhitung, dan di atas satu halaman angkanya salah tanpa
+ * tanda apa pun. Fungsi ini kini hanya menurunkan kolom-kolom lanjutan dari dua angka dasar.
+ */
+function pantauanRows(rows: PantauanBaris[], hasilOperasi: OperasiTotals): PantauanRow[] {
+  const items: PantauanRow[] = rows.map((row) => ({
+    nama: row.nama,
+    gabahDiterima: num(row.gabah_diterima),
+    gabahAdministrasi: num(row.gabah_administrasi),
+    belumDiadministrasi: 0,
+    gabahSudahDiolah: 0,
+    stokGudangAdmAda: 0,
+    hgl: 0,
+    broken: 0,
+    menir: 0,
+    katul: 0,
+    rataRendemen: 0,
+    realisasiPenerimaanHgb: 0,
+    hglBelumAdministrasi: 0,
+    persenDiolah: 0,
+  }))
 
-  for (const row of rows) {
-    const nama = row.nama_maklon ?? 'Tanpa makloon'
-    let item = map.get(nama)
-    if (!item) {
-      item = {
-        nama,
-        gabahDiterima: 0,
-        gabahAdministrasi: 0,
-        belumDiadministrasi: 0,
-        gabahSudahDiolah: 0,
-        stokGudangAdmAda: 0,
-        hgl: 0,
-        broken: 0,
-        menir: 0,
-        katul: 0,
-        rataRendemen: 0,
-        realisasiPenerimaanHgb: 0,
-        hglBelumAdministrasi: 0,
-        persenDiolah: 0,
-      }
-      map.set(nama, item)
-    }
-
-    const diterima = kuantumMakloon(row)
-    const administrasi = kontribusiPo(row)
-
-    item.gabahDiterima += diterima
-    item.gabahAdministrasi += administrasi
-  }
-
-  const items = Array.from(map.values())
   const totalAdministrasi = items.reduce((sum, row) => sum + row.gabahAdministrasi, 0)
   const fallbackGabahDiolah = items.reduce((sum, row) => sum + row.gabahAdministrasi, 0)
   const totalGabahDiolah = hasilOperasi.gabahDiolah > 0 ? hasilOperasi.gabahDiolah : fallbackGabahDiolah
@@ -254,64 +243,59 @@ function pantauanRows(rows: RekapTransaksi[], hasilOperasi: OperasiTotals): Pant
 
 export default function DashboardPage() {
   const { user } = useAuth()
-  const [page, setPage] = useState(1)
-  const { data: transaksiPage, isLoading } = useTransaksiList(page)
-  const { data: rekapPage } = useRekapTransaksi(1, 200)
-  const [skemaFilter, setSkemaFilter] = useState<SkemaFilter>('semua')
-  const transaksi = transaksiPage?.items ?? []
-  const rekapTransaksi = rekapPage?.items ?? []
-  const meta = transaksiPage?.meta
-  const filteredTransaksi = useMemo(
-    () => transaksi.filter((item) => skemaFilter === 'semua' || item.skema === skemaFilter),
-    [transaksi, skemaFilter],
-  )
-  const useGrouped = !!user && GROUPED_ROLES.has(user.role.nama_role)
-  const makloonGroups = useMemo(() => groupByMakloon(filteredTransaksi), [filteredTransaksi])
-
-  // Ringkasan dihitung dari data yang sudah di-fetch (tanpa endpoint baru).
   const role = user?.role.nama_role ?? ''
-  const total = role === 'admin' || role === 'keuangan' ? rekapTransaksi.length : (meta?.total ?? transaksi.length)
-  const berjalan = useMemo(
-    () => role === 'admin'
-      ? rekapTransaksi.filter((t) => t.status_keseluruhan === 'berjalan').length
-      : transaksi.filter((t) => t.status_keseluruhan === 'berjalan').length,
-    [rekapTransaksi, role, transaksi],
-  )
-  const selesai = useMemo(
-    () => role === 'admin' || role === 'keuangan'
-      ? rekapTransaksi.filter((t) => t.status_keseluruhan === 'selesai' || t.current_stage === 'selesai').length
-      : transaksi.filter((t) => t.status_keseluruhan === 'selesai').length,
-    [rekapTransaksi, role, transaksi],
+  const [skemaFilter, setSkemaFilter] = useState<SkemaFilter>('semua')
+  const [kerjaanFilter, setKerjaanFilter] = useState<KerjaanId | 'semua'>('semua')
+  const [page, setPage] = useState(1)
+
+  // Angka ringkasan & filter dikerjakan di server. Menghitungnya di browser hanya benar selama
+  // seluruh antrean muat dalam satu halaman; di atas itu kartu statistik dan chip diam-diam
+  // melaporkan sebagian data saja. Daftarnya kembali paginated karena filternya sudah di query.
+  const { data: ringkasan } = useRingkasanDashboard(skemaFilter)
+  const { data: antreanPage, isLoading } = useAntreanTransaksi(page, skemaFilter, kerjaanFilter)
+  const { data: pantauanBaris } = usePantauan(role === 'admin')
+
+  const transaksi = antreanPage?.items ?? []
+  const meta = antreanPage?.meta
+  const hitungKerjaan: Record<KerjaanId, number> = ringkasan?.antrean ?? { periksa: 0, isi: 0, draft: 0, ditolak: 0, po: 0 }
+  const totalAntrean = ringkasan?.antrean.total ?? 0
+
+  const useGrouped = !!user && GROUPED_ROLES.has(role)
+  const makloonGroups = useMemo(() => groupByMakloon(transaksi), [transaksi])
+  // Tabel datar (role Makloon) dipisah per TAHAP, bukan per status: satu orang Makloon memegang
+  // tiga tahap yang pekerjaannya benar-benar berbeda (Makloon TJP, Makloon Kirim & Makloon
+  // Terima di MPP). Role lain hanya memegang satu tahap sehingga tetap satu blok.
+  const tahapGroups = useMemo(
+    () => TAHAP_URUT
+      .map((stage) => ({ stage, rows: transaksi.filter((item) => item.current_stage === stage) }))
+      .filter((group) => group.rows.length > 0),
+    [transaksi],
   )
 
-  const perluTindakan = useMemo(
-    () => role === 'admin'
-      ? rekapTransaksi.filter((t) => ACTIVE_STAT_ROLES.has(t.current_stage) && t.status_keseluruhan === 'berjalan').length
-      : berjalan,
-    [berjalan, rekapTransaksi, role],
-  )
-  const rejectedSource = role === 'admin' || role === 'keuangan' ? rekapTransaksi : transaksi
+  // Panel "Transaksi ditolak" hanya memuat contoh 5 teratas, jadi cukup dari halaman yang
+  // terbuka; jumlah sebenarnya diambil dari ringkasan server.
   const rejectedTransaksi = useMemo(
-    () => rejectedSource.filter((item) => rejectedStages(item).length > 0),
-    [rejectedSource],
+    () => transaksi.filter((item) => rejectedStages(item).length > 0),
+    [transaksi],
   )
-  const statCards = role === 'admin'
+
+  const kartuKetiga = role === 'pengadaan' || role === 'keuangan'
+    ? { label: 'Di halaman PO', value: hitungKerjaan.po, sub: 'lanjut di halaman PO', tone: 'accent' as const, icon: ICONS.total }
+    : { label: 'Perlu diisi', value: hitungKerjaan.isi + hitungKerjaan.draft, sub: 'termasuk draft', tone: 'accent' as const, icon: ICONS.total }
+  const statCards = role === 'admin' && ringkasan?.rekap
     ? [
-        { label: 'Total transaksi', value: total, sub: 'data rekap masuk', tone: 'primary' as const, icon: ICONS.total },
-        { label: 'Perlu diproses', value: perluTindakan, sub: 'tahap aktif', tone: 'warning' as const, icon: ICONS.berjalan },
-        { label: 'Ditolak', value: rejectedTransaksi.length, sub: 'perlu revisi', tone: 'danger' as const, icon: ICONS.ditolak },
-        { label: 'Selesai', value: selesai, sub: 'sudah rampung', tone: 'success' as const, icon: ICONS.selesai },
+        { label: 'Total transaksi', value: ringkasan.rekap.total, sub: 'seluruh transaksi', tone: 'primary' as const, icon: ICONS.total },
+        { label: 'Perlu diproses', value: ringkasan.rekap.perlu_diproses, sub: 'tahap aktif', tone: 'warning' as const, icon: ICONS.berjalan },
+        { label: 'Ditolak', value: ringkasan.rekap.ditolak, sub: 'perlu revisi', tone: 'danger' as const, icon: ICONS.ditolak },
+        { label: 'Selesai', value: ringkasan.rekap.selesai, sub: 'sudah rampung', tone: 'success' as const, icon: ICONS.selesai },
       ]
     : [
-        { label: 'Total transaksi', value: total, sub: 'keseluruhan', tone: 'primary' as const, icon: ICONS.total },
-        { label: 'Sedang berjalan', value: berjalan, sub: 'menunggu tindakan', tone: 'warning' as const, icon: ICONS.berjalan },
-        { label: 'Ditolak', value: rejectedTransaksi.length, sub: 'perlu revisi', tone: 'danger' as const, icon: ICONS.ditolak },
-        { label: 'Selesai', value: selesai, sub: 'sudah rampung', tone: 'success' as const, icon: ICONS.selesai },
+        { label: 'Total antrean', value: totalAntrean, sub: 'menunggu tindakan Anda', tone: 'primary' as const, icon: ICONS.total },
+        { label: 'Perlu dicek', value: hitungKerjaan.periksa, sub: 'terima atau tolak', tone: 'warning' as const, icon: ICONS.berjalan },
+        kartuKetiga,
+        { label: 'Ditolak', value: hitungKerjaan.ditolak, sub: 'perlu revisi', tone: 'danger' as const, icon: ICONS.ditolak },
       ]
-  const pantauan = useMemo(
-    () => pantauanRows(rekapTransaksi, HASIL_OLAH_KOSONG),
-    [rekapTransaksi],
-  )
+  const pantauan = useMemo(() => pantauanRows(pantauanBaris ?? [], HASIL_OLAH_KOSONG), [pantauanBaris])
 
   const now = new Date()
   const jam = now.getHours()
@@ -346,7 +330,7 @@ export default function DashboardPage() {
               </p>
               <p className="mt-5 text-xs font-medium text-white/50">{sapaan} &middot; {tanggalPanjang}</p>
               <h1 className="mt-2 text-4xl font-bold leading-tight tracking-tight md:text-5xl">
-                Halo, {user?.username}<span className="text-accent">.</span>
+                Halo, {namaTampilan(user)}<span className="text-accent">.</span>
               </h1>
               <div aria-hidden className="mt-5 h-1 w-16 rounded-full bg-accent" />
               <div className="mt-5">
@@ -419,23 +403,36 @@ export default function DashboardPage() {
         <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2 className="section-title">Transaksi menunggu tindakan</h2>
-            {useGrouped
-              ? <p className="page-subtitle">{makloonGroups.length} makloon · {filteredTransaksi.filter((t) => t.status_keseluruhan === 'berjalan').length} transaksi berjalan</p>
-              : <p className="page-subtitle">Pisahkan daftar berdasarkan skema TJP atau MPP.</p>}
+            <p className="page-subtitle">
+              {useGrouped && `${makloonGroups.length} makloon · `}
+              {totalAntrean} transaksi menunggu tindakan Anda
+            </p>
           </div>
           <div className="flex rounded-lg bg-primary-tint p-1 text-xs font-semibold text-primary">
             {(['semua', 'TJP', 'MPP'] as const).map((item) => (
-              <button key={item} type="button" onClick={() => setSkemaFilter(item)} className={'rounded px-4 py-2 ' + (skemaFilter === item ? 'bg-white shadow-sm' : 'hover:bg-white/60')}>
+              <button key={item} type="button" onClick={() => { setSkemaFilter(item); setPage(1) }} className={'rounded px-4 py-2 ' + (skemaFilter === item ? 'bg-white shadow-sm' : 'hover:bg-white/60')}>
                 {item === 'semua' ? 'Semua' : item}
               </button>
             ))}
           </div>
         </div>
 
-        {isLoading && (useGrouped ? <SkeletonMakloonGroups /> : <SkeletonTable />)}
-        {!isLoading && filteredTransaksi.length === 0 && <div className="panel px-4 py-3 text-sm text-gray-400">Tidak ada transaksi untuk filter ini.</div>}
+        {/* Filter kerjaan. Angkanya datang dari server (seluruh antrean), bukan dari halaman yang
+            terbuka. Hanya kategori yang benar-benar ada di antrean role ini yang muncul -- Jemput
+            Pangan tidak pernah memeriksa kiriman, Keuangan tidak pernah mengisi form. Kategori
+            yang sedang aktif tetap ditampilkan walau nol supaya tidak hilang dari bawah kursor. */}
+        <div className="mb-2 flex flex-wrap gap-2">
+          <KerjaanChip label="Semua" jumlah={totalAntrean} aktif={kerjaanFilter === 'semua'} onClick={() => { setKerjaanFilter('semua'); setPage(1) }} />
+          {KERJAAN_URUT.filter((id) => hitungKerjaan[id] > 0 || kerjaanFilter === id).map((id) => (
+            <KerjaanChip key={id} label={KERJAAN_LABEL[id]} jumlah={hitungKerjaan[id]} aktif={kerjaanFilter === id} onClick={() => { setKerjaanFilter(id); setPage(1) }} />
+          ))}
+        </div>
+        {kerjaanFilter !== 'semua' && <p className="page-subtitle mb-3">{KERJAAN_KETERANGAN[kerjaanFilter]}</p>}
 
-        {!isLoading && filteredTransaksi.length > 0 && (
+        {isLoading && (useGrouped ? <SkeletonMakloonGroups /> : <SkeletonTable />)}
+        {!isLoading && transaksi.length === 0 && <div className="panel px-4 py-3 text-sm text-gray-400">Tidak ada transaksi untuk filter ini.</div>}
+
+        {!isLoading && transaksi.length > 0 && (
           useGrouped ? (
             <div className="space-y-3">
               {makloonGroups.map((group) => (
@@ -474,25 +471,8 @@ export default function DashboardPage() {
               ))}
             </div>
           ) : (
-            <div className="panel overflow-hidden">
-              <table className="w-full text-sm">
-                <thead className="bg-primary-tint text-left text-primary-dark">
-                  <tr>
-                    <th className="px-4 py-2">ID Transaksi</th>
-                    <th className="px-4 py-2">Skema</th>
-                    <th className="px-4 py-2">Tahap</th>
-                    <th className="px-4 py-2">Status</th>
-                    <th className="px-4 py-2">Tanggal</th>
-                    <th className="px-4 py-2">ID Pemasok</th>
-                    <th className="px-4 py-2"></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredTransaksi.map((t) => (
-                    <DashboardTableRow key={t.id_transaksi} t={t} />
-                  ))}
-                </tbody>
-              </table>
+            <div className="space-y-6">
+              {tahapGroups.map((group) => <TabelTahap key={group.stage} stage={group.stage} rows={group.rows} />)}
             </div>
           )
         )}
@@ -684,14 +664,15 @@ function DashboardGrafis() {
   )
 }
 
-function RejectedTransaksiRow({ t }: { t: TransaksiListItem }) {
+/** Baris di dalam accordion per-makloon (indentasi mengikuti kolom nama grup). */
+function TransaksiRow({ t }: { t: TransaksiListItem }) {
   const rejected = rejectedStages(t)
   return (
     <tr className={`border-t border-border/60 ${rejected.length > 0 ? 'bg-danger-bg/60' : ''}`}>
       <td className="py-3 pl-16 pr-4 font-medium text-primary-dark">{t.id_transaksi}</td>
       <td className="px-4"><SkemaBadge skema={t.skema} /></td>
       <td className="px-4 capitalize text-gray-600">{labelTahap(t.current_stage)}</td>
-      <td className="px-4"><div className="flex flex-wrap gap-2"><StatusBadge status={t.status_keseluruhan} /><RejectedBadge items={rejected} /></div></td>
+      <td className="px-4"><KerjaanBadge row={t} /></td>
       <td className="px-4 text-gray-500">{tanggalSingkat(tanggalTransaksi(t))}</td>
       <td className="px-4 text-gray-600">{kunciTransaksi(t).id_pemasok ?? '-'}</td>
       <td className="py-3 pl-4 pr-4 text-right"><Link to={`/transaksi/${encodeURIComponent(t.id_transaksi)}`} className="font-medium text-primary hover:underline">Lihat</Link></td>
@@ -699,32 +680,49 @@ function RejectedTransaksiRow({ t }: { t: TransaksiListItem }) {
   )
 }
 
+/** Satu blok tabel per tahap, dipakai role Makloon yang memegang tiga tahap sekaligus. */
+function TabelTahap({ stage, rows }: { stage: string; rows: TransaksiListItem[] }) {
+  return (
+    <div>
+      <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
+        <div>
+          <h3 className="section-title">{labelTahap(stage)}</h3>
+          {TAHAP_KETERANGAN[stage] && <p className="page-subtitle">{TAHAP_KETERANGAN[stage]}</p>}
+        </div>
+        <span className="badge">{rows.length} transaksi</span>
+      </div>
+      <div className="panel overflow-hidden">
+        <table className="w-full text-sm">
+          <thead className="bg-primary-tint text-left text-primary-dark">
+            <tr>
+              <th className="px-4 py-2">ID Transaksi</th>
+              <th className="px-4 py-2">Skema</th>
+              <th className="px-4 py-2">Status</th>
+              <th className="px-4 py-2">Tanggal</th>
+              <th className="px-4 py-2">ID Pemasok</th>
+              <th className="px-4 py-2"></th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((t) => <DashboardTableRow key={t.id_transaksi} t={t} />)}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
+/** Baris tabel datar. Kolom Tahap dihilangkan -- judul blok di atasnya sudah menyebutkannya. */
 function DashboardTableRow({ t }: { t: TransaksiListItem }) {
   const rejected = rejectedStages(t)
   return (
     <tr className={`border-t border-border ${rejected.length > 0 ? 'bg-danger-bg/60' : ''}`}>
       <td className="px-4 py-2 font-medium text-primary-dark">{t.id_transaksi}</td>
       <td className="px-4 py-2"><SkemaBadge skema={t.skema} /></td>
-      <td className="px-4 py-2 capitalize">{labelTahap(t.current_stage)}</td>
-      <td className="px-4 py-2"><div className="flex flex-wrap gap-2"><StatusBadge status={t.status_keseluruhan} /><RejectedBadge items={rejected} /></div></td>
+      <td className="px-4 py-2"><KerjaanBadge row={t} /></td>
       <td className="px-4 py-2">{new Date(tanggalTransaksi(t)).toLocaleDateString('id-ID')}</td>
       <td className="px-4 py-2">{kunciTransaksi(t).id_pemasok ?? '-'}</td>
       <td className="px-4 py-2 text-right"><Link to={`/transaksi/${encodeURIComponent(t.id_transaksi)}`} className="font-medium text-primary">Lihat</Link></td>
-    </tr>
-  )
-}
-
-function TransaksiRow({ t }: { t: TransaksiListItem }) {
-  return <RejectedTransaksiRow t={t} />
-
-  return (
-    <tr className="border-t border-border/60">
-      <td className="py-3 pl-16 pr-4 font-medium text-primary-dark">{t.id_transaksi}</td>
-      <td className="px-4"><SkemaBadge skema={t.skema} /></td>
-      <td className="px-4 capitalize text-gray-600">{t.current_stage.replaceAll('_', ' ')}</td>
-      <td className="px-4"><StatusBadge status={t.status_keseluruhan} /></td>
-      <td className="px-4 text-gray-500">{tanggalSingkat(t.created_at)}</td>
-      <td className="py-3 pl-4 pr-4 text-right"><Link to={`/transaksi/${encodeURIComponent(t.id_transaksi)}`} className="font-medium text-primary hover:underline">Lihat →</Link></td>
     </tr>
   )
 }

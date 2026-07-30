@@ -12,6 +12,7 @@ use App\Models\DataUbJastasma;
 use App\Models\Role;
 use App\Models\Transaksi;
 use App\Services\AuditLogService;
+use App\Services\Transaksi\KerjaanTransaksi;
 use App\Services\Transaksi\TransaksiStageService;
 use App\Services\Transaksi\TransaksiStages;
 use Illuminate\Database\Eloquent\Builder;
@@ -33,14 +34,10 @@ class TransaksiController extends Controller
 
     public function index(Request $request)
     {
-        $role = $request->user()->role->nama_role;
-        $stageRoles = collect(['TJP', 'MPP'])
-            ->flatMap(fn (string $skema) => TransaksiStages::sequence($skema))
-            ->filter(fn (array $stage) => TransaksiStages::actorRole($stage) === $role)
-            ->pluck('role')
-            ->unique()
-            ->values()
-            ->all();
+        $validated = $request->validate([
+            'skema' => ['sometimes', Rule::in(['TJP', 'MPP'])],
+            'kerjaan' => ['sometimes', Rule::in(KerjaanTransaksi::SEMUA)],
+        ]);
 
         // Urut tanggal lalu ID pemasok (ascending) -- keduanya beda tabel per skema, jadi
         // dijoin dan di-COALESCE. Wajib di query, bukan di frontend: daftarnya paginated,
@@ -49,15 +46,24 @@ class TransaksiController extends Controller
         // tanggal kirim (TJP) lalu tanggal dibuat supaya tidak tercecer di depan.
         $query = Transaksi::query()
             ->select('transaksi.*')
+            ->antreanRole($request->user()->role->nama_role)
             ->leftJoin('data_makloon_mpp', 'data_makloon_mpp.transaksi_id', '=', 'transaksi.id_transaksi')
             ->leftJoin('data_makloon_tjp', 'data_makloon_tjp.transaksi_id', '=', 'transaksi.id_transaksi')
             ->leftJoin('data_jemput_pangan', 'data_jemput_pangan.transaksi_id', '=', 'transaksi.id_transaksi')
-            ->whereIn('transaksi.current_stage', $stageRoles ?: [$role])
-            ->where('transaksi.status_keseluruhan', 'berjalan')
             ->with(['dataJemputPangan.makloon', 'dataMakloonMpp', 'dataMakloonTjp', 'dataUbJastasma', 'creator'])
             ->orderByRaw('COALESCE(data_makloon_mpp.tanggal_bongkar, data_makloon_tjp.tanggal_bongkar, data_jemput_pangan.tanggal_kirim, DATE(transaksi.created_at))')
             ->orderByRaw("COALESCE(data_makloon_mpp.id_pemasok, data_jemput_pangan.id_pemasok, '')")
             ->orderBy('transaksi.id_transaksi');
+
+        // Filter skema & kerjaan dikerjakan di server, bukan di browser: daftarnya paginated,
+        // jadi menyaring di frontend hanya akan menyaring halaman yang kebetulan terbuka.
+        if (isset($validated['skema'])) {
+            $query->where('transaksi.skema', $validated['skema']);
+        }
+
+        if (isset($validated['kerjaan'])) {
+            KerjaanTransaksi::filter(KerjaanTransaksi::joinTahap($query), $validated['kerjaan']);
+        }
 
         // Khusus daftar "siap PO" di Pengadaan: hanya transaksi yang UB Jastasma-nya
         // sudah diterima (menunggu_review = belum ditinjau Pengadaan, jangan dimunculkan).

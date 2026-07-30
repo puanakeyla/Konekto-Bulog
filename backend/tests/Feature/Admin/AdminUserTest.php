@@ -98,6 +98,40 @@ class AdminUserTest extends TestCase
         $response->assertJsonPath('data.is_active', false);
     }
 
+    /**
+     * Regresi: normalizeMakloonName membandingkan role_id dengan `!==` terhadap id integer dari
+     * DB, sedangkan validateUser() di sebelahnya sudah memakai $request->integer(). Klien yang
+     * mengirim role_id sebagai string (form-encoded, atau JSON `"role_id": "2"` seperti di sini)
+     * membuat "2" !== 2 sehingga akun makloon yang sah dianggap bukan makloon dan nama_maklon-nya
+     * ikut terhapus.
+     */
+    public function test_role_id_berupa_string_tidak_menghapus_nama_maklon(): void
+    {
+        Sanctum::actingAs($this->admin);
+        $makloonRoleId = Role::where('nama_role', 'makloon')->value('id');
+        $user = $this->buatUser('makloon', ['nama_maklon' => 'Makloon Tetap']);
+
+        $this->patchJson("/api/admin/users/{$user->id}", [
+            'role_id' => (string) $makloonRoleId,
+            'nama_maklon' => 'Makloon Tetap',
+        ])->assertOk();
+
+        $this->assertSame('Makloon Tetap', $user->fresh()->nama_maklon);
+    }
+
+    public function test_role_id_berupa_string_tetap_membersihkan_nama_maklon_untuk_role_lain(): void
+    {
+        Sanctum::actingAs($this->admin);
+        $pengadaanRoleId = Role::where('nama_role', 'pengadaan')->value('id');
+        $user = $this->buatUser('makloon', ['nama_maklon' => 'Makloon Lama']);
+
+        $this->patchJson("/api/admin/users/{$user->id}", [
+            'role_id' => (string) $pengadaanRoleId,
+        ])->assertOk();
+
+        $this->assertNull($user->fresh()->nama_maklon);
+    }
+
     public function test_admin_dapat_reset_password_user(): void
     {
         Sanctum::actingAs($this->admin);

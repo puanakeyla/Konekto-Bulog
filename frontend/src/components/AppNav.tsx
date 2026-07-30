@@ -1,6 +1,7 @@
 import { Link, NavLink } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 import { buildActions } from '../lib/navActions'
+import { namaTampilan } from '../lib/namaUser'
 import logoSergab from '../assets/logo-sergab.svg'
 
 // Nama role internal -> label ramah untuk ditampilkan di navbar.
@@ -51,8 +52,11 @@ export default function AppNav() {
         <div className="ml-auto flex shrink-0 items-center gap-3">
           {user && (
             <div className="hidden text-right sm:block">
-              <p className="text-xs font-semibold leading-tight text-white">{user.username}</p>
-              <p className="text-[0.6875rem] capitalize leading-tight text-white/50">{roleLabel}</p>
+              {/* Nama mitra/gudang, bukan username -- itu identitas yang dikenal orang. */}
+              <p className="max-w-[16rem] truncate text-xs font-semibold leading-tight text-white">{namaTampilan(user)}</p>
+              <p className="text-[0.6875rem] capitalize leading-tight text-white/50">
+                {roleLabel}{namaTampilan(user) !== user.username ? ` · ${user.username}` : ''}
+              </p>
             </div>
           )}
           <span aria-hidden className="hidden h-8 w-px bg-white/10 sm:block" />

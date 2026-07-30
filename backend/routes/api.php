@@ -3,6 +3,7 @@
 use App\Http\Controllers\Api\AdminUserController;
 use App\Http\Controllers\Api\AuditLogController;
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\FotoController;
 use App\Http\Controllers\Api\FotoStreamController;
 use App\Http\Controllers\Api\GudangOptionController;
@@ -20,12 +21,20 @@ Route::get('/foto/{media}', [FotoStreamController::class, 'stream'])
     ->middleware('signed')
     ->name('foto.stream');
 
-Route::middleware('auth:sanctum')->group(function () {
+// `user.aktif` menendang akun yang dinonaktifkan admin dari sesi yang masih berjalan --
+// lihat App\Http\Middleware\PastikanUserAktif.
+Route::middleware(['auth:sanctum', 'user.aktif'])->group(function () {
     Route::post('/logout', [AuthController::class, 'logout']);
     Route::get('/me', [AuthController::class, 'me']);
 
     Route::get('/makloon-options', [MakloonOptionController::class, 'index']);
     Route::get('/gudang-options', [GudangOptionController::class, 'index']);
+
+    // Angka ringkasan dashboard dihitung di database, bukan dari baris yang ter-fetch browser.
+    Route::prefix('dashboard')->group(function () {
+        Route::get('/ringkasan', [DashboardController::class, 'ringkasan']);
+        Route::get('/pantauan', [DashboardController::class, 'pantauan'])->middleware('role:admin');
+    });
 
     Route::prefix('monitoring')->group(function () {
         Route::get('/sebaran-tahap', [MonitoringController::class, 'sebaranTahap']);

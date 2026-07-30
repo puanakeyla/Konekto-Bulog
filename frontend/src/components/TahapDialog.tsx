@@ -6,6 +6,7 @@ import { formatDate, formatNumber } from '../lib/poFormat'
 import { HIDDEN_FIELDS, formatValue, labelOf } from '../lib/stageField'
 import { useDokumenTransaksi, type FotoTersimpan } from '../hooks/useFotoTransaksi'
 import FotoThumb from './FotoThumb'
+import ModalPortal from './ModalPortal'
 
 // MPP: surat jalan & nota timbang milik tahap Makloon Terima, sisanya Makloon Kirim
 // (mirror DataMakloonMpp::FOTO_TAHAP_TERIMA di backend).
@@ -96,6 +97,7 @@ export default function TahapDialog({ transaksi, onClose }: { transaksi: Transak
   const kunci = kunciTransaksi(transaksi)
 
   return (
+    <ModalPortal>
     <div
       className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-3 sm:items-center sm:p-6"
       role="dialog"
@@ -168,5 +170,6 @@ export default function TahapDialog({ transaksi, onClose }: { transaksi: Transak
         </div>
       </div>
     </div>
+    </ModalPortal>
   )
 }

@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import api, { pesanKegagalan } from '../lib/api'
 import { labelFoto, labelRoleFoto } from '../lib/fotoDokumen'
+import ModalPortal from './ModalPortal'
 
 type FotoItem = { jenis_foto: string; role: string }
 
@@ -28,6 +29,7 @@ export default function DokumenGaleriModal({ transaksiId, onClose }: { transaksi
   }, [onClose])
 
   return (
+    <ModalPortal>
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-sm" onClick={onClose}>
       <div
         className="flex max-h-[92vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-white/40 bg-white shadow-2xl"
@@ -71,6 +73,7 @@ export default function DokumenGaleriModal({ transaksiId, onClose }: { transaksi
         </div>
       </div>
     </div>
+    </ModalPortal>
   )
 }
 

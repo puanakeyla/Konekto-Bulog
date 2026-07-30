@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import ModalPortal from './ModalPortal'
 
 type Props = {
   label: string
@@ -253,6 +254,7 @@ export default function FotoPicker({ label, file, onChange, progress, error, sav
 
       {/* Modal kamera (webcam) -- berfungsi di desktop & HP (https/localhost). */}
       {cameraOpen && (
+        <ModalPortal>
         <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-black/90 p-4">
           <video
             ref={videoRef}
@@ -279,10 +281,12 @@ export default function FotoPicker({ label, file, onChange, progress, error, sav
             </button>
           </div>
         </div>
+        </ModalPortal>
       )}
 
       {/* Lightbox -- lihat foto ukuran besar. */}
       {zoom && preview && (
+        <ModalPortal>
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm"
           onClick={() => setZoom(false)}
@@ -305,6 +309,7 @@ export default function FotoPicker({ label, file, onChange, progress, error, sav
             </svg>
           </button>
         </div>
+        </ModalPortal>
       )}
     </div>
   )

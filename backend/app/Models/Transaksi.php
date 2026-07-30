@@ -2,6 +2,8 @@
 
 namespace App\Models;
 
+use App\Services\Transaksi\TransaksiStages;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -74,6 +76,30 @@ class Transaksi extends Model
     public function auditLogs(): HasMany
     {
         return $this->hasMany(AuditLog::class, 'transaksi_id', 'id_transaksi');
+    }
+
+    /**
+     * Antrean kerja milik satu role: transaksi yang berjalan DAN sedang berada di salah satu
+     * tahap yang dipegang role tersebut.
+     *
+     * Sengaja satu tempat, karena definisi ini dipakai dua pemanggil yang harus sepakat:
+     * daftar transaksi (TransaksiController::index) dan hitungan chip/kartu dashboard
+     * (DashboardController::ringkasan). Kalau keduanya menyalin filter masing-masing, angka
+     * ringkasan bisa menyimpang dari isi tabel tanpa ada yang menyadarinya.
+     */
+    public function scopeAntreanRole(Builder $query, string $role): Builder
+    {
+        $stageRoles = collect(['TJP', 'MPP'])
+            ->flatMap(fn (string $skema) => TransaksiStages::sequence($skema))
+            ->filter(fn (array $stage) => TransaksiStages::actorRole($stage) === $role)
+            ->pluck('role')
+            ->unique()
+            ->values()
+            ->all();
+
+        return $query
+            ->whereIn('transaksi.current_stage', $stageRoles ?: [$role])
+            ->where('transaksi.status_keseluruhan', 'berjalan');
     }
 
     /**

@@ -1,4 +1,5 @@
 import { useEffect, type ReactNode } from 'react'
+import ModalPortal from './ModalPortal'
 
 type Props = {
   open: boolean
@@ -33,8 +34,9 @@ export default function ConfirmDialog({
   if (!open) return null
 
   return (
-    // items-start + overflow-y-auto: dialog yang isinya panjang (mis. ringkasan PO) tidak
-    // terpotong di layar pendek, dan tetap ikut tinggi isinya, bukan dipaksa satu ukuran.
+    <ModalPortal>
+    {/* items-start + overflow-y-auto: dialog yang isinya panjang (mis. ringkasan PO) tidak
+        terpotong di layar pendek, dan tetap ikut tinggi isinya, bukan dipaksa satu ukuran. */}
     <div
       className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-3 sm:items-center sm:p-6"
       role="dialog"
@@ -59,5 +61,6 @@ export default function ConfirmDialog({
         </div>
       </div>
     </div>
+    </ModalPortal>
   )
 }

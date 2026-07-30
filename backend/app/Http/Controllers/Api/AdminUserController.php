@@ -267,7 +267,11 @@ class AdminUserController extends Controller
 
     private function normalizeMakloonName(array $validated, ?User $user = null): array
     {
-        $roleId = $validated['role_id'] ?? $user?->role_id;
+        // Wajib di-cast: klien bisa mengirim role_id sebagai STRING (form-encoded, atau JSON
+        // "role_id": "2"), dan perbandingan ketat di bawah ("2" !== 2) akan menganggapnya bukan
+        // makloon lalu menghapus nama_maklon/nama_gudang akun yang sah. validateUser() di atas
+        // sudah memakai $request->integer(), jadi ini sekaligus menyamakan keduanya.
+        $roleId = isset($validated['role_id']) ? (int) $validated['role_id'] : $user?->role_id;
         $makloonRoleId = Role::where('nama_role', 'makloon')->value('id');
         $gudangRoleId = Role::where('nama_role', 'gudang')->value('id');
 

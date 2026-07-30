@@ -11,6 +11,7 @@ import { useRekapTransaksi, type RekapTransaksi } from '../hooks/useRekapTransak
 import { useMakloonOptions } from '../hooks/useMakloonOptions'
 import api, { pesanKegagalan } from '../lib/api'
 import { formatMoney, formatNumber } from '../lib/poFormat'
+import ModalPortal from '../components/ModalPortal'
 
 /**
  * Rekap lintas tahap, kolomnya KUMULATIF sesuai role:
@@ -666,6 +667,7 @@ function RekapEditModal({ row, form, role, makloonOptions, isSaving, onChange, o
   const boleh = (blok: string) => bolehBlok(role, blok)
 
   return (
+    <ModalPortal>
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-sm">
       <form
         className="flex max-h-[92vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-white/40 bg-white shadow-2xl"
@@ -772,6 +774,7 @@ function RekapEditModal({ row, form, role, makloonOptions, isSaving, onChange, o
         </div>
       </form>
     </div>
+    </ModalPortal>
   )
 }
 

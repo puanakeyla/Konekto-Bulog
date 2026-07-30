@@ -8,6 +8,7 @@ type User = {
   username: string
   role_id: number
   nama_maklon: string | null
+  nama_gudang: string | null
   kecamatan: string | null
   kabupaten: string | null
   /** Diisi admin lewat Kelola User saat user perlu memperbaiki datanya yang sudah terkunci. */

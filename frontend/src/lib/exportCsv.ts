@@ -17,7 +17,7 @@ function escapeCell(value: string | number | null | undefined) {
   return text
 }
 
-export function toCsv<T>(rows: T[], columns: ExportColumn<T>[]) {
+function toCsv<T>(rows: T[], columns: ExportColumn<T>[]) {
   const header = columns.map((c) => escapeCell(c.label)).join(';')
   const body = rows.map((row) => columns.map((c) => escapeCell(c.value(row))).join(';'))
   return [header, ...body].join('\r\n')

@@ -4,7 +4,9 @@
     "target": "es2023",
     "lib": ["ES2023", "DOM"],
     "module": "esnext",
-    "types": ["vite/client"],
+    // "node" hanya untuk file *.test.ts yang dijalankan `node --test` (npm run test:lib);
+    // kode aplikasi tetap tidak boleh memakai global node.
+    "types": ["vite/client", "node"],
     "allowArbitraryExtensions": true,
     "skipLibCheck": true,
 

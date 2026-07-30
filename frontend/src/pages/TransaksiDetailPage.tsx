@@ -553,6 +553,16 @@ export default function TransaksiDetailPage() {
   const fotoJemputPanganTersimpan = new Set(dokumenTersimpan.filter((foto) => foto.role === 'jemput_pangan').map((foto) => foto.jenis_foto))
   const fotoMakloonTersimpan = new Set(dokumenTersimpan.filter((foto) => foto.role === 'makloon').map((foto) => foto.jenis_foto))
   const fotoUbTersimpan = new Set(dokumenTersimpan.filter((foto) => foto.role === 'ub_jastasma').map((foto) => foto.jenis_foto))
+  // Makloon Terima bukan review "baca lalu klik": backend menolak Terima selama surat jalan &
+  // nota timbang belum terunggah (TransaksiController@terima), jadi tanpa gerbang ini user baru
+  // tahu setelah kena 422. Kuantum bongkar ikut diwajibkan supaya tidak ada baris tanpa angka
+  // bongkar -- kolom itu yang dipakai rekap & pantauan pengadaan.
+  const makloonTerimaKurang = transaksi.current_stage !== 'makloon_terima'
+    ? []
+    : [
+        ...(kuantumBongkarMpp ? [] : ['Kuantum bongkar']),
+        ...dokumenKurang(MAKLOON_TERIMA_FOTO_FIELDS, fotosMakloonTerima, fotoMakloonTersimpan),
+      ]
   const activeStages = stagesFor(transaksi.skema)
   const currentIndex = activeStages.findIndex((stage) => stage.id === transaksi.current_stage)
   const pendingData = pendingReviewFor(activeStages, currentIndex, transaksi)
@@ -740,7 +750,8 @@ export default function TransaksiDetailPage() {
                         {stage.id === 'makloon_terima' && (
                           <div className="mt-4 space-y-4 border-t border-border pt-4">
                             <div>
-                              <div className="section-title mb-2">Input kuantum bongkar</div>
+                              <div className="section-title mb-2">Catat hasil bongkar</div>
+                              <p className="page-subtitle mb-2">Isi kuantum bongkar dan unggah kedua dokumen di bawah, lalu tekan Simpan &amp; Terima.</p>
                               <div className="grid gap-4 @md:grid-cols-2">
                                 <Field label="Kuantum bongkar (kg)"><AngkaInput required placeholder="0" value={kuantumBongkarMpp} onChange={setKuantumBongkarMpp} /></Field>
                               </div>
@@ -757,6 +768,8 @@ export default function TransaksiDetailPage() {
                         )}
                         <ReviewActions
                           stageLabel={stage.label}
+                          acceptLabel={stage.id === 'makloon_terima' ? 'Simpan & Terima' : 'Terima & Lanjutkan'}
+                          blokir={stage.id === 'makloon_terima' ? makloonTerimaKurang : []}
                           catatan={catatan}
                           setCatatan={setCatatan}
                           onAccept={() => terima.mutate(stage.label)}
@@ -1107,18 +1120,33 @@ function DokumenSlot({ field, fotos, setFotos, progress, fotoGagal, tersimpan }:
   )
 }
 
-function ReviewActions({ stageLabel, catatan, setCatatan, onAccept, onReject, acceptPending, rejectPending, actionError }: any) {
+function ReviewActions({ stageLabel, acceptLabel = 'Terima & Lanjutkan', blokir = [], catatan, setCatatan, onAccept, onReject, acceptPending, rejectPending, actionError }: any) {
   const [dialog, setDialog] = useState<null | 'terima' | 'tolak'>(null)
+  const [warning, setWarning] = useState<string | null>(null)
+  // Pola sama dengan form tahap lain: tidak di-disable keras (user perlu bisa menekan dan tahu
+  // ALASANNYA), tapi ditahan sebelum dialog dengan daftar apa yang masih kurang.
+  const bukaTerima = () => {
+    if (blokir.length > 0) {
+      setWarning(`Belum lengkap: ${blokir.join(', ')}.`)
+      toast.error('Belum lengkap, transaksi belum bisa diterima.')
+      return
+    }
+    setWarning(null)
+    setDialog('terima')
+  }
   return (
-    <div className="mt-4 flex flex-wrap justify-end gap-3 border-t border-border pt-4">
-      <button type="button" onClick={() => setDialog('tolak')} className="btn btn-outline-danger">Tolak</button>
-      <button type="button" onClick={() => setDialog('terima')} className="btn btn-primary">Terima &amp; Lanjutkan</button>
+    <div className="mt-4 border-t border-border pt-4">
+      {warning && <div className="alert-warning mb-3">{warning}</div>}
+      <div className="flex flex-wrap justify-end gap-3">
+        <button type="button" onClick={() => setDialog('tolak')} className="btn btn-outline-danger">Tolak</button>
+        <button type="button" onClick={bukaTerima} className={`btn btn-primary ${blokir.length > 0 ? 'opacity-80' : ''}`}>{acceptLabel}</button>
+      </div>
 
       <ConfirmDialog
         open={dialog === 'terima'}
         title="Terima data tahap ini?"
         description={<>Data <strong>{stageLabel}</strong> akan dikunci dan tidak bisa diubah lagi setelah diterima. Lanjutkan?</>}
-        confirmLabel="Terima & Lanjutkan"
+        confirmLabel={acceptLabel}
         confirmVariant="primary"
         loading={acceptPending}
         error={actionError}
