@@ -23,6 +23,12 @@ class FotoAccessService
      */
     public function resolveDanOtorisasi(Transaksi $transaksi, string $jenisFoto, User $viewer): ?Media
     {
+        // Makloon hanya boleh menyentuh foto transaksinya sendiri. Tanpa ini, foto transaksi
+        // makloon lain bisa diambil hanya dengan menebak id_transaksi yang berpola urut.
+        if (! $transaksi->bolehDilihatOleh($viewer)) {
+            return null;
+        }
+
         $model = $this->resolveModel($transaksi, $jenisFoto);
 
         if (! $model) {
@@ -72,6 +78,10 @@ class FotoAccessService
      */
     public function daftarTersedia(Transaksi $transaksi, User $viewer): array
     {
+        if (! $transaksi->bolehDilihatOleh($viewer)) {
+            return [];
+        }
+
         $role = $viewer->role->nama_role;
 
         // model tahap -> role pemilik foto (untuk badge di UI).

@@ -119,6 +119,42 @@ class Transaksi extends Model
     }
 
     /**
+     * Batasi hasil ke transaksi yang BOLEH DILIHAT peminta.
+     *
+     * Hanya Makloon yang dibatasi: mitra makloon adalah perusahaan yang berdiri sendiri, jadi
+     * data satu makloon rahasia bagi makloon lain. Role internal BULOG (Jemput Pangan, UB
+     * Jastasma, Pengadaan, Keuangan, Admin) tetap melihat seluruh transaksi -- pembatasan
+     * Bagian 3.3 untuk mereka bersifat per-field, bukan per-baris.
+     *
+     * Wajib dipasang di SETIAP query yang mengembalikan daftar transaksi, termasuk yang hanya
+     * menghitung: kalau daftar disaring tapi hitungannya tidak, angka kartu/chip membocorkan
+     * keberadaan transaksi makloon lain walau barisnya tidak tampil.
+     */
+    public function scopeTerlihatOleh(Builder $query, User $user): Builder
+    {
+        if ($user->role?->nama_role !== 'makloon') {
+            return $query;
+        }
+
+        return $query->where(function (Builder $q) use ($user) {
+            // MPP dibuat sendiri oleh makloon; TJP ditunjuk Jemput Pangan lewat makloon_user_id.
+            $q->where(fn (Builder $t) => $t->where('transaksi.skema', 'MPP')
+                ->where('transaksi.created_by', $user->id))
+                ->orWhere(fn (Builder $t) => $t->where('transaksi.skema', 'TJP')
+                    ->whereHas('dataJemputPangan', fn (Builder $jp) => $jp->where('makloon_user_id', $user->id)));
+        });
+    }
+
+    /**
+     * Versi satu-baris dari scopeTerlihatOleh(), untuk endpoint yang menerima satu transaksi.
+     * Tanpa ini id_transaksi yang berpola urut (00006/07/2026/TJP) bisa ditebak satu per satu.
+     */
+    public function bolehDilihatOleh(User $user): bool
+    {
+        return $user->role?->nama_role !== 'makloon' || $this->dimilikiOleh($user);
+    }
+
+    /**
      * Transaksi ini ditangani oleh user tersebut? Dipakai saat user non-admin dibukakan
      * akses edit rekap: dia hanya boleh menyentuh transaksinya sendiri, bukan seluruh
      * baris role-nya (rekap difilter per role, bukan per user).

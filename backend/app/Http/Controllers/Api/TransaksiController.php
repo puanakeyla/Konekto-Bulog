@@ -47,6 +47,7 @@ class TransaksiController extends Controller
         $query = Transaksi::query()
             ->select('transaksi.*')
             ->antreanRole($request->user()->role->nama_role)
+            ->terlihatOleh($request->user())
             ->leftJoin('data_makloon_mpp', 'data_makloon_mpp.transaksi_id', '=', 'transaksi.id_transaksi')
             ->leftJoin('data_makloon_tjp', 'data_makloon_tjp.transaksi_id', '=', 'transaksi.id_transaksi')
             ->leftJoin('data_jemput_pangan', 'data_jemput_pangan.transaksi_id', '=', 'transaksi.id_transaksi')
@@ -104,6 +105,7 @@ class TransaksiController extends Controller
 
         $query = Transaksi::query()
             ->select('transaksi.*')
+            ->terlihatOleh($request->user())
             ->with([
                 'dataJemputPangan.makloon',
                 'dataMakloonMpp',
@@ -194,6 +196,10 @@ class TransaksiController extends Controller
 
     public function show(Request $request, Transaksi $transaksi)
     {
+        // 404 dan bukan 403: id_transaksi berpola urut, jadi 403 tetap membocorkan transaksi
+        // makloon lain itu ADA. Bagi peminta yang tak berhak, transaksinya seolah tidak pernah ada.
+        abort_unless($transaksi->bolehDilihatOleh($request->user()), 404);
+
         $transaksi->load([
             'dataJemputPangan.makloon',
             'dataMakloonMpp',

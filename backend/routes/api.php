@@ -38,7 +38,9 @@ Route::middleware(['auth:sanctum', 'user.aktif'])->group(function () {
 
     Route::prefix('monitoring')->group(function () {
         Route::get('/sebaran-tahap', [MonitoringController::class, 'sebaranTahap']);
-        Route::get('/makloon', [MonitoringController::class, 'makloon']);
+        // Perbandingan volume antar-makloon adalah alat pengawasan internal BULOG. Tanpa gerbang
+        // ini seorang mitra makloon bisa melihat nama & jumlah transaksi seluruh pesaingnya.
+        Route::get('/makloon', [MonitoringController::class, 'makloon'])->middleware('role:admin');
     });
 
     Route::middleware('role:admin')->prefix('admin')->group(function () {

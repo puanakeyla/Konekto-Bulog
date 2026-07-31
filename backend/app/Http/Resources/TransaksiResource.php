@@ -10,6 +10,11 @@ class TransaksiResource extends JsonResource
 {
     public function toArray(Request $request): array
     {
+        // Makloon melihat transaksinya sendiri sampai TAHAPNYA SENDIRI saja. Blok tahap sesudahnya
+        // (UB Jastasma dan seterusnya, termasuk harga & pembayaran di level PO) bukan urusan mitra
+        // makloon, jadi tetap kosong di timeline maupun rekap -- bukan hanya disembunyikan di UI.
+        $sampaiTahapMakloon = $request->user()?->role?->nama_role === 'makloon';
+
         return [
             'id_transaksi' => $this->id_transaksi,
             'skema' => $this->skema,
@@ -30,10 +35,10 @@ class TransaksiResource extends JsonResource
             ),
             'data_makloon_mpp' => $this->whenLoaded('dataMakloonMpp'),
             'data_makloon_tjp' => $this->whenLoaded('dataMakloonTjp'),
-            'data_ub_jastasma' => $this->whenLoaded('dataUbJastasma'),
+            'data_ub_jastasma' => $sampaiTahapMakloon ? null : $this->whenLoaded('dataUbJastasma'),
             // PO tempat transaksi ini bernaung (null bila belum digabung). Dipakai timeline untuk
             // merender panel Pengadaan/Keuangan inline. Satu transaksi hanya punya satu po_detail.
-            'data_pengadaan' => $this->whenLoaded('poDetail', function () {
+            'data_pengadaan' => $sampaiTahapMakloon ? null : $this->whenLoaded('poDetail', function () {
                 $po = $this->poDetail->first()?->dataPengadaan;
 
                 return $po ? new DataPengadaanResource($po) : null;

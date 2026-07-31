@@ -31,7 +31,11 @@ class DashboardController extends Controller
 
         $role = $request->user()->role->nama_role;
 
+        // terlihatOleh() wajib ikut di sini, bukan hanya di daftar transaksi: hitungan chip &
+        // kartu yang tidak disaring akan membocorkan JUMLAH transaksi makloon lain walau
+        // barisnya sendiri tidak pernah tampil.
         $antrean = Transaksi::query()->antreanRole($role)
+            ->terlihatOleh($request->user())
             ->when(isset($validated['skema']), fn ($q) => $q->where('transaksi.skema', $validated['skema']));
 
         $data = ['antrean' => KerjaanTransaksi::hitung($antrean)];
