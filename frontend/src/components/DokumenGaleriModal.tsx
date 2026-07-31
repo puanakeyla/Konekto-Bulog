@@ -1,11 +1,9 @@
 import { useEffect, useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import api, { pesanKegagalan } from '../lib/api'
+import { useDokumenTransaksi, type FotoTersimpan } from '../hooks/useFotoTransaksi'
 import { labelFoto, labelRoleFoto } from '../lib/fotoDokumen'
 import ModalPortal from './ModalPortal'
-
-type FotoItem = { jenis_foto: string; role: string }
 
 /**
  * Galeri dokumen read-only per transaksi: thumbnail + tombol Lihat/Download tiap foto.
@@ -13,13 +11,7 @@ type FotoItem = { jenis_foto: string; role: string }
  * yang dikembalikan sudah disaring per izin (mis. foto surat jalan JP disembunyikan).
  */
 export default function DokumenGaleriModal({ transaksiId, onClose }: { transaksiId: string; onClose: () => void }) {
-  const { data: items = [], isLoading, isError, error } = useQuery({
-    queryKey: ['dokumen-transaksi', transaksiId],
-    queryFn: async () => {
-      const { data } = await api.get<{ data: FotoItem[] }>(`/api/transaksi/${encodeURIComponent(transaksiId)}/foto`)
-      return data.data
-    },
-  })
+  const { data: items = [], isLoading, isError, error } = useDokumenTransaksi(transaksiId)
 
   // Tutup dengan Escape.
   useEffect(() => {
@@ -77,30 +69,18 @@ export default function DokumenGaleriModal({ transaksiId, onClose }: { transaksi
   )
 }
 
-function FotoKartu({ transaksiId, item }: { transaksiId: string; item: FotoItem }) {
-  const [src, setSrc] = useState<string | null>(null)
+function FotoKartu({ transaksiId, item }: { transaksiId: string; item: FotoTersimpan }) {
+  // thumb_url sudah ikut di response daftar -- kartu tidak lagi menembak endpoint link
+  // sendiri saat dirender (dulu galeri 7 foto = 8 request).
+  const [src, setSrc] = useState<string | null>(item.thumb_url)
   // Thumbnail digenerate lewat queue; di dev tanpa worker file 'thumb' bisa belum ada.
-  // Karena itu: coba thumb dulu, kalau img gagal termuat -> fallback ke gambar full-size.
+  // Karena itu kalau img gagal termuat -> fallback ke gambar full-size.
   const [pakaiFull, setPakaiFull] = useState(false)
   const [gagalTampil, setGagalTampil] = useState(false)
   const [busy, setBusy] = useState<null | 'lihat' | 'download'>(null)
 
-  const urlFoto = (opts: { thumb?: boolean; download?: boolean } = {}) => {
-    const params = new URLSearchParams()
-    if (opts.thumb) params.set('conversion', 'thumb')
-    if (opts.download) params.set('download', '1')
-    const qs = params.toString()
-    return `/api/transaksi/${encodeURIComponent(transaksiId)}/foto/${item.jenis_foto}${qs ? `?${qs}` : ''}`
-  }
-
-  useEffect(() => {
-    let aktif = true
-    api.get<{ url: string }>(urlFoto({ thumb: true }))
-      .then(({ data }) => aktif && setSrc(data.url))
-      .catch(() => aktif && setGagalTampil(true))
-    return () => { aktif = false }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [transaksiId, item.jenis_foto])
+  const urlFoto = (opts: { download?: boolean } = {}) =>
+    `/api/transaksi/${encodeURIComponent(transaksiId)}/foto/${item.jenis_foto}${opts.download ? '?download=1' : ''}`
 
   const handleImgError = async () => {
     if (pakaiFull) { setGagalTampil(true); return }
@@ -142,7 +122,7 @@ function FotoKartu({ transaksiId, item }: { transaksiId: string; item: FotoItem 
             {gagalTampil ? 'Pratinjau tidak tersedia' : 'Memuat...'}
           </span>
         ) : (
-          <img src={src} alt={labelFoto(item.jenis_foto)} className="h-full w-full object-cover" onError={handleImgError} />
+          <img src={src} alt={labelFoto(item.jenis_foto)} loading="lazy" className="h-full w-full object-cover" onError={handleImgError} />
         )}
       </div>
       <div className="p-3">

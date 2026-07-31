@@ -156,7 +156,7 @@ export default function TahapDialog({ transaksi, onClose }: { transaksi: Transak
                 {foto.length > 0 && (
                   <div className="ml-9 mt-2 flex flex-wrap gap-2">
                     {foto.map((item) => (
-                      <FotoThumb key={item.jenis_foto} transaksiId={transaksi.id_transaksi} jenisFoto={item.jenis_foto} />
+                      <FotoThumb key={item.jenis_foto} transaksiId={transaksi.id_transaksi} jenisFoto={item.jenis_foto} thumbUrl={item.thumb_url} />
                     ))}
                   </div>
                 )}

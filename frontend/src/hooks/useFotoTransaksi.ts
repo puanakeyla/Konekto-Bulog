@@ -1,9 +1,14 @@
 import { useQuery } from '@tanstack/react-query'
 import api from '../lib/api'
 
-export type FotoTersimpan = { jenis_foto: string; role: string }
+export type FotoTersimpan = { jenis_foto: string; role: string; thumb_url: string }
 
-/** Daftar foto yang benar-benar ada untuk transaksi ini, sudah disaring izin peminta di backend. */
+/**
+ * Daftar foto yang benar-benar ada untuk transaksi ini, sudah disaring izin peminta di backend.
+ * `thumb_url` ikut di response ini, jadi menampilkan galeri cukup SATU request -- sebelumnya
+ * tiap kartu menembak endpoint link sendiri (1 + N). staleTime 4 menit: URL bertanda tangan
+ * berlaku 5 menit, jadi daftar di-refresh sebelum link di dalamnya kedaluwarsa.
+ */
 export function useDokumenTransaksi(transaksiId: string | undefined) {
   return useQuery({
     queryKey: ['dokumen-transaksi', transaksiId],
@@ -12,6 +17,7 @@ export function useDokumenTransaksi(transaksiId: string | undefined) {
       return data.data
     },
     enabled: !!transaksiId,
+    staleTime: 4 * 60 * 1000,
   })
 }
 

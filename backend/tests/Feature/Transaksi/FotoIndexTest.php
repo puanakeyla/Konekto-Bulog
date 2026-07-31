@@ -121,6 +121,57 @@ class FotoIndexTest extends TestCase
         $this->assertSame('makloon', $item['role']);
     }
 
+    /**
+     * Galeri dulu menembak endpoint link sekali per foto (1 + N request). thumb_url ikut di
+     * response daftar supaya cukup satu request, dan URL-nya harus benar-benar bisa dipakai.
+     */
+    public function test_index_menyertakan_thumb_url_yang_langsung_bisa_dipakai(): void
+    {
+        $transaksi = $this->buatTransaksiTjp();
+        $this->fotoService->upload($transaksi, $this->jemputPangan, 'foto_petani', File::image('petani.jpg'));
+
+        Sanctum::actingAs($this->jemputPangan);
+        $item = collect($this->getJson("/api/transaksi/{$transaksi->id_transaksi}/foto")->json('data'))
+            ->firstWhere('jenis_foto', 'foto_petani');
+
+        $this->assertNotNull($item['thumb_url'] ?? null);
+
+        $url = $item['thumb_url'];
+        $this->get(parse_url($url, PHP_URL_PATH).'?'.parse_url($url, PHP_URL_QUERY))->assertOk();
+    }
+
+    /**
+     * FK cascadeOnDelete() menghapus baris tahap di level MySQL tanpa memicu event Eloquent,
+     * sehingga medialibrary tidak pernah membersihkan berkasnya. Ini penjaga hook di
+     * Transaksi::booted() -- kalau lepas, tiap penghapusan meninggalkan sampah permanen.
+     */
+    public function test_hapus_transaksi_ikut_menghapus_baris_dan_berkas_foto(): void
+    {
+        $transaksi = $this->buatTransaksiTjp();
+        $media = $this->fotoService->upload($transaksi, $this->jemputPangan, 'foto_petani', File::image('petani.jpg'));
+        $path = $media->getPathRelativeToRoot();
+
+        Storage::disk('foto-transaksi')->assertExists($path);
+
+        Sanctum::actingAs($this->admin);
+        $this->deleteJson("/api/transaksi/{$transaksi->id_transaksi}")->assertOk();
+
+        $this->assertDatabaseMissing('media', ['id' => $media->id]);
+        Storage::disk('foto-transaksi')->assertMissing($path);
+    }
+
+    /** Berkas di-shard 2 level supaya folder foto tidak jadi satu direktori datar. */
+    public function test_berkas_disimpan_dengan_path_ter_shard(): void
+    {
+        $transaksi = $this->buatTransaksiTjp();
+        $media = $this->fotoService->upload($transaksi, $this->jemputPangan, 'foto_petani', File::image('petani.jpg'));
+
+        $this->assertSame(
+            \App\Support\ShardedPathGenerator::basePathFor($media->id).'/petani.jpg',
+            $media->getPathRelativeToRoot(),
+        );
+    }
+
     public function test_link_download_menghasilkan_stream_sebagai_attachment(): void
     {
         $transaksi = $this->buatTransaksiTjp();

@@ -10,6 +10,7 @@ use App\Models\Transaksi;
 use App\Models\User;
 use App\Support\FieldVisibility;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\URL;
 use Spatie\MediaLibrary\HasMedia;
 use Spatie\MediaLibrary\MediaCollections\Models\Media;
 
@@ -45,11 +46,29 @@ class FotoAccessService
     }
 
     /**
+     * Signed URL berumur pendek ke route streaming. Satu tempat supaya penerbitan link
+     * satuan (FotoController::link) dan link massal (daftarTersedia) tidak bisa menyimpang
+     * soal masa berlaku maupun parameter yang ikut ditandatangani.
+     */
+    public function signedUrl(Media $media, ?string $conversion = null, bool $download = false): string
+    {
+        return URL::temporarySignedRoute('foto.stream', now()->addMinutes(5), array_filter([
+            'media' => $media->id,
+            'conversion' => $conversion,
+            'download' => $download ? 1 : null,
+        ]));
+    }
+
+    /**
      * Daftar foto yang BENAR-BENAR tersimpan untuk transaksi ini, sudah disaring per izin
      * peminta (foto_surat_jalan milik Jemput Pangan disembunyikan dari role yang tak berhak,
      * Bagian 3.3). Dipakai galeri dokumen di Rekap supaya hanya menampilkan slot yang ada.
      *
-     * @return list<array{jenis_foto: string, role: string}>
+     * `thumb_url` ikut diterbitkan di sini supaya galeri tidak perlu menembak endpoint link
+     * satu kali per foto (dulu 1 + N request, tiap request query ulang model tahapnya).
+     * URL ukuran penuh tetap diminta saat diklik -- lebih jarang, dan selalu segar.
+     *
+     * @return list<array{jenis_foto: string, role: string, thumb_url: string}>
      */
     public function daftarTersedia(Transaksi $transaksi, User $viewer): array
     {
@@ -88,7 +107,11 @@ class FotoAccessService
                     continue;
                 }
 
-                $hasil[] = ['jenis_foto' => $jenisFoto, 'role' => $modelRole[$modelClass]];
+                $hasil[] = [
+                    'jenis_foto' => $jenisFoto,
+                    'role' => $modelRole[$modelClass],
+                    'thumb_url' => $this->signedUrl($media, 'thumb'),
+                ];
             }
         }
 

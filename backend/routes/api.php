@@ -82,7 +82,10 @@ Route::middleware(['auth:sanctum', 'user.aktif'])->group(function () {
         ->middleware('role:ub_jastasma|admin');
     Route::post('/transaksi/{transaksi}/terima', [TransaksiController::class, 'terima']);
     Route::post('/transaksi/{transaksi}/tolak', [TransaksiController::class, 'tolak']);
-    Route::post('/transaksi/{transaksi}/foto', [FotoController::class, 'store']);
+    // Upload dibatasi: 5MB per request tanpa batas laju = satu akun bisa menguras disk VPS.
+    // 40/menit masih longgar untuk pengiriman satu tahap (maks ~7 foto) beserta retry-nya.
+    Route::post('/transaksi/{transaksi}/foto', [FotoController::class, 'store'])
+        ->middleware('throttle:40,1');
 
     Route::post('/pengadaan/gabungkan-po', [PengadaanController::class, 'gabungkanPo'])
         ->middleware('role:pengadaan|admin');

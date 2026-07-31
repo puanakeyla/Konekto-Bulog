@@ -21,6 +21,22 @@ class Transaksi extends Model
         return 'id_transaksi';
     }
 
+    /**
+     * FK `cascadeOnDelete()` menghapus baris tahap di level MySQL, sehingga event Eloquent
+     * mereka TIDAK pernah jalan -- padahal di situlah medialibrary membersihkan berkas foto
+     * (InteractsWithMedia::bootInteractsWithMedia). Tanpa hook ini, tiap transaksi yang
+     * dihapus admin meninggalkan baris `media` yatim beserta file fisiknya di disk selamanya.
+     * Dihapus lewat Eloquent lebih dulu supaya cascade tidak kebagian apa-apa.
+     */
+    protected static function booted(): void
+    {
+        static::deleting(function (self $transaksi) {
+            foreach (['dataJemputPangan', 'dataMakloonMpp', 'dataMakloonTjp', 'dataUbJastasma'] as $relasi) {
+                $transaksi->{$relasi}?->delete();
+            }
+        });
+    }
+
     public function resolveRouteBinding($value, $field = null)
     {
         if (! preg_match('#^\d{5}/\d{2}/\d{4}/(TJP|MPP)$#', (string) $value)) {

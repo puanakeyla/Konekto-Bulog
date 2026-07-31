@@ -7,7 +7,6 @@ use App\Models\Transaksi;
 use App\Services\Transaksi\FotoAccessService;
 use App\Services\Transaksi\FotoUploadService;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\URL;
 use Illuminate\Validation\Rule;
 
 class FotoController extends Controller
@@ -73,13 +72,11 @@ class FotoController extends Controller
             abort(404, 'Foto tidak ditemukan.');
         }
 
-        $url = URL::temporarySignedRoute('foto.stream', now()->addMinutes(5), array_filter([
-            'media' => $media->id,
-            'conversion' => $validated['conversion'] ?? null,
-            'download' => ($validated['download'] ?? false) ? 1 : null,
-        ]));
-
-        return response()->json(['url' => $url]);
+        return response()->json(['url' => $this->accessService->signedUrl(
+            $media,
+            $validated['conversion'] ?? null,
+            $validated['download'] ?? false,
+        )]);
     }
 
     public function destroy(Request $request, Transaksi $transaksi, string $jenisFoto)

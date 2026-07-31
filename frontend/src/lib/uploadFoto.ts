@@ -27,7 +27,7 @@ function muatGambar(file: File): Promise<HTMLImageElement> {
   })
 }
 
-async function kompresGambarBrowser(file: File): Promise<File> {
+async function kompresGambarBrowser(file: File, kualitas: number): Promise<File> {
   const img = await muatGambar(file)
   const rasio = Math.min(1, OPSI_KOMPRESI.maxWidthOrHeight / Math.max(img.naturalWidth, img.naturalHeight))
   const width = Math.max(1, Math.round(img.naturalWidth * rasio))
@@ -43,26 +43,43 @@ async function kompresGambarBrowser(file: File): Promise<File> {
 
   const type = file.type === 'image/png' ? 'image/png' : 'image/jpeg'
   const blob = await new Promise<Blob | null>((resolve) => {
-    canvas.toBlob(resolve, type, OPSI_KOMPRESI.initialQuality)
+    canvas.toBlob(resolve, type, kualitas)
   })
 
-  if (!blob || blob.size >= file.size) return file
+  if (!blob) return file
 
   return new File([blob], file.name, { type })
 }
 
 /**
- * Kompres foto di sisi client sebelum upload. Foto yang sudah <= target dilewati
- * (tidak dikompres ulang supaya dokumen kecil yang sudah tajam tidak ikut turun
- * kualitasnya). Kalau kompresi gagal (format tak terduga dll), fallback ke file asli --
- * server tetap memvalidasi mime & batas 5MB, jadi tetap aman.
+ * Kompres foto di sisi client sebelum upload, sekaligus membuang metadata EXIF -- foto kamera
+ * HP membawa koordinat GPS lokasi petani, dan itu ikut tersimpan permanen di server kalau
+ * dikirim apa adanya. Canvas selalu me-render ulang piksel tanpa metadata, jadi satu jalur ini
+ * menutup keduanya.
+ *
+ * Foto yang sudah <= target tetap lewat canvas tapi dengan kualitas nyaris lossless (0.95) dan
+ * tanpa penurunan resolusi: dokumen kecil yang sudah tajam (nota timbang, surat jalan) tidak
+ * boleh ikut turun kualitasnya, tapi EXIF-nya tetap harus hilang.
+ *
+ * Kalau kompresi gagal (format tak terduga dll), fallback ke file asli -- server tetap
+ * memvalidasi mime & batas 5MB, jadi tetap aman.
  */
 async function kompresFoto(file: File): Promise<File> {
   if (!file.type.startsWith('image/')) return file
-  if (file.size <= OPSI_KOMPRESI.maxSizeMB * 1024 * 1024) return file
+
+  const target = OPSI_KOMPRESI.maxSizeMB * 1024 * 1024
 
   try {
-    return await kompresGambarBrowser(file)
+    const hasil = await kompresGambarBrowser(file, file.size <= target ? 0.95 : OPSI_KOMPRESI.initialQuality)
+
+    // Render ulang pada kualitas tinggi kadang menghasilkan berkas lebih besar dari aslinya
+    // (mis. JPEG yang sudah dikompres agresif). Turunkan sekali ke kualitas normal, dan pakai
+    // yang paling kecil -- jangan pernah kembali ke `file` asli, di situ EXIF-nya masih ada.
+    if (hasil.size <= target) return hasil
+
+    const lebihRapat = await kompresGambarBrowser(file, OPSI_KOMPRESI.initialQuality)
+
+    return lebihRapat.size < hasil.size ? lebihRapat : hasil
   } catch {
     return file
   }

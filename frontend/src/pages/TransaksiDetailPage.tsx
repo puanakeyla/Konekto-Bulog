@@ -854,7 +854,10 @@ function RiwayatPenolakanPanel({ items }: { items: RiwayatPenolakan[] }) {
  */
 function FotoLinks({ transaksiId, fields }: { transaksiId: string; fields: { key: string; label: string }[] }) {
   const { data: dokumen = [] } = useDokumenTransaksi(transaksiId)
-  const tersedia = fields.filter((field) => dokumen.some((item) => item.jenis_foto === field.key))
+  const tersedia = fields.flatMap((field) => {
+    const item = dokumen.find((d) => d.jenis_foto === field.key)
+    return item ? [{ ...field, thumbUrl: item.thumb_url }] : []
+  })
 
   if (fields.length === 0 || tersedia.length === 0) return null
 
@@ -863,7 +866,7 @@ function FotoLinks({ transaksiId, fields }: { transaksiId: string; fields: { key
       <div className="section-title mb-2">Foto tersimpan</div>
       <div className="flex flex-wrap gap-3">
         {tersedia.map((field) => (
-          <FotoThumb key={field.key} transaksiId={transaksiId} jenisFoto={field.key} label={field.label} />
+          <FotoThumb key={field.key} transaksiId={transaksiId} jenisFoto={field.key} label={field.label} thumbUrl={field.thumbUrl} />
         ))}
       </div>
     </div>
