@@ -91,11 +91,15 @@ class PengadaanController extends Controller
             abort(422, 'Data Pengadaan sudah diterima dan tidak dapat diubah.');
         }
 
+        // Ditangkap sebelum diubah: dipakai untuk menahan demosi PO yang sudah lepas dari tangan
+        // Pengadaan (lihat cabang elseif di bawah).
+        $reviewStatusSebelum = $dataPengadaan->review_status;
+
         $before = $dataPengadaan->only(['no_po', 'harga', 'total_harga', 'status']);
         // Ditangkap lebih awal karena saat pembatalan po_detail dihapus (transaksi dilepas dari PO).
         $transaksiIds = $dataPengadaan->poDetail()->pluck('transaksi_id');
 
-        return DB::transaction(function () use ($request, $dataPengadaan, $validated, $before, $transaksiIds) {
+        return DB::transaction(function () use ($request, $dataPengadaan, $validated, $before, $transaksiIds, $reviewStatusSebelum) {
             if (array_key_exists('no_po', $validated)) {
                 $dataPengadaan->no_po = $validated['no_po'];
             }
@@ -119,6 +123,15 @@ class PengadaanController extends Controller
                 $dataPengadaan->catatan_penolakan = null;
                 $dataPengadaan->reviewed_by = null;
                 $dataPengadaan->reviewed_at = null;
+            } elseif ($dataPengadaan->status !== 'dibatalkan' && $reviewStatusSebelum !== 'menunggu_review') {
+                // Disimpan tapi belum lengkap = draft. PO yang sudah diterima Keuangan tidak
+                // sampai ke sini -- ditahan penjaga di awal method. PO yang sudah menunggu_review
+                // (sudah dikirim ke Keuangan, current_stage anggotanya sudah 'keuangan') sengaja
+                // TIDAK didemosikan ke draft di sini: baris di bawah yang memajukan current_stage
+                // hanya berjalan saat status 'lengkap', jadi kalau review_status ikut turun ke
+                // draft, PO tersangkut -- current_stage tetap 'keuangan' tapi tidak ada kartu
+                // review/pembayaran apa pun yang bisa menanganinya (lihat KerjaanTransaksi::ekspresi()).
+                $dataPengadaan->review_status = 'draft';
             }
 
             $dataPengadaan->save();

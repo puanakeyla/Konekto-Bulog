@@ -284,6 +284,12 @@ class PoGroupingService
                 $this->resetReview($dataPengadaan);
 
                 $this->majukanTahapTransaksi($dataPengadaan->id, 'keuangan');
+            } elseif ($dataPengadaan->review_status !== 'diterima') {
+                // Belum memenuhi syarat kirim = masih draft. Termasuk PO yang tadinya 'ditolak':
+                // begitu perbaikannya disimpan ia kembali jadi draft, sama seperti saveDraft()
+                // pada role tahap. catatan_penolakan sengaja TIDAK dihapus supaya konteks
+                // penolakannya tetap terlihat di PoInForm sampai PO dikirim ulang.
+                $dataPengadaan->review_status = 'draft';
             }
 
             $dataPengadaan->save();

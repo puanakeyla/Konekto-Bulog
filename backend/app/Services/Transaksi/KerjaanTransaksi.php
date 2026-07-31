@@ -15,14 +15,14 @@ use Illuminate\Support\Facades\DB;
  * SQL: satu ekspresi yang dipakai bersama untuk MENGHITUNG (chip & kartu), MEMFILTER (?kerjaan=),
  * dan MENANDAI tiap baris. Ketiganya mustahil berbeda karena sumbernya satu.
  *
- * URUTAN CASE WAJIB SAMA dengan versi frontend, khususnya: penolakan menang atas segalanya
- * (saat ditolak transaksi dikembalikan ke tahap asal sehingga kolom "menunggu review" bisa ikut
- * terisi), dan Pengadaan/Keuangan dicek sebelum draft karena keduanya tidak punya baris data
- * per transaksi.
+ * URUTAN CASE WAJIB: penolakan menang atas segalanya (saat ditolak transaksi dikembalikan ke
+ * tahap asal sehingga kolom "menunggu review" bisa ikut terisi), lalu periksa, lalu draft.
+ * Pengadaan & Keuangan tidak lagi punya kategori buntu sendiri: keduanya diklasifikasi dari
+ * kondisi PO-nya (kj_pd/kj_keu) seperti role lain diklasifikasi dari record tahapnya.
  */
 class KerjaanTransaksi
 {
-    public const SEMUA = ['periksa', 'isi', 'draft', 'ditolak', 'po'];
+    public const SEMUA = ['periksa', 'isi', 'draft', 'ditolak'];
 
     /**
      * LEFT JOIN semua tabel tahap dengan alias berprefiks `kj_` supaya tidak pernah bentrok
@@ -56,12 +56,14 @@ class KerjaanTransaksi
               OR (transaksi.current_stage = 'makloon_terima' AND kj_mpp.status = 'menunggu_review')
               OR (transaksi.current_stage = 'ub_jastasma' AND transaksi.skema = 'MPP' AND kj_mpp.status = 'menunggu_review')
               OR (transaksi.current_stage = 'ub_jastasma' AND transaksi.skema = 'TJP' AND kj_tjp.status = 'menunggu_review')
-              OR (transaksi.current_stage = 'pengadaan' AND kj_ub.status = 'menunggu_review') THEN 'periksa'
-            WHEN transaksi.current_stage IN ('pengadaan', 'keuangan') THEN 'po'
+              OR (transaksi.current_stage = 'pengadaan' AND kj_ub.status = 'menunggu_review')
+              OR (transaksi.current_stage = 'keuangan' AND kj_pd.review_status = 'menunggu_review') THEN 'periksa'
             WHEN (transaksi.current_stage = 'jemput_pangan' AND kj_jp.status = 'draft')
               OR (transaksi.current_stage = 'makloon' AND kj_tjp.status = 'draft')
               OR (transaksi.current_stage = 'makloon_kirim' AND kj_mpp.status = 'draft')
-              OR (transaksi.current_stage = 'ub_jastasma' AND kj_ub.status = 'draft') THEN 'draft'
+              OR (transaksi.current_stage = 'ub_jastasma' AND kj_ub.status = 'draft')
+              OR (transaksi.current_stage = 'pengadaan' AND kj_pd.review_status = 'draft')
+              OR (transaksi.current_stage = 'keuangan' AND kj_keu.review_status IN ('draft', 'menunggu_review')) THEN 'draft'
             ELSE 'isi'
         END";
     }

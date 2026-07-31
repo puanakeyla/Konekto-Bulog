@@ -15,6 +15,9 @@ class TransaksiResource extends JsonResource
             'skema' => $this->skema,
             'current_stage' => $this->current_stage,
             'status_keseluruhan' => $this->status_keseluruhan,
+            // Diisi hanya oleh TransaksiController::index() lewat selectRaw; endpoint lain
+            // (show/rekap) tidak menghitungnya, jadi field-nya absen di sana, bukan null.
+            'kerjaan' => $this->when(isset($this->kerjaan), fn () => $this->kerjaan),
             'created_by' => $this->created_by,
             'nama_maklon' => $this->makloonUser()?->nama_maklon,
             'makloon_kecamatan' => $this->makloonUser()?->kecamatan,

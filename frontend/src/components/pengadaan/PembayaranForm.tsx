@@ -18,19 +18,26 @@ export default function PembayaranForm({ po, onChanged }: { po: PoItem; onChange
 
   useEffect(() => {
     setNoSpp(po.no_spp ?? '')
-  }, [po.no_spp])
+    // Hidrasi dari data tersimpan (draft) supaya "Simpan" dengan tanggal kosong tidak menimpa
+    // tanggal_bayar yang sudah ada -- lihat PoLifecycleService::updatePembayaran() yang menulis
+    // tanggal_bayar tanpa syarat dari payload ini.
+    setTanggalBayar(po.data_keuangan?.tanggal_bayar?.slice(0, 10) ?? '')
+  }, [po.no_spp, po.data_keuangan?.tanggal_bayar])
 
   const mutation = useMutation({
-    mutationFn: () => api.patch(`/api/po/${po.id}/pembayaran`, {
-      status_bayar: 'dibayarkan',
-      tanggal_bayar: tanggalBayar,
+    mutationFn: (aksi: 'simpan' | 'bayar') => api.patch(`/api/po/${po.id}/pembayaran`, {
+      status_bayar: aksi === 'bayar' ? 'dibayarkan' : 'belum',
+      // Backend hanya mewajibkan tanggal saat dibayarkan, jadi draft boleh mengirim null.
+      tanggal_bayar: tanggalBayar || null,
       no_spp: noSpp.trim(),
     }),
-    onSuccess: () => {
+    onSuccess: (_data, aksi) => {
       setConfirmBayar(false)
       queryClient.invalidateQueries({ queryKey: ['po-list'] })
       onChanged?.()
-      toast.success(`PO ${po.no_po} ditandai dibayarkan dan transaksi selesai.`)
+      toast.success(aksi === 'bayar'
+        ? `PO ${po.no_po} ditandai dibayarkan dan transaksi selesai.`
+        : `Pembayaran PO ${po.no_po} tersimpan sebagai draft.`)
     },
     onError: (err) => toast.error(apiErrorMessage(err, 'Gagal menyimpan pembayaran.')),
   })
@@ -60,9 +67,23 @@ export default function PembayaranForm({ po, onChanged }: { po: PoItem; onChange
       </div>
       <div className="grid gap-4 @md:grid-cols-2">
         <label className="block"><span className="label">No. SPP (berlaku untuk seluruh PO)</span><input required className="input" value={noSpp} onChange={(e) => setNoSpp(e.target.value)} placeholder="Nomor SPP" /></label>
-        <label className="block"><span className="label">Tanggal Bayar (berlaku untuk seluruh PO)</span><input required type="date" className="input" value={tanggalBayar} onChange={(e) => setTanggalBayar(e.target.value)} /></label>
+        <label className="block"><span className="label">Tanggal Bayar (wajib untuk menandai dibayarkan)</span><input required type="date" className="input" value={tanggalBayar} onChange={(e) => setTanggalBayar(e.target.value)} /></label>
       </div>
-      <div className="mt-4 flex justify-end"><button type="submit" disabled={!tanggalBayar || !noSpp.trim() || mutation.isPending} className="btn btn-primary">{mutation.isPending ? 'Menyimpan...' : 'Tandai Dibayarkan'}</button></div>
+      {/* Simpan menahan No. SPP & tanggal tanpa melunasi -- "Tandai Dibayarkan" tetap satu-satunya
+          aksi final (transaksi jadi selesai dan tidak bisa dibatalkan). */}
+      <div className="mt-4 flex justify-end gap-2">
+        <button
+          type="button"
+          onClick={() => mutation.mutate('simpan')}
+          disabled={!noSpp.trim() || mutation.isPending}
+          className="btn btn-ghost border border-border bg-white"
+        >
+          {mutation.isPending ? 'Menyimpan...' : 'Simpan'}
+        </button>
+        <button type="submit" disabled={!tanggalBayar || !noSpp.trim() || mutation.isPending} className="btn btn-primary">
+          {mutation.isPending ? 'Menyimpan...' : 'Tandai Dibayarkan'}
+        </button>
+      </div>
 
       <ConfirmDialog
         open={confirmBayar}
@@ -72,7 +93,7 @@ export default function PembayaranForm({ po, onChanged }: { po: PoItem; onChange
         loading={mutation.isPending}
         error={errorMessage}
         onCancel={() => setConfirmBayar(false)}
-        onConfirm={() => mutation.mutate()}
+        onConfirm={() => mutation.mutate('bayar')}
       />
     </form>
   )

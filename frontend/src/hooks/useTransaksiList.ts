@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import api from '../lib/api'
+import type { KerjaanId } from '../lib/kerjaanTransaksi'
 
 export type PaginationMeta = {
   current_page: number
@@ -15,6 +16,7 @@ export type TransaksiListItem = {
   skema: 'TJP' | 'MPP'
   current_stage: string
   status_keseluruhan: string
+  kerjaan: KerjaanId
   created_at: string
   nama_maklon: string | null
   makloon_kecamatan: string | null

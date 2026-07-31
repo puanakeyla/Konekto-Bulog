@@ -55,6 +55,13 @@ class TransaksiController extends Controller
             ->orderByRaw("COALESCE(data_makloon_mpp.id_pemasok, data_jemput_pangan.id_pemasok, '')")
             ->orderBy('transaksi.id_transaksi');
 
+        // Klasifikasi kerjaan dihitung SEKALI di SQL lalu ikut tiap baris, bukan dihitung ulang
+        // di browser. Frontend tidak memuat data PO, jadi dulu ia terpaksa melempar Pengadaan &
+        // Keuangan ke satu kategori buntu -- sekarang badge, chip, dan filter bersumber sama.
+        // joinTahap() HANYA BOLEH dipanggil sekali: alias kj_* akan bentrok kalau didaftarkan dua kali.
+        $query = KerjaanTransaksi::joinTahap($query)
+            ->addSelect(DB::raw(KerjaanTransaksi::ekspresi().' as kerjaan'));
+
         // Filter skema & kerjaan dikerjakan di server, bukan di browser: daftarnya paginated,
         // jadi menyaring di frontend hanya akan menyaring halaman yang kebetulan terbuka.
         if (isset($validated['skema'])) {
@@ -62,7 +69,7 @@ class TransaksiController extends Controller
         }
 
         if (isset($validated['kerjaan'])) {
-            KerjaanTransaksi::filter(KerjaanTransaksi::joinTahap($query), $validated['kerjaan']);
+            KerjaanTransaksi::filter($query, $validated['kerjaan']);
         }
 
         // Khusus daftar "siap PO" di Pengadaan: hanya transaksi yang UB Jastasma-nya

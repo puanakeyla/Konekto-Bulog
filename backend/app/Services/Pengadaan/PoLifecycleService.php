@@ -65,9 +65,14 @@ class PoLifecycleService
         Transaksi::whereIn('id_transaksi', $transaksiIds)->update(['status_keseluruhan' => 'selesai']);
     }
 
+    /**
+     * Pembayaran yang disimpan tapi belum dilunasi = draft, bukan 'menunggu_review' -- Keuangan
+     * adalah tahap terakhir, tidak ada siapa pun yang akan mereview baris ini. Cabang
+     * 'dibayarkan' di updatePembayaran() menimpanya jadi 'diterima'.
+     */
     private function resetReview($record): void
     {
-        $record->review_status = 'menunggu_review';
+        $record->review_status = 'draft';
         $record->catatan_penolakan = null;
         $record->reviewed_by = null;
         $record->reviewed_at = null;

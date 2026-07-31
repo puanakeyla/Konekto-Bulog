@@ -6,7 +6,7 @@ import type { TransaksiListItem } from '../hooks/useTransaksiList'
 // Ekstensi .ts eksplisit karena Node ESM tidak menebak ekstensi saat runtime; tsconfig sudah
 // allowImportingTsExtensions jadi tsc tetap menerima. Import type di atas tidak perlu -- ia
 // terhapus sebelum Node melihatnya.
-import { KERJAAN_LABEL, kerjaan } from './kerjaanTransaksi.ts'
+import { KERJAAN_KETERANGAN, KERJAAN_LABEL, KERJAAN_URUT, kerjaan } from './kerjaanTransaksi.ts'
 
 function baris(patch: Partial<TransaksiListItem>): TransaksiListItem {
   return {
@@ -14,6 +14,7 @@ function baris(patch: Partial<TransaksiListItem>): TransaksiListItem {
     skema: 'TJP',
     current_stage: 'jemput_pangan',
     status_keseluruhan: 'berjalan',
+    kerjaan: 'isi',
     created_at: '2026-07-01T00:00:00Z',
     nama_maklon: null,
     makloon_kecamatan: null,
@@ -22,58 +23,36 @@ function baris(patch: Partial<TransaksiListItem>): TransaksiListItem {
   }
 }
 
-test('transaksi yang baru masuk ke tahap kita: belum ada datanya sendiri -> perlu diisi', () => {
-  assert.equal(kerjaan(baris({ current_stage: 'jemput_pangan' })).id, 'isi')
-  assert.equal(kerjaan(baris({ current_stage: 'jemput_pangan' })).label, 'Perlu diisi')
+test('label diambil dari kategori yang dikirim server, bukan dihitung ulang', () => {
+  assert.equal(kerjaan(baris({ kerjaan: 'isi' })).label, 'Perlu diisi')
+  assert.equal(kerjaan(baris({ kerjaan: 'periksa' })).label, 'Perlu dicek')
+  assert.equal(kerjaan(baris({ kerjaan: 'draft' })).label, 'Draft belum dikirim')
+  assert.equal(kerjaan(baris({ kerjaan: 'ditolak' })).label, 'Perlu diperbaiki')
 })
 
-test('draft punya kategori sendiri, tidak disembunyikan di balik "Perlu diisi"', () => {
-  const row = baris({ current_stage: 'jemput_pangan', data_jemput_pangan: { id_pemasok: 'P1', makloon_user_id: 1, status: 'draft' } })
-  assert.equal(kerjaan(row).id, 'draft')
-  assert.notEqual(kerjaan(row).id, kerjaan(baris({ current_stage: 'jemput_pangan' })).id)
-})
-
-test('label badge selalu sama dengan label chip (satu badge = satu chip)', () => {
-  for (const row of [
-    baris({ current_stage: 'jemput_pangan' }),
-    baris({ current_stage: 'jemput_pangan', data_jemput_pangan: { id_pemasok: 'P1', makloon_user_id: 1, status: 'draft' } }),
-    baris({ current_stage: 'keuangan' }),
-    baris({ skema: 'MPP', current_stage: 'makloon_terima' }),
-  ]) {
-    const item = kerjaan(row)
-    assert.equal(item.label, KERJAAN_LABEL[item.id])
+test('setiap kategori punya label, keterangan, dan urutan chip', () => {
+  for (const id of KERJAAN_URUT) {
+    assert.ok(KERJAAN_LABEL[id], `label kosong untuk ${id}`)
+    assert.ok(KERJAAN_KETERANGAN[id], `keterangan kosong untuk ${id}`)
   }
+  assert.equal(KERJAAN_URUT.length, 4)
 })
 
-test('data tahap sebelumnya menunggu_review -> perlu diperiksa', () => {
-  const row = baris({ current_stage: 'makloon', data_jemput_pangan: { id_pemasok: 'P1', makloon_user_id: 1, status: 'menunggu_review' } })
-  assert.equal(kerjaan(row).id, 'periksa')
+test('kategori po sudah dihapus', () => {
+  assert.equal((KERJAAN_LABEL as Record<string, string>).po, undefined)
+  assert.ok(!(KERJAAN_URUT as string[]).includes('po'))
 })
 
-test('setelah diterima, transaksi bertahan di tahap yang sama sebagai perlu diisi', () => {
-  const row = baris({ current_stage: 'makloon', data_jemput_pangan: { id_pemasok: 'P1', makloon_user_id: 1, status: 'diterima' } })
-  assert.equal(kerjaan(row).id, 'isi')
+test('baris ditolak menyebut tahap penolaknya di tooltip bila datanya ada', () => {
+  const row = baris({
+    kerjaan: 'ditolak',
+    current_stage: 'jemput_pangan',
+    data_jemput_pangan: { status: 'ditolak', catatan_penolakan: 'Foto buram' },
+  } as Partial<TransaksiListItem>)
+
+  assert.match(kerjaan(row).judul, /Jemput Pangan/)
 })
 
-test('makloon_terima masuk kategori periksa, dan menyebut Makloon Kirim sebagai asal datanya', () => {
-  const row = baris({ skema: 'MPP', current_stage: 'makloon_terima', data_makloon_mpp: { id_pemasok: 'P1', tanggal_bongkar: '2026-07-02', kuantum: '1000', status: 'menunggu_review' } })
-  assert.equal(kerjaan(row).id, 'periksa')
-  assert.match(kerjaan(row).judul, /Makloon Kirim/)
-})
-
-test('penolakan mengalahkan segalanya, termasuk data yang menunggu review', () => {
-  const row = baris({ current_stage: 'makloon', data_jemput_pangan: { id_pemasok: 'P1', makloon_user_id: 1, status: 'ditolak', catatan_penolakan: 'foto buram' } })
-  assert.equal(kerjaan(row).id, 'ditolak')
-})
-
-test('pengadaan & keuangan bekerja di level PO -> kategori po', () => {
-  assert.equal(kerjaan(baris({ current_stage: 'keuangan' })).id, 'po')
-  // Pengadaan yang datanya belum ditinjau tetap "perlu diperiksa" dulu.
-  assert.equal(kerjaan(baris({ current_stage: 'pengadaan', data_ub_jastasma: { status: 'menunggu_review' } })).id, 'periksa')
-  assert.equal(kerjaan(baris({ current_stage: 'pengadaan', data_ub_jastasma: { status: 'diterima' } })).id, 'po')
-})
-
-test('MPP di ub_jastasma: data MPP sudah diterima di makloon_terima, jadi bukan periksa', () => {
-  const row = baris({ skema: 'MPP', current_stage: 'ub_jastasma', data_makloon_mpp: { id_pemasok: 'P1', tanggal_bongkar: '2026-07-02', kuantum: '1000', status: 'diterima' } })
-  assert.equal(kerjaan(row).id, 'isi')
+test('baris ditolak tanpa detail tahap tetap punya tooltip yang masuk akal', () => {
+  assert.equal(kerjaan(baris({ kerjaan: 'ditolak' })).judul, KERJAAN_KETERANGAN.ditolak)
 })

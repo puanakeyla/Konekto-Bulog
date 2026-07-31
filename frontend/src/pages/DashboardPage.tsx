@@ -257,7 +257,7 @@ export default function DashboardPage() {
 
   const transaksi = antreanPage?.items ?? []
   const meta = antreanPage?.meta
-  const hitungKerjaan: Record<KerjaanId, number> = ringkasan?.antrean ?? { periksa: 0, isi: 0, draft: 0, ditolak: 0, po: 0 }
+  const hitungKerjaan: Record<KerjaanId, number> = ringkasan?.antrean ?? { periksa: 0, isi: 0, draft: 0, ditolak: 0 }
   const totalAntrean = ringkasan?.antrean.total ?? 0
 
   const useGrouped = !!user && GROUPED_ROLES.has(role)
@@ -279,9 +279,10 @@ export default function DashboardPage() {
     [transaksi],
   )
 
-  const kartuKetiga = role === 'pengadaan' || role === 'keuangan'
-    ? { label: 'Di halaman PO', value: hitungKerjaan.po, sub: 'lanjut di halaman PO', tone: 'accent' as const, icon: ICONS.total }
-    : { label: 'Perlu diisi', value: hitungKerjaan.isi + hitungKerjaan.draft, sub: 'termasuk draft', tone: 'accent' as const, icon: ICONS.total }
+  // Pengadaan & Keuangan dulu punya kategori buntu "po" sendiri karena data PO tidak ikut
+  // endpoint daftar. Sekarang server mengklasifikasi keduanya dari kondisi PO-nya (kj_pd/kj_keu)
+  // sama seperti tahap lain, jadi kartu ketiga sama untuk semua role.
+  const kartuKetiga = { label: 'Perlu diisi', value: hitungKerjaan.isi + hitungKerjaan.draft, sub: 'termasuk draft', tone: 'accent' as const, icon: ICONS.total }
   const statCards = role === 'admin' && ringkasan?.rekap
     ? [
         { label: 'Total transaksi', value: ringkasan.rekap.total, sub: 'seluruh transaksi', tone: 'primary' as const, icon: ICONS.total },

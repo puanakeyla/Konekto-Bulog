@@ -61,7 +61,9 @@ muncul di timeline maupun di halaman `/keuangan` karena komponennya sama.
 <?php
 
 use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 /**
  * Pengadaan & Keuangan sebelumnya tidak punya cara menyimpan tanpa mengirim. 'draft' memakai
@@ -71,29 +73,41 @@ use Illuminate\Support\Facades\DB;
  * Default ikut berubah: PO yang baru dibuat selama ini langsung bernilai 'menunggu_review'
  * padahal belum dikirim ke siapa pun. Baris lama sengaja TIDAK di-backfill -- yang bernilai
  * 'menunggu_review' sekarang memang benar-benar sedang menunggu direview.
+ *
+ * Memakai ->change() dan bukan `ALTER TABLE ... MODIFY ... ENUM` mentah: produksi jalan di MySQL
+ * tapi test jalan di SQLite in-memory (lihat .env.testing), dan di SQLite `enum` diterjemahkan
+ * jadi CHECK constraint. Raw SQL MySQL akan membuat seluruh test suite gagal bermigrasi.
  */
 return new class extends Migration
 {
     public function up(): void
     {
         foreach (['data_pengadaan', 'data_keuangan'] as $tabel) {
-            DB::statement("ALTER TABLE {$tabel} MODIFY review_status
-                ENUM('draft','menunggu_review','diterima','ditolak') NOT NULL DEFAULT 'draft'");
+            Schema::table($tabel, function (Blueprint $table) {
+                $table->enum('review_status', ['draft', 'menunggu_review', 'diterima', 'ditolak'])
+                    ->default('draft')->change();
+            });
         }
     }
 
     public function down(): void
     {
         foreach (['data_pengadaan', 'data_keuangan'] as $tabel) {
-            // Dipetakan lebih dulu, kalau tidak MySQL menolak baris ber-nilai 'draft'.
+            // Dipetakan lebih dulu, kalau tidak baris ber-nilai 'draft' ditolak constraint baru.
             DB::table($tabel)->where('review_status', 'draft')->update(['review_status' => 'menunggu_review']);
 
-            DB::statement("ALTER TABLE {$tabel} MODIFY review_status
-                ENUM('menunggu_review','diterima','ditolak') NOT NULL DEFAULT 'menunggu_review'");
+            Schema::table($tabel, function (Blueprint $table) {
+                $table->enum('review_status', ['menunggu_review', 'diterima', 'ditolak'])
+                    ->default('menunggu_review')->change();
+            });
         }
     }
 };
 ```
+
+> **Sudah diverifikasi empiris:** `->change()` ini dijalankan pada SQLite dan CHECK
+> constraint-nya menjadi `check ("review_status" in ('draft', ...))` — jadi nilai `'draft'` sah di
+> test maupun di MySQL produksi. Jangan ganti ke `DB::statement`.
 
 - [ ] **Step 2: Pastikan seluruh test lama masih hijau**
 
@@ -255,7 +269,6 @@ class DraftPoTest extends TestCase
         ]);
 
         $this->stageService->terima($transaksi->fresh(), $this->makloon);
-        $this->stageService->terima($transaksi->fresh(), $this->ubJastasma);
         $this->stageService->submitStage($transaksi->fresh(), $this->ubJastasma, 'ub_jastasma', DataUbJastasma::class, [
             'ka1' => 12.5,
             'ka2' => 12.6,
@@ -743,7 +756,6 @@ class KerjaanKategoriTest extends TestCase
         ]);
 
         $this->stageService->terima($transaksi->fresh(), $this->makloon);
-        $this->stageService->terima($transaksi->fresh(), $this->ubJastasma);
         $this->stageService->submitStage($transaksi->fresh(), $this->ubJastasma, 'ub_jastasma', DataUbJastasma::class, [
             'ka1' => 12.5,
             'ka2' => 12.6,

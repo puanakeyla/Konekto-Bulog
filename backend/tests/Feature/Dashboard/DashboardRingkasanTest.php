@@ -71,7 +71,6 @@ class DashboardRingkasanTest extends TestCase
             ->assertJsonPath('data.antrean.isi', 1)
             ->assertJsonPath('data.antrean.draft', 1)
             ->assertJsonPath('data.antrean.ditolak', 1)
-            ->assertJsonPath('data.antrean.po', 0)
             ->assertJsonPath('data.antrean.total', 5);
     }
 
@@ -90,7 +89,12 @@ class DashboardRingkasanTest extends TestCase
             ->assertJsonPath('data.antrean.periksa', 0);
     }
 
-    public function test_keuangan_seluruh_antreannya_kategori_po(): void
+    /**
+     * Kategori 'po' sudah dihapus (Task 4): transaksi di tahap keuangan yang belum
+     * tergabung ke PO sama sekali (kj_pd/kj_keu kosong) jatuh ke cabang ELSE ekspresi(),
+     * sama seperti Pengadaan yang belum diisi PO -> 'isi'.
+     */
+    public function test_keuangan_tanpa_po_berkategori_isi(): void
     {
         $keuangan = $this->user('keuangan');
         Sanctum::actingAs($keuangan);
@@ -100,8 +104,7 @@ class DashboardRingkasanTest extends TestCase
 
         $this->getJson('/api/dashboard/ringkasan')
             ->assertOk()
-            ->assertJsonPath('data.antrean.po', 2)
-            ->assertJsonPath('data.antrean.isi', 0);
+            ->assertJsonPath('data.antrean.isi', 2);
     }
 
     public function test_filter_skema_ikut_diterapkan_pada_hitungan(): void
