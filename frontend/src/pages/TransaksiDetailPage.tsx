@@ -792,7 +792,7 @@ export default function TransaksiDetailPage() {
                         {poRejected && po.catatan_penolakan && (
                           <div className="alert-danger mb-3">Ditolak Keuangan: {po.catatan_penolakan}. Perbaiki lalu kirim ulang.</div>
                         )}
-                        <PoInForm po={po} kandidat={kandidatResult?.items ?? []} preselectId={transaksi.id_transaksi} onChanged={invalidate} />
+                        <PoInForm po={po} onChanged={invalidate} />
                       </div>
                     )}
 
