@@ -10,7 +10,9 @@ export type PoDetailItem = {
   no_in: string | null
 }
 
-export type ReviewStatus = 'menunggu_review' | 'diterima' | 'ditolak'
+// 'draft' = disimpan tapi belum dikirim. Berlaku untuk data_pengadaan (status Sergab belum
+// 'lengkap') maupun data_keuangan (pembayaran belum dilunasi).
+export type ReviewStatus = 'draft' | 'menunggu_review' | 'diterima' | 'ditolak'
 
 export type DataKeuangan = {
   id: number

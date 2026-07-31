@@ -38,7 +38,14 @@ class PoLifecycleService
             $statusSebelumnya = $dataKeuangan->status_bayar;
 
             $dataKeuangan->status_bayar = $statusBayar;
-            $dataKeuangan->tanggal_bayar = $tanggalBayar;
+
+            // Hanya ditimpa saat benar-benar dikirim nilainya. Simpan draft yang hanya mengubah
+            // No. SPP mengirim tanggal_bayar = null; menulisnya apa adanya akan menghapus tanggal
+            // yang sudah tersimpan tanpa pengguna memintanya. Validasi request sudah mewajibkan
+            // tanggal saat status_bayar = 'dibayarkan', jadi jalur pelunasan tidak pernah null.
+            if ($tanggalBayar !== null) {
+                $dataKeuangan->tanggal_bayar = $tanggalBayar;
+            }
             $this->resetReview($dataKeuangan);
             if ($statusBayar === 'dibayarkan') {
                 $dataKeuangan->review_status = 'diterima';

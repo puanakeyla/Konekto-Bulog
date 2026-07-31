@@ -155,6 +155,49 @@ class DraftPoTest extends TestCase
         $this->assertSame('diterima', $po->fresh()->review_status);
     }
 
+    /**
+     * Lubang yang bisa dicapai lewat rantai dua request API: update() menurunkan status Sergab
+     * jadi bukan-lengkap (tanpa memindahkan tahap), lalu isiNomorIn() melewati penjaga di awalnya
+     * karena status sudah bukan 'lengkap'. Tanpa pengecualian 'menunggu_review' di isiNomorIn(),
+     * PO turun jadi draft sementara transaksinya tertinggal di tahap Keuangan -- tersangkut.
+     */
+    public function test_isi_nomor_in_tidak_mendemosikan_po_yang_sudah_dikirim(): void
+    {
+        [$po, $transaksiIds] = $this->buatPoLengkap(1);
+        $this->assertSame('menunggu_review', $po->fresh()->review_status);
+        $this->assertSame('keuangan', Transaksi::find($transaksiIds[0])->current_stage);
+
+        // Langkah pertama rantai: status Sergab diturunkan, review_status ditahan penjaga update().
+        Sanctum::actingAs($this->pengadaan);
+        $this->patchJson("/api/po/{$po->id}", ['status' => 'kwitansi_belum_upload'])->assertOk();
+        $this->assertSame('menunggu_review', $po->fresh()->review_status);
+
+        // Langkah kedua: jalur yang dulu masih bocor.
+        $po = $this->poService->isiNomorIn($po->fresh(), [
+            ['po_detail_id' => $po->poDetail->first()->id, 'no_in' => 'IN-RANTAI'],
+        ], null, 'kwitansi_belum_upload');
+
+        $this->assertSame('menunggu_review', $po->fresh()->review_status);
+        $this->assertSame('keuangan', Transaksi::find($transaksiIds[0])->current_stage);
+    }
+
+    /**
+     * Simpan draft yang hanya mengubah No. SPP mengirim tanggal_bayar = null. Menulisnya apa
+     * adanya akan menghapus tanggal yang sudah tersimpan tanpa diminta.
+     */
+    public function test_simpan_draft_tanpa_tanggal_tidak_menghapus_tanggal_tersimpan(): void
+    {
+        [$po] = $this->buatPoLengkap(1);
+        $this->reviewService->terima($po->fresh(), $this->keuangan);
+
+        $this->lifecycleService->updatePembayaran($po->fresh(), 'belum', '2026-07-20', 'SPP-A');
+
+        $keuangan = $this->lifecycleService->updatePembayaran($po->fresh(), 'belum', null, 'SPP-B');
+
+        $this->assertSame('2026-07-20', $keuangan->tanggal_bayar->format('Y-m-d'));
+        $this->assertSame('SPP-B', $po->fresh()->no_spp);
+    }
+
     public function test_simpan_pembayaran_belum_bayar_jadi_draft_dan_transaksi_belum_selesai(): void
     {
         [$po, $transaksiIds] = $this->buatPoLengkap(1);

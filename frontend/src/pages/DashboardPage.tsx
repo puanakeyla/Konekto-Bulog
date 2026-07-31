@@ -274,8 +274,11 @@ export default function DashboardPage() {
 
   // Panel "Transaksi ditolak" hanya memuat contoh 5 teratas, jadi cukup dari halaman yang
   // terbuka; jumlah sebenarnya diambil dari ringkasan server.
+  // Disaring dari kategori yang dikirim server, bukan dihitung ulang dengan rejectedStages():
+  // sumbernya jadi sama dengan chip & badge, jadi angka dan isi panel tidak bisa berbeda.
+  // rejectedStages() tetap dipakai di bawah untuk MENAMPILKAN tahap penolak & catatannya.
   const rejectedTransaksi = useMemo(
-    () => transaksi.filter((item) => rejectedStages(item).length > 0),
+    () => transaksi.filter((item) => item.kerjaan === 'ditolak'),
     [transaksi],
   )
 

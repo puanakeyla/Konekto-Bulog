@@ -50,7 +50,15 @@ class TransaksiController extends Controller
             ->leftJoin('data_makloon_mpp', 'data_makloon_mpp.transaksi_id', '=', 'transaksi.id_transaksi')
             ->leftJoin('data_makloon_tjp', 'data_makloon_tjp.transaksi_id', '=', 'transaksi.id_transaksi')
             ->leftJoin('data_jemput_pangan', 'data_jemput_pangan.transaksi_id', '=', 'transaksi.id_transaksi')
-            ->with(['dataJemputPangan.makloon', 'dataMakloonMpp', 'dataMakloonTjp', 'dataUbJastasma', 'creator'])
+            // poDetail ikut dimuat BUKAN untuk mengklasifikasi (itu urusan SQL di bawah), melainkan
+            // supaya panel "Transaksi ditolak" di dashboard bisa menyebut tahap penolak & catatannya
+            // untuk penolakan di level PO. Tanpa ini rejectedStages() selalu kosong untuk baris
+            // Pengadaan, sehingga chip "Perlu diperbaiki" berangka tapi panelnya tidak memuat
+            // apa-apa. Tiga query tambahan per halaman (bukan N+1), halaman dibatasi 20 baris.
+            ->with([
+                'dataJemputPangan.makloon', 'dataMakloonMpp', 'dataMakloonTjp', 'dataUbJastasma', 'creator',
+                'poDetail.dataPengadaan.dataKeuangan',
+            ])
             ->orderByRaw('COALESCE(data_makloon_mpp.tanggal_bongkar, data_makloon_tjp.tanggal_bongkar, data_jemput_pangan.tanggal_kirim, DATE(transaksi.created_at))')
             ->orderByRaw("COALESCE(data_makloon_mpp.id_pemasok, data_jemput_pangan.id_pemasok, '')")
             ->orderBy('transaksi.id_transaksi');

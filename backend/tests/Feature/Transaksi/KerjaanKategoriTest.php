@@ -112,6 +112,25 @@ class KerjaanKategoriTest extends TestCase
         $this->assertKerjaan($this->pengadaan, 'ditolak');
     }
 
+    /**
+     * Panel "Transaksi ditolak" di dashboard menyebut tahap penolak & catatannya lewat
+     * rejectedStages(), yang membaca data_pengadaan pada baris. Endpoint daftar dulu tidak
+     * memuat relasi PO, sehingga untuk penolakan level PO panel itu selalu kosong padahal
+     * chip "Perlu diperbaiki" berangka. Ini penjaga agar datanya benar-benar terkirim.
+     */
+    public function test_daftar_mengirim_data_po_untuk_baris_yang_ditolak(): void
+    {
+        $po = $this->buatPoLengkap();
+        $this->reviewService->tolak($po->fresh(), $this->keuangan, 'Nomor IN salah.');
+
+        Sanctum::actingAs($this->pengadaan);
+        $baris = $this->getJson('/api/transaksi')->assertOk()->json('data.0');
+
+        $this->assertSame('ditolak', $baris['kerjaan']);
+        $this->assertSame('ditolak', $baris['data_pengadaan']['review_status']);
+        $this->assertSame('Nomor IN salah.', $baris['data_pengadaan']['catatan_penolakan']);
+    }
+
     public function test_filter_kerjaan_po_ditolak_karena_kategori_sudah_dihapus(): void
     {
         Sanctum::actingAs($this->pengadaan);
