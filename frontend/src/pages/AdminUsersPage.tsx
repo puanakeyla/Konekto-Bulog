@@ -48,9 +48,12 @@ function errorMessage(error: unknown) {
 
 export default function AdminUsersPage() {
   const { user } = useAuth()
-  const { data: users, isLoading: loadingUsers } = useAdminUsers()
+  const [page, setPage] = useState(1)
+  const { data: usersResult, isLoading: loadingUsers } = useAdminUsers(page)
   const { data: roles, isLoading: loadingRoles } = useAdminRoles()
   const queryClient = useQueryClient()
+  const users = usersResult?.items ?? []
+  const meta = usersResult?.meta
 
   const [form, setForm] = useState<UserForm>(emptyForm)
   const [editing, setEditing] = useState<AdminUser | null>(null)
@@ -88,6 +91,7 @@ export default function AdminUsersPage() {
       toast.success(`User ${form.username} ${editing ? 'diperbarui' : 'ditambahkan'}.`)
       setForm(emptyForm)
       setEditing(null)
+      if (!editing) setPage(1)
       queryClient.invalidateQueries({ queryKey: ['admin-users'] })
     },
     onError: (err) => toast.error(errorMessage(err)),
@@ -97,6 +101,7 @@ export default function AdminUsersPage() {
     mutationFn: (target: AdminUser) => api.delete(`/api/admin/users/${target.id}`),
     onSuccess: (_data, target) => {
       toast.success(`User ${target.username} dihapus.`)
+      setPage((prev) => Math.max(1, prev))
       queryClient.invalidateQueries({ queryKey: ['admin-users'] })
     },
     onError: (err) => toast.error(errorMessage(err)),
@@ -131,6 +136,7 @@ export default function AdminUsersPage() {
       setImportFile(null)
       setImportInputKey((prev) => prev + 1)
       toast.success(`Import selesai: ${result.created} baru, ${result.updated} diperbarui.`)
+      setPage(1)
       queryClient.invalidateQueries({ queryKey: ['admin-users'] })
       queryClient.invalidateQueries({ queryKey: ['makloon-options'] })
     },
@@ -403,14 +409,14 @@ export default function AdminUsersPage() {
                     <td className="px-5 py-4" colSpan={5}><Skeleton className="h-4 w-full" /></td>
                   </tr>
                 ))}
-                {!loadingUsers && users?.length === 0 && (
+                {!loadingUsers && users.length === 0 && (
                   <tr>
                     <td className="px-5 py-4 text-gray-400" colSpan={5}>
                       Belum ada user.
                     </td>
                   </tr>
                 )}
-                {users?.map((target) => {
+                {users.map((target) => {
                   const aksesTerbuka = target.akses_edit_dibuka_at !== null
                   const isAdminRow = target.role.nama_role === 'admin'
 
@@ -480,6 +486,16 @@ export default function AdminUsersPage() {
               </tbody>
             </table>
           </div>
+          {meta && meta.last_page > 1 && (
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border bg-white px-5 py-4 text-sm text-muted">
+              <span>Menampilkan {meta.from ?? 0}-{meta.to ?? 0} dari {meta.total} user</span>
+              <div className="flex items-center gap-2">
+                <button className="btn btn-ghost" disabled={page <= 1} onClick={() => setPage((prev) => Math.max(1, prev - 1))}>Preview</button>
+                <span className="badge">Halaman {meta.current_page}/{meta.last_page}</span>
+                <button className="btn btn-ghost" disabled={page >= meta.last_page} onClick={() => setPage((prev) => prev + 1)}>Next</button>
+              </div>
+            </div>
+          )}
         </section>
       </div>
       </div>

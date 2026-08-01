@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import api from '../lib/api'
+import type { PaginationMeta } from './useTransaksiList'
 
 export type Role = {
   id: number
@@ -22,12 +23,14 @@ export type AdminUser = {
   updated_at: string
 }
 
-export function useAdminUsers() {
+export function useAdminUsers(page = 1, perPage = 20) {
   return useQuery({
-    queryKey: ['admin-users'],
+    queryKey: ['admin-users', page, perPage],
     queryFn: async () => {
-      const { data } = await api.get<{ data: AdminUser[] }>('/api/admin/users')
-      return data.data
+      const { data } = await api.get<{ data: AdminUser[]; meta: PaginationMeta }>('/api/admin/users', {
+        params: { page, per_page: perPage },
+      })
+      return { items: data.data, meta: data.meta }
     },
   })
 }
