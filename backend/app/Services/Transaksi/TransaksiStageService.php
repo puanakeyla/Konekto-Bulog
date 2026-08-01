@@ -7,12 +7,13 @@ use App\Models\RiwayatPenolakan;
 use App\Models\Transaksi;
 use App\Models\User;
 use App\Services\AuditLogService;
+use App\Services\NotifikasiService;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
 
 class TransaksiStageService
 {
-    public function __construct(private AuditLogService $auditLog)
+    public function __construct(private AuditLogService $auditLog, private NotifikasiService $notifikasi)
     {
     }
 
@@ -90,6 +91,16 @@ class TransaksiStageService
             if ($next) {
                 $transaksi->current_stage = $next['role'];
                 $transaksi->save();
+
+                $this->notifikasi->kirimKeRole(
+                    [TransaksiStages::actorRole($next)],
+                    $actor,
+                    'dikirim',
+                    'Transaksi dikirim',
+                    "Transaksi {$transaksi->id_transaksi} dikirim dari {$role} ke {$next['role']}.",
+                    $transaksi->id_transaksi,
+                    ['stage' => $role, 'next_stage' => $next['role'], 'skema' => $transaksi->skema],
+                );
             }
 
             return $record;
@@ -153,6 +164,16 @@ class TransaksiStageService
                 'model' => class_basename($record),
             ]);
 
+            $this->notifikasi->kirimKeRole(
+                [TransaksiStages::actorRole($prevStage)],
+                $actor,
+                'diterima',
+                'Data diterima',
+                "Data {$prevStage['role']} transaksi {$transaksi->id_transaksi} diterima.",
+                $transaksi->id_transaksi,
+                ['stage' => $prevStage['role'], 'review_stage' => $transaksi->current_stage],
+            );
+
             $currentStage = TransaksiStages::stageAt($transaksi->skema, $index);
             $nextStage = TransaksiStages::stageAt($transaksi->skema, $index + 1);
             if (($currentStage['role'] ?? null) === 'makloon_terima' && ($currentStage['model'] ?? null) === null && $nextStage !== null) {
@@ -187,6 +208,16 @@ class TransaksiStageService
                 'model' => class_basename($record),
                 'catatan' => $catatan,
             ]);
+
+            $this->notifikasi->kirimKeRole(
+                [TransaksiStages::actorRole($prevStage)],
+                $actor,
+                'ditolak',
+                'Data ditolak',
+                "Data {$prevStage['role']} transaksi {$transaksi->id_transaksi} ditolak: {$catatan}",
+                $transaksi->id_transaksi,
+                ['stage' => $prevStage['role'], 'review_stage' => $transaksi->current_stage, 'catatan' => $catatan],
+            );
 
             $transaksi->current_stage = $prevStage['role'];
             $transaksi->save();

@@ -7,6 +7,7 @@ use App\Models\RiwayatPenolakan;
 use App\Models\Transaksi;
 use App\Models\User;
 use App\Services\AuditLogService;
+use App\Services\NotifikasiService;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -16,7 +17,7 @@ use Illuminate\Support\Facades\DB;
  */
 class PoReviewService
 {
-    public function __construct(private AuditLogService $auditLog) {}
+    public function __construct(private AuditLogService $auditLog, private NotifikasiService $notifikasi) {}
 
     public function terima(DataPengadaan $dataPengadaan, User $actor): array
     {
@@ -32,6 +33,13 @@ class PoReviewService
 
             $this->auditLog->logMany($actor, 'terima_po', $transaksiIds, [
                 'data_pengadaan_id' => $dataPengadaan->id,
+                'stage' => $stage,
+                'review_stage' => $role,
+            ]);
+
+            $this->notifikasi->kirimKeRole(['pengadaan'], $actor, 'diterima', 'PO diterima Keuangan', "PO {$dataPengadaan->no_po} diterima oleh Keuangan.", $transaksiIds[0] ?? null, [
+                'data_pengadaan_id' => $dataPengadaan->id,
+                'no_po' => $dataPengadaan->no_po,
                 'stage' => $stage,
                 'review_stage' => $role,
             ]);
@@ -65,6 +73,14 @@ class PoReviewService
 
             $this->auditLog->logMany($actor, 'tolak_po', $transaksiIds, [
                 'data_pengadaan_id' => $dataPengadaan->id,
+                'stage' => $stage,
+                'review_stage' => $role,
+                'catatan' => $catatan,
+            ]);
+
+            $this->notifikasi->kirimKeRole(['pengadaan'], $actor, 'ditolak', 'PO ditolak Keuangan', "PO {$dataPengadaan->no_po} ditolak oleh Keuangan: {$catatan}", $transaksiIds[0] ?? null, [
+                'data_pengadaan_id' => $dataPengadaan->id,
+                'no_po' => $dataPengadaan->no_po,
                 'stage' => $stage,
                 'review_stage' => $role,
                 'catatan' => $catatan,
