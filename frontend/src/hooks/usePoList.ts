@@ -6,6 +6,7 @@ export type PoDetailItem = {
   id: number
   data_pengadaan_id: number
   transaksi_id: string
+  skema?: 'TJP' | 'MPP' | null
   kuantum_kontribusi: string
   no_in: string | null
 }
