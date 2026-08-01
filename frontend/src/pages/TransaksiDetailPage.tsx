@@ -17,6 +17,8 @@ import MakloonCombobox from '../components/MakloonCombobox'
 import KabupatenSelect from '../components/KabupatenSelect'
 import GabungPoForm from '../components/pengadaan/GabungPoForm'
 import PoInForm from '../components/pengadaan/PoInForm'
+import PoSppForm from '../components/pengadaan/PoSppForm'
+import PoStatusSergabForm from '../components/pengadaan/PoStatusSergabForm'
 import PembayaranForm from '../components/pengadaan/PembayaranForm'
 import PoReviewCard from '../components/pengadaan/PoReviewCard'
 import { useTransaksiList } from '../hooks/useTransaksiList'
@@ -579,15 +581,21 @@ export default function TransaksiDetailPage() {
   const isPengadaanRole = role === 'pengadaan' || role === 'admin'
   const isKeuanganRole = role === 'keuangan' || role === 'admin'
   const poRejected = !!po && po.review_status === 'ditolak'
-  const poFillingIn = !!po && transaksi.current_stage === 'pengadaan' && (['proses', 'kwitansi_belum_upload', 'foto_belum_lengkap'].includes(po.status) || poRejected) // fase Pengadaan mengisi/memperbaiki PO
+  const poAllInFilled = !!po && po.po_detail.length > 0 && po.po_detail.every((detail) => !!detail.no_in)
+  const poDraftPengadaan = !!po && transaksi.current_stage === 'pengadaan' && (['proses', 'kwitansi_belum_upload', 'foto_belum_lengkap'].includes(po.status) || poRejected) // fase Pengadaan mengisi/memperbaiki PO
+  const poFillingIn = poDraftPengadaan && !poAllInFilled
+  const poFillingSpp = poDraftPengadaan && poAllInFilled && !po.no_spp
+  const poFillingStatus = poDraftPengadaan && poAllInFilled && !!po.no_spp
   const poWaitingReview = !!po && transaksi.current_stage === 'keuangan' && po.review_status === 'menunggu_review'
   const poAccepted = !!po && po.review_status === 'diterima'
   const poPaid = po?.data_keuangan?.status_bayar === 'dibayarkan' || po?.data_keuangan?.review_status === 'diterima'
-  // Pengadaan: gabung PO (belum ada PO) lalu isi No. IN (PO 'proses'/ditolak).
+  // Pengadaan: gabung PO -> isi No. IN -> isi No. SPP -> status Sergab/kirim Keuangan.
   const showCombine = !po && transaksi.current_stage === 'pengadaan' && !pendingData && isPengadaanRole
   const showIsiIn = poFillingIn && isPengadaanRole
-  const pengadaanCurrent = showCombine || poFillingIn
-  const pengadaanComplete = !!po && !poFillingIn && po.status === 'lengkap'
+  const showIsiSpp = poFillingSpp && isPengadaanRole
+  const showStatusSergab = poFillingStatus && isPengadaanRole
+  const pengadaanCurrent = showCombine || poDraftPengadaan
+  const pengadaanComplete = !!po && !poDraftPengadaan && po.status === 'lengkap'
   // Keuangan: review data Pengadaan lalu pembayaran.
   const showKeuanganReview = poWaitingReview && isKeuanganRole
   const showBayar = poAccepted && !poPaid && isKeuanganRole
@@ -687,9 +695,11 @@ export default function TransaksiDetailPage() {
               const showUbForm = stage.id === 'ub_jastasma' && canFillUb
               const showPengadaanCombine = stage.id === 'pengadaan' && showCombine
               const showPengadaanIn = stage.id === 'pengadaan' && showIsiIn
+              const showPengadaanSpp = stage.id === 'pengadaan' && showIsiSpp
+              const showPengadaanStatus = stage.id === 'pengadaan' && showStatusSergab
               const showKeuanganReviewCard = stage.id === 'keuangan' && showKeuanganReview
               const showKeuanganBayar = stage.id === 'keuangan' && showBayar
-              const showPoPanel = showPengadaanCombine || showPengadaanIn || showKeuanganReviewCard || showKeuanganBayar
+              const showPoPanel = showPengadaanCombine || showPengadaanIn || showPengadaanSpp || showPengadaanStatus || showKeuanganReviewCard || showKeuanganBayar
               const blockedByPendingPrevious = isCurrent && !!pendingData?.data && stage.id !== pendingData.stageId && !showPoPanel
 
               return (
@@ -793,6 +803,24 @@ export default function TransaksiDetailPage() {
                           <div className="alert-danger mb-3">Ditolak Keuangan: {po.catatan_penolakan}. Perbaiki lalu kirim ulang.</div>
                         )}
                         <PoInForm po={po} onChanged={invalidate} />
+                      </div>
+                    )}
+
+                    {showPengadaanSpp && po && (
+                      <div className="mt-4 border-t border-border pt-4">
+                        {poRejected && po.catatan_penolakan && (
+                          <div className="alert-danger mb-3">Ditolak Keuangan: {po.catatan_penolakan}. Perbaiki lalu kirim ulang.</div>
+                        )}
+                        <PoSppForm po={po} onChanged={invalidate} />
+                      </div>
+                    )}
+
+                    {showPengadaanStatus && po && (
+                      <div className="mt-4 border-t border-border pt-4">
+                        {poRejected && po.catatan_penolakan && (
+                          <div className="alert-danger mb-3">Ditolak Keuangan: {po.catatan_penolakan}. Perbaiki lalu kirim ulang.</div>
+                        )}
+                        <PoStatusSergabForm po={po} transaksiId={transaksi.id_transaksi} skema={transaksi.skema} onChanged={invalidate} />
                       </div>
                     )}
 

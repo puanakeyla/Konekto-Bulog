@@ -119,7 +119,7 @@ export default function GabungPoForm({
         harga: harga ? Number(harga) : undefined,
       }),
     onSuccess: () => {
-      toast.success(`PO ${noPo} dibuat dari ${selected.size} transaksi. Silakan isi No. IN.`)
+      toast.success(`PO ${noPo} dibuat dari ${selected.size} transaksi. Silakan lanjut isi No. IN.`)
       setConfirmGabung(false)
       setSelected(new Set(preselectId ? [preselectId] : []))
       setNoPo('')
@@ -252,7 +252,7 @@ export default function GabungPoForm({
           <ConfirmDialog
             open={confirmGabung}
             title="Gabungkan menjadi PO?"
-            description={<>PO <strong>{noPo}</strong> akan dibuat dari <strong>{selected.size} transaksi</strong> terpilih. Setelah itu Pengadaan mengisi No. IN, No. SPP, dan status Sergab. Lanjutkan?</>}
+            description={<>PO <strong>{noPo}</strong> akan dibuat dari <strong>{selected.size} transaksi</strong> terpilih. Setelah itu pekerjaan lanjut ke halaman No. IN. Lanjutkan?</>}
             confirmLabel="Buat PO"
             loading={gabungMutation.isPending}
             error={errorMessage}
