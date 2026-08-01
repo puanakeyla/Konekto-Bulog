@@ -36,9 +36,10 @@ export const FIELD_LABELS: Record<string, string> = {
   tanggal_bayar: 'Tanggal bayar',
 }
 
-// Field bernilai uang -> Rupiah; field kuantum (kg) -> pemisah ribuan tanpa desimal paksa.
+// Field bernilai uang -> Rupiah; kuantum/jarak diberi satuan tanpa desimal paksa.
 const MONEY_FIELDS = new Set(['harga', 'total_harga'])
 const KUANTUM_FIELDS = new Set(['kuantum', 'kuantum_bongkar', 'total_kuantum'])
+const JARAK_FIELDS = new Set(['jarak_ke_makloon_km'])
 
 export function labelOf(key: string) {
   return FIELD_LABELS[key] ?? key.replaceAll('_', ' ')
@@ -48,6 +49,7 @@ export function formatValue(key: string, value: unknown) {
   if (value === null || value === undefined || value === '') return '-'
   if (MONEY_FIELDS.has(key)) return formatMoney(value as string | number)
   if (KUANTUM_FIELDS.has(key)) return `${formatNumber(value as string | number)} kg`
+  if (JARAK_FIELDS.has(key)) return `${formatNumber(Math.round(Number(value) || 0))} km`
   if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}/.test(value)) return new Date(value).toLocaleDateString('id-ID')
   return String(value)
 }
