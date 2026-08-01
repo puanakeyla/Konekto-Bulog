@@ -9,6 +9,7 @@ import DashboardPage from './pages/DashboardPage'
 import TransaksiJemputPanganPage from './pages/TransaksiJemputPanganPage'
 import TransaksiDetailPage from './pages/TransaksiDetailPage'
 import TransaksiMakloonBaruPage from './pages/TransaksiMakloonBaruPage'
+import PengadaanPage from './pages/PengadaanPage'
 import KeuanganPage from './pages/KeuanganPage'
 import AdminUsersPage from './pages/AdminUsersPage'
 import MonitoringPage from './pages/MonitoringPage'
@@ -49,6 +50,7 @@ function AppRoutes() {
         <Route path="/transaksi/:id/ub-jastasma" element={<RedirectToTransaksiDetail />} />
         <Route path="/transaksi/:id/makloon" element={<RedirectToTransaksiDetail />} />
         <Route path="/transaksi/baru-mpp" element={<TransaksiMakloonBaruPage />} />
+        <Route path="/pengadaan" element={<PengadaanPage />} />
         <Route path="/keuangan" element={<KeuanganPage />} />
         <Route path="/admin/users" element={<AdminUsersPage />} />
         <Route path="/admin/audit-logs" element={<AdminAuditLogPage />} />
