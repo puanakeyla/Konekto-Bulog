@@ -26,6 +26,7 @@ class DataPengadaanResource extends JsonResource
                 'id' => $detail->id,
                 'data_pengadaan_id' => $detail->data_pengadaan_id,
                 'transaksi_id' => $detail->transaksi_id,
+                'skema' => $detail->transaksi?->skema,
                 'kuantum_kontribusi' => $detail->kuantum_kontribusi,
                 'no_in' => $detail->no_in,
             ])->values()->all(),

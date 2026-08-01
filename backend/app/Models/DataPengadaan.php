@@ -6,9 +6,14 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
+use Spatie\MediaLibrary\HasMedia;
+use Spatie\MediaLibrary\InteractsWithMedia;
+use Spatie\MediaLibrary\MediaCollections\Models\Media;
 
-class DataPengadaan extends Model
+class DataPengadaan extends Model implements HasMedia
 {
+    use InteractsWithMedia;
+
     protected $table = 'data_pengadaan';
 
     protected $fillable = [
@@ -40,6 +45,27 @@ class DataPengadaan extends Model
     public function dataKeuangan(): HasOne
     {
         return $this->hasOne(DataKeuangan::class);
+    }
+
+    public function registerMediaCollections(): void
+    {
+        foreach ([
+            'foto_barang',
+            'foto_serah_terima',
+            'foto_bukti_pembayaran',
+            'foto_surat_pernyataan_usia_panen',
+        ] as $collection) {
+            $this->addMediaCollection($collection)
+                ->singleFile()
+                ->acceptsMimeTypes(['image/jpeg', 'image/png']);
+        }
+    }
+
+    public function registerMediaConversions(?Media $media = null): void
+    {
+        $this->addMediaConversion('thumb')
+            ->width(300)
+            ->queued();
     }
 
     protected function casts(): array

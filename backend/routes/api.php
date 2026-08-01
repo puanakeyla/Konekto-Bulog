@@ -9,6 +9,7 @@ use App\Http\Controllers\Api\FotoStreamController;
 use App\Http\Controllers\Api\GudangOptionController;
 use App\Http\Controllers\Api\MakloonOptionController;
 use App\Http\Controllers\Api\MonitoringController;
+use App\Http\Controllers\Api\NotifikasiController;
 use App\Http\Controllers\Api\PengadaanController;
 use App\Http\Controllers\Api\TransaksiController;
 use Illuminate\Support\Facades\Route;
@@ -26,6 +27,10 @@ Route::get('/foto/{media}', [FotoStreamController::class, 'stream'])
 Route::middleware(['auth:sanctum', 'user.aktif'])->group(function () {
     Route::post('/logout', [AuthController::class, 'logout']);
     Route::get('/me', [AuthController::class, 'me']);
+
+    Route::get('/notifikasi', [NotifikasiController::class, 'index']);
+    Route::patch('/notifikasi/read-all', [NotifikasiController::class, 'markAllRead']);
+    Route::patch('/notifikasi/{notifikasi}/read', [NotifikasiController::class, 'markRead']);
 
     Route::get('/makloon-options', [MakloonOptionController::class, 'index']);
     Route::get('/gudang-options', [GudangOptionController::class, 'index']);
@@ -95,11 +100,17 @@ Route::middleware(['auth:sanctum', 'user.aktif'])->group(function () {
         ->middleware('role:pengadaan|keuangan|operasi|gudang|admin');
     Route::get('/po/{dataPengadaan}', [PengadaanController::class, 'show'])
         ->middleware('role:pengadaan|keuangan|operasi|gudang|admin');
+    Route::get('/po/{dataPengadaan}/foto', [PengadaanController::class, 'fotoIndex'])
+        ->middleware('role:pengadaan|keuangan|admin');
+    Route::post('/po/{dataPengadaan}/foto', [PengadaanController::class, 'fotoUpload'])
+        ->middleware('role:pengadaan|admin');
     Route::patch('/po/{dataPengadaan}', [PengadaanController::class, 'update'])
         ->middleware('role:pengadaan|admin');
     Route::patch('/po/{dataPengadaan}/anggota', [PengadaanController::class, 'ubahAnggota'])
         ->middleware('role:pengadaan|admin');
     Route::patch('/po/{dataPengadaan}/in', [PengadaanController::class, 'isiNomorIn'])
+        ->middleware('role:pengadaan|admin');
+    Route::patch('/po/{dataPengadaan}/spp', [PengadaanController::class, 'simpanSpp'])
         ->middleware('role:pengadaan|admin');
     Route::patch('/po/{dataPengadaan}/pembayaran', [PengadaanController::class, 'pembayaran'])
         ->middleware('role:keuangan|admin');
