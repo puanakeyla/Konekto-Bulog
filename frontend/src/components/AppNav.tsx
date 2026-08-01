@@ -2,6 +2,7 @@ import { Link, NavLink } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 import { buildActions } from '../lib/navActions'
 import { namaTampilan } from '../lib/namaUser'
+import NotificationBell from './NotificationBell'
 import logoSergab from '../assets/logo-sergab.svg'
 
 // Nama role internal -> label ramah untuk ditampilkan di navbar.
@@ -60,6 +61,7 @@ export default function AppNav() {
             </div>
           )}
           <span aria-hidden className="hidden h-8 w-px bg-white/10 sm:block" />
+          {user && <NotificationBell />}
           <button
             onClick={() => logout()}
             className="rounded-lg border border-white/15 bg-white/5 px-4 py-1.5 text-xs font-bold text-white transition-colors hover:border-accent hover:bg-accent hover:text-primary-dark"
