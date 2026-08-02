@@ -270,16 +270,14 @@ function numberIdField(data: StageData | null | undefined, key: string) {
 function poStageData(po: PoItem | null, stageId: string): StageData | null {
   if (!po) return null
 
+  // Nomor PO/SPP dan seluruh angka rupiah SENGAJA tidak diulang di sini: kartu PO di bawah
+  // (review/SPP/Sergab/pembayaran) sudah menampilkannya di headernya sendiri, dan dua salinan
+  // dari sumber yang sama hanya memperpanjang kartu tanpa menambah informasi.
   if (stageId === 'pengadaan') {
     return {
       status: po.review_status ?? 'menunggu_review',
       locked_at: po.review_timeline?.pengadaan?.reviewed_at ?? null,
-      no_po: po.no_po,
-      no_spp: po.no_spp,
       status_po: po.status,
-      total_kuantum: po.total_kuantum,
-      harga: po.harga,
-      total_harga: po.total_harga,
     }
   }
 
@@ -591,8 +589,12 @@ export default function TransaksiDetailPage() {
   // PO masih punya pekerjaan Pengadaan selama belum ditutup ('lengkap') atau dibatalkan.
   const poTerbuka = !!po && !['lengkap', 'dibatalkan'].includes(po.status)
   const poFillingIn = poTerbuka && !poAllInFilled
-  const poFillingSpp = poTerbuka && poAllInFilled && !po.no_spp
-  const poFillingStatus = poTerbuka && poAllInFilled && !!po.no_spp
+  // PO yang ditolak Keuangan mendarat kembali di langkah SPP, bukan Sergab: nomor IN-nya sudah
+  // tersimpan, dan MENYIMPAN No. SPP-lah satu-satunya aksi yang mengirim ulang PO (simpanSpp).
+  // Form Sergab hanya mem-PATCH status, jadi kalau mendarat di sana PO tersangkut 'ditolak'
+  // tanpa jalan kirim ulang sama sekali.
+  const poFillingSpp = poTerbuka && poAllInFilled && (!po.no_spp || poRejected)
+  const poFillingStatus = poTerbuka && poAllInFilled && !!po.no_spp && !poRejected
   const poWaitingReview = !!po && transaksi.current_stage === 'keuangan' && po.review_status === 'menunggu_review'
   const poAccepted = !!po && po.review_status === 'diterima'
   const poPaid = po?.data_keuangan?.status_bayar === 'dibayarkan' || po?.data_keuangan?.review_status === 'diterima'

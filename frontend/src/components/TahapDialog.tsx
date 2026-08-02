@@ -12,6 +12,13 @@ import ModalPortal from './ModalPortal'
 // (mirror DataMakloonMpp::FOTO_TAHAP_TERIMA di backend).
 const FOTO_MAKLOON_TERIMA = ['foto_surat_jalan', 'foto_nota_timbang']
 
+/**
+ * Field data_makloon_mpp yang diisi/ditentukan di tahap Makloon Terima, bukan Makloon Kirim.
+ * `status` dan kawan-kawannya ikut ke sini karena Terima-lah yang menutup record MPP -- itu
+ * sebabnya blok Makloon Kirim menyaringnya keluar supaya tidak tampil dua kali.
+ */
+const MILIK_MAKLOON_TERIMA = new Set(['kuantum_bongkar', 'status', 'catatan_penolakan', 'locked_at'])
+
 /** Foto mana milik tahap mana -- backend hanya menandai role pemiliknya. */
 function fotoTahap(t: TransaksiListItem, stageId: string, dokumen: FotoTersimpan[]) {
   return dokumen.filter(({ jenis_foto, role }) => {
@@ -65,10 +72,13 @@ function dataTahap(t: TransaksiListItem, stageId: string): [string, unknown][] {
 
   if (stageId === 'jemput_pangan') return ambil(t.data_jemput_pangan)
   if (stageId === 'makloon') return ambil(t.data_makloon_tjp)
-  if (stageId === 'makloon_kirim') return ambil(t.data_makloon_mpp).filter(([key]) => key !== 'kuantum_bongkar')
+  if (stageId === 'makloon_kirim') return ambil(t.data_makloon_mpp).filter(([key]) => !MILIK_MAKLOON_TERIMA.has(key))
+  // Makloon Terima menumpang di record MPP milik Makloon Kirim, jadi field miliknya dipilih
+  // eksplisit. Ditampilkan APA ADANYA (termasuk yang masih kosong): kalau disaring dulu, tahap
+  // yang belum diisi tampil sebagai blok kosong tanpa penjelasan -- terlihat seperti data hilang.
   if (stageId === 'makloon_terima') {
-    const kuantumBongkar = t.data_makloon_mpp?.kuantum_bongkar
-    return kuantumBongkar === null || kuantumBongkar === undefined ? [] : [['kuantum_bongkar', kuantumBongkar]]
+    const mpp = (t.data_makloon_mpp ?? {}) as Record<string, unknown>
+    return [...MILIK_MAKLOON_TERIMA].map((key) => [key, mpp[key] ?? null])
   }
   if (stageId === 'ub_jastasma') return ambil(t.data_ub_jastasma)
   return []

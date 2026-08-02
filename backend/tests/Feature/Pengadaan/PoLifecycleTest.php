@@ -182,6 +182,31 @@ class PoLifecycleTest extends TestCase
         $this->assertSame('keuangan', $poMenunggu->fresh()->poDetail()->first()->transaksi->current_stage);
     }
 
+    /**
+     * Jalur yang dipakai UI setelah penolakan: Pengadaan mendarat kembali di langkah SPP (nomor IN
+     * tidak hilang) dan menyimpan No. SPP yang SAMA sudah cukup untuk mengirim ulang. Kalau ini
+     * pecah, PO yang ditolak tersangkut permanen -- form Sergab hanya mem-PATCH status dan tidak
+     * pernah mengembalikan review_status ke 'menunggu_review'.
+     */
+    public function test_kirim_ulang_setelah_ditolak_cukup_lewat_endpoint_spp(): void
+    {
+        [$po, $transaksiIds] = $this->buatPoDikirimKeKeuangan(1);
+        $noSpp = $po->fresh()->no_spp;
+
+        $this->reviewService->tolak($po->fresh(), $this->keuangan, 'Nomor IN salah.');
+        $this->assertSame('pengadaan', Transaksi::find($transaksiIds[0])->current_stage);
+
+        // Nomor IN tetap tersimpan, jadi tidak perlu diketik ulang.
+        $this->assertNotNull($po->fresh()->poDetail()->first()->no_in);
+
+        Sanctum::actingAs($this->pengadaan);
+        $this->patchJson("/api/po/{$po->id}/spp", ['no_spp' => $noSpp])->assertOk();
+
+        $this->assertSame('menunggu_review', $po->fresh()->review_status);
+        $this->assertNull($po->fresh()->catatan_penolakan);
+        $this->assertSame('keuangan', Transaksi::find($transaksiIds[0])->current_stage);
+    }
+
     public function test_keuangan_tolak_po_lalu_pengadaan_revisi_mengirim_lagi_ke_keuangan(): void
     {
         [$po, $transaksiIds] = $this->buatPoDikirimKeKeuangan(1);

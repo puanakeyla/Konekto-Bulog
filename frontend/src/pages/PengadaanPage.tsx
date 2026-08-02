@@ -41,12 +41,16 @@ export default function PengadaanPage() {
   const kandidatPo = transaksiResult?.items ?? []
   const poList = poResult?.items ?? []
 
+  // PO yang ditolak Keuangan masuk ke langkah SPP, bukan Sergab: nomor IN-nya sudah tersimpan dan
+  // menyimpan No. SPP adalah satu-satunya aksi yang mengirim ulang PO. Kalau ia jatuh ke Sergab,
+  // form di sana cuma mem-PATCH status sehingga PO tersangkut 'ditolak' tanpa jalan kirim ulang.
   const antrean = useMemo(() => {
     const poPengadaan = poList.filter(masihDiPengadaan)
+    const ditolak = (po: PoItem) => po.review_status === 'ditolak'
     return {
       in: poPengadaan.filter((po) => !semuaInTerisi(po)),
-      spp: poPengadaan.filter((po) => semuaInTerisi(po) && !po.no_spp),
-      status: poPengadaan.filter((po) => semuaInTerisi(po) && !!po.no_spp),
+      spp: poPengadaan.filter((po) => semuaInTerisi(po) && (!po.no_spp || ditolak(po))),
+      status: poPengadaan.filter((po) => semuaInTerisi(po) && !!po.no_spp && !ditolak(po)),
     }
   }, [poList])
 

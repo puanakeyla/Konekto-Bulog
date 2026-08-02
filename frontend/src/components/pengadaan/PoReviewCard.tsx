@@ -14,7 +14,11 @@ export default function PoReviewCard({ po, reviewLabel, onChanged }: { po: PoIte
   return (
     <div className="po-card @container">
       <div className="po-card-header">
-        <div><div className="po-title">{po.no_po}</div><div className="po-meta">Pemasok {po.id_pemasok} - {formatNumber(po.total_kuantum)} kg - {formatMoney(po.total_harga)}</div></div>
+        <div>
+          <div className="po-title">{po.no_po}</div>
+          <div className="po-meta">No. SPP {po.no_spp ?? '-'}</div>
+          <div className="po-meta">Pemasok {po.id_pemasok} - {formatNumber(po.total_kuantum)} kg - {formatMoney(po.total_harga)}</div>
+        </div>
         <span className="badge badge-warning">Menunggu review</span>
       </div>
       <p className="mb-2 text-xs text-muted">Klik satu baris untuk melihat progres transaksinya sebelum memutuskan.</p>
