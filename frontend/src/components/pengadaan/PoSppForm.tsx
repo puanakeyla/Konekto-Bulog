@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import api from '../../lib/api'
 import { apiErrorMessage } from '../../lib/apiError'
@@ -12,7 +11,6 @@ import PoTransaksiRows from './PoTransaksiRows'
 
 export default function PoSppForm({ po, onChanged }: { po: PoItem; onChanged?: () => void }) {
   const queryClient = useQueryClient()
-  const navigate = useNavigate()
   const [noSpp, setNoSpp] = useState(po.no_spp ?? '')
   const [confirmKirim, setConfirmKirim] = useState(false)
 
@@ -27,7 +25,6 @@ export default function PoSppForm({ po, onChanged }: { po: PoItem; onChanged?: (
       queryClient.invalidateQueries({ queryKey: ['dashboard-ringkasan'] })
       onChanged?.()
       toast.success(`No. SPP PO ${po.no_po} tersimpan dan PO dikirim ke Keuangan. Sisa langkah Anda: Status Sergab.`)
-      navigate('/dashboard')
     },
     onError: (err) => toast.error(apiErrorMessage(err, 'Gagal menyimpan No. SPP.')),
   })

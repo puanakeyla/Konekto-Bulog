@@ -1,16 +1,11 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import api from '../../lib/api'
 import { apiErrorMessage } from '../../lib/apiError'
 import { formatMoney, formatNumber } from '../../lib/poFormat'
-import { uploadSemuaPoFoto } from '../../lib/uploadFoto'
-import { useDokumenTransaksi } from '../../hooks/useFotoTransaksi'
-import { usePoFoto } from '../../hooks/usePoFoto'
 import type { PoItem } from '../../hooks/usePoList'
 import ConfirmDialog from '../ConfirmDialog'
-import FotoPicker from '../FotoPicker'
 import PoProgressInfo from './PoProgressInfo'
 import PoTransaksiRows from './PoTransaksiRows'
 
@@ -21,87 +16,25 @@ const statusOptions: { value: PoItem['status']; label: string }[] = [
   { value: 'dibatalkan', label: 'Dibatalkan' },
 ]
 
-const FOTO_SERGAB_FIELDS = [
-  { key: 'foto_barang', label: 'Foto Barang' },
-  { key: 'foto_serah_terima', label: 'Foto Serah Terima' },
-  { key: 'foto_bukti_pembayaran', label: 'Foto Bukti Pembayaran' },
-  { key: 'foto_surat_pernyataan_usia_panen', label: 'Foto Surat Pernyataan Usia Panen' },
-]
-
-const fotoLabels = Object.fromEntries(FOTO_SERGAB_FIELDS.map((field) => [field.key, field.label]))
-
-function fallbackJenisFoto(key: string, skema: 'TJP' | 'MPP') {
-  if (key === 'foto_barang') return 'foto_gabah'
-  if (key === 'foto_serah_terima') return 'foto_serah_terima'
-  if (key === 'foto_bukti_pembayaran') return skema === 'MPP' ? 'foto_pembayaran' : 'foto_kwitansi'
-  if (key === 'foto_surat_pernyataan_usia_panen') return 'foto_surat_pernyataan'
-  return key
-}
-
-export default function PoStatusSergabForm({
-  po,
-  transaksiId,
-  skema,
-  onChanged,
-}: {
-  po: PoItem
-  transaksiId?: string
-  skema?: 'TJP' | 'MPP'
-  onChanged?: () => void
-}) {
+/**
+ * Langkah PENUTUP Pengadaan. PO sudah dikirim ke Keuangan saat No. SPP disimpan, jadi di sini
+ * tinggal menetapkan Status Sergab: 'lengkap' menandai seluruh transaksi anggota PO selesai.
+ *
+ * Tidak ada unggah foto di sini -- bukti foto sudah dikumpulkan di tahap-tahap transaksi
+ * (Jemput Pangan / Makloon / UB Jastasma) dan bisa dilihat lewat baris transaksi di bawah.
+ */
+export default function PoStatusSergabForm({ po, onChanged }: { po: PoItem; onChanged?: () => void }) {
   const queryClient = useQueryClient()
-  const navigate = useNavigate()
   const [statusPo, setStatusPo] = useState<PoItem['status']>(po.status === 'proses' ? 'lengkap' : po.status)
-  const [fotos, setFotos] = useState<Record<string, File | null>>({})
-  const [progress, setProgress] = useState<Record<string, number>>({})
-  const [fotoGagal, setFotoGagal] = useState<string[]>([])
   const [confirmSimpan, setConfirmSimpan] = useState(false)
-
-  const { data: poFoto = [] } = usePoFoto(po.id)
-  const { data: dokumenTransaksi = [] } = useDokumenTransaksi(transaksiId)
 
   useEffect(() => setStatusPo(po.status === 'proses' ? 'lengkap' : po.status), [po.status])
 
-  const savedSrc = useMemo(() => {
-    const map = new Map<string, string>()
-    for (const field of FOTO_SERGAB_FIELDS) {
-      const poStored = poFoto.find((item) => item.jenis_foto === field.key)
-      if (poStored) {
-        map.set(field.key, poStored.thumb_url)
-        continue
-      }
-
-      if (skema) {
-        const fallback = dokumenTransaksi.find((item) => item.jenis_foto === fallbackJenisFoto(field.key, skema))
-        if (fallback) map.set(field.key, fallback.thumb_url)
-      }
-    }
-    return map
-  }, [dokumenTransaksi, poFoto, skema])
-
   const mutation = useMutation({
-    mutationFn: async () => {
-      if (statusPo === 'dibatalkan') {
-        return api.patch(`/api/po/${po.id}`, { status: statusPo })
-      }
-
-      setFotoGagal([])
-      const hasil = await uploadSemuaPoFoto(po.id, fotos, (jenisFoto, percent) => {
-        setProgress((prev) => ({ ...prev, [jenisFoto]: percent }))
-      })
-
-      if (hasil.gagal.length > 0) {
-        setFotoGagal(hasil.gagal)
-        throw { response: { data: { message: `Foto gagal terupload: ${hasil.gagal.map((key) => fotoLabels[key] ?? key).join(', ')}.` } } }
-      }
-
-      return api.patch(`/api/po/${po.id}`, { status: statusPo })
-    },
+    mutationFn: () => api.patch(`/api/po/${po.id}`, { status: statusPo }),
+    // Tetap di halaman: daftar PO di-invalidate sehingga kartu ini hilang/berganti sendiri.
     onSuccess: () => {
       setConfirmSimpan(false)
-      setFotos({})
-      setProgress({})
-      queryClient.invalidateQueries({ queryKey: ['po-foto', po.id] })
       queryClient.invalidateQueries({ queryKey: ['po-list'] })
       queryClient.invalidateQueries({ queryKey: ['transaksi-list'] })
       queryClient.invalidateQueries({ queryKey: ['antrean-transaksi'] })
@@ -112,7 +45,6 @@ export default function PoStatusSergabForm({
         : statusPo === 'lengkap'
         ? `Status Sergab PO ${po.no_po} lengkap. ${po.po_detail.length} transaksi anggotanya ditandai selesai.`
         : `Status Sergab PO ${po.no_po} tersimpan. Transaksinya belum ditutup karena statusnya belum Lengkap.`)
-      navigate('/dashboard')
     },
     onError: (err) => toast.error(apiErrorMessage(err, 'Gagal menyimpan data Pengadaan.')),
   })
@@ -123,35 +55,20 @@ export default function PoStatusSergabForm({
     <form className="po-card @container" onSubmit={(e) => { e.preventDefault(); setConfirmSimpan(true) }}>
       <div className="po-card-header">
         <div><div className="po-title">{po.no_po}</div><div className="po-meta">Pemasok {po.id_pemasok} - {formatNumber(po.total_kuantum)} kg - {formatMoney(po.total_harga)}</div></div>
-        <span className={`badge ${statusPo === 'dibatalkan' ? 'badge-danger' : statusPo === 'lengkap' ? 'badge-success' : 'badge-warning'}`}>{statusPo === 'dibatalkan' ? 'Dibatalkan' : statusPo === 'lengkap' ? 'Siap ditutup' : 'Belum lengkap'}</span>
+        <span className={`badge ${statusPo === 'dibatalkan' ? 'badge-danger' : statusPo === 'lengkap' ? 'badge-success' : 'badge-warning'}`}>
+          {statusPo === 'dibatalkan' ? 'Dibatalkan' : statusPo === 'lengkap' ? 'Siap ditutup' : 'Belum lengkap'}
+        </span>
       </div>
       <PoProgressInfo
         posisi={po.no_spp ? 'Keuangan (sudah dikirim)' : 'Pengadaan'}
         status={statusPo === 'lengkap' ? 'Siap ditutup' : statusPo === 'dibatalkan' ? 'Dibatalkan' : 'Belum lengkap'}
-        berikutnya={statusPo === 'lengkap' ? 'Transaksi selesai' : statusPo === 'dibatalkan' ? 'Kembali ke Pengadaan' : 'Lengkapi bukti foto'}
+        berikutnya={statusPo === 'lengkap' ? 'Transaksi selesai' : statusPo === 'dibatalkan' ? 'Kembali ke Pengadaan' : 'Tetap di Pengadaan'}
         keterangan={statusPo === 'dibatalkan'
           ? 'PO dibatalkan. Transaksi kembali ke Pengadaan dan bisa digabung ulang bila perlu.'
           : 'Status Sergab adalah langkah PENUTUP. PO sudah dikirim ke Keuangan saat No. SPP disimpan; memilih Lengkap di sini menandai seluruh transaksi anggotanya selesai.'}
       />
       {errorMessage && <div className="alert-danger mb-3">{errorMessage}</div>}
       <PoTransaksiRows po={po} />
-
-      <div className="mb-5 border-b border-border pb-5">
-        <div className="section-title mb-3">Bukti Foto</div>
-        <div className="grid gap-4 @md:grid-cols-2">
-          {FOTO_SERGAB_FIELDS.map((field) => (
-            <FotoPicker
-              key={field.key}
-              label={field.label}
-              file={fotos[field.key] ?? null}
-              onChange={(file) => setFotos((prev) => ({ ...prev, [field.key]: file }))}
-              progress={progress[field.key]}
-              error={fotoGagal.includes(field.key) ? 'Gagal terupload' : undefined}
-              savedSrc={savedSrc.get(field.key) ?? null}
-            />
-          ))}
-        </div>
-      </div>
 
       <label className="block">
         <span className="label">Status Sergab</span>
@@ -171,8 +88,8 @@ export default function PoStatusSergabForm({
         description={statusPo === 'dibatalkan'
           ? <>PO <strong>{po.no_po}</strong> akan dibatalkan dan transaksi dikembalikan ke tahap <strong>Pengadaan</strong>. Lanjutkan?</>
           : statusPo === 'lengkap'
-          ? <>Foto yang diganti akan disimpan, lalu <strong>{po.po_detail.length} transaksi</strong> anggota PO <strong>{po.no_po}</strong> ditandai <strong>selesai</strong>. Ini langkah terakhir dan tidak bisa dibatalkan lewat form ini.</>
-          : <>Foto yang diganti dan Status Sergab PO <strong>{po.no_po}</strong> akan tersimpan. Transaksinya <strong>belum</strong> ditutup karena statusnya belum Lengkap.</>}
+          ? <><strong>{po.po_detail.length} transaksi</strong> anggota PO <strong>{po.no_po}</strong> akan ditandai <strong>selesai</strong>. Ini langkah terakhir dan tidak bisa dibatalkan lewat form ini.</>
+          : <>Status Sergab PO <strong>{po.no_po}</strong> akan tersimpan. Transaksinya <strong>belum</strong> ditutup karena statusnya belum Lengkap.</>}
         confirmLabel={statusPo === 'dibatalkan' ? 'Batalkan PO' : 'Simpan Status Sergab'}
         loading={mutation.isPending}
         error={errorMessage}

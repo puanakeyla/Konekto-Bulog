@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 import { useAntreanTransaksi, type TransaksiListItem } from '../hooks/useTransaksiList'
-import { useRingkasanDashboard, usePantauan, type PantauanBaris } from '../hooks/useDashboard'
+import { useRingkasanDashboard, usePantauan, type PantauanBaris, type PengadaanTahapId } from '../hooks/useDashboard'
 import { kunciTransaksi, tanggalTransaksi } from '../lib/transaksiKunci'
 import {
   KERJAAN_KETERANGAN,
@@ -19,7 +19,7 @@ import { SkeletonMakloonGroups, SkeletonTable } from '../components/Skeleton'
 import DataSpreadsheet, { type SheetColumn } from '../components/DataSpreadsheet'
 
 type SkemaFilter = 'semua' | 'TJP' | 'MPP'
-type PengadaanTahapFilter = 'semua' | 'perlu_dicek' | 'po_in' | 'spp' | 'sergab' | 'perlu_diperbaiki'
+type PengadaanTahapFilter = 'semua' | PengadaanTahapId
 
 // Role yang menampilkan daftar transaksi dikelompokkan per makloon (accordion).
 // Semua role operasional + Admin, KECUALI Makloon (dia hanya melihat transaksinya sendiri).
@@ -59,8 +59,11 @@ const TAHAP_KETERANGAN: Record<string, string> = {
   makloon_terima: 'Barang sudah sampai. Timbang & bongkar, catat kuantum bongkar, unggah surat jalan + nota timbang, lalu tekan Terima.',
 }
 
-const PENGADAAN_FILTERS: { id: PengadaanTahapFilter; label: string; helper: string }[] = [
-  { id: 'semua', label: 'Semua', helper: 'Semua transaksi Pengadaan yang masih perlu dipantau.' },
+const PENGADAAN_HELPER_SEMUA = 'Semua transaksi Pengadaan yang masih perlu dipantau.'
+
+// Chip "Semua" dirender terpisah (seperti chip kerjaan role lain), jadi daftar ini hanya memuat
+// lima langkah nyata -- id-nya harus cocok dengan TahapPengadaan::SEMUA di backend.
+const PENGADAAN_FILTERS: { id: PengadaanTahapId; label: string; helper: string }[] = [
   { id: 'perlu_dicek', label: 'Perlu dicek', helper: 'Data dari tahap sebelumnya perlu diterima atau ditolak.' },
   { id: 'po_in', label: 'PO/IN', helper: 'Belum dibuat PO atau nomor IN belum lengkap.' },
   { id: 'spp', label: 'SPP', helper: 'PO dan IN sudah ada. Menyimpan No. SPP langsung mengirim PO ke Keuangan.' },
@@ -133,19 +136,6 @@ function KerjaanChip({ label, jumlah, aktif, onClick }: { label: string; jumlah:
   )
 }
 
-function FilterChip({ label, aktif, onClick }: { label: string; aktif: boolean; onClick: () => void }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={aktif}
-      className={`inline-flex items-center rounded-full border px-3.5 py-1.5 text-xs font-semibold transition-colors ${aktif ? 'border-primary bg-primary text-white' : 'border-border bg-white text-slate-600 hover:border-primary/40 hover:text-primary'}`}
-    >
-      {label}
-    </button>
-  )
-}
-
 function RejectedBadge({ items }: { items: RejectInfo[] }) {
   if (items.length === 0) return null
   return <span className="inline-flex items-center gap-1 rounded-md bg-danger-bg px-2 py-1 text-[0.68rem] font-bold text-danger">Ditolak: {items.map((item) => labelTahap(item.stage)).join(', ')}</span>
@@ -153,7 +143,7 @@ function RejectedBadge({ items }: { items: RejectInfo[] }) {
 
 /**
  * Kolom Posisi/Status/Berikutnya untuk role Pengadaan, dipetakan ke lima chip tahap.
- * Urutan cabangnya WAJIB sama dengan TransaksiController::filterTahapPengadaan(), kalau tidak
+ * Urutan cabangnya WAJIB sama dengan TahapPengadaan::filter() di backend, kalau tidak
  * badge sebuah baris bisa menyebut tahap yang berbeda dari chip yang memuatnya.
  *
  * Catatan alur: No. SPP yang mengirim PO ke Keuangan, jadi baris pada tahap Sergab
@@ -336,6 +326,7 @@ export default function DashboardPage() {
   const meta = antreanPage?.meta
   const hitungKerjaan: Record<KerjaanId, number> = ringkasan?.antrean ?? { periksa: 0, isi: 0, draft: 0, ditolak: 0 }
   const totalAntrean = ringkasan?.antrean.total ?? 0
+  const hitungTahap = ringkasan?.pengadaan_tahap ?? { perlu_dicek: 0, po_in: 0, spp: 0, sergab: 0, perlu_diperbaiki: 0, total: 0 }
 
   const useGrouped = !!user && GROUPED_ROLES.has(role)
   const makloonGroups = useMemo(() => groupByMakloon(transaksi), [transaksi])
@@ -504,9 +495,14 @@ export default function DashboardPage() {
             yang sedang aktif tetap ditampilkan walau nol supaya tidak hilang dari bawah kursor. */}
         <div className="mb-2 flex flex-wrap gap-2">
           {role === 'pengadaan'
-            ? PENGADAAN_FILTERS.map((item) => (
-              <FilterChip key={item.id} label={item.label} aktif={pengadaanFilter === item.id} onClick={() => { setPengadaanFilter(item.id); setPage(1) }} />
-            ))
+            ? <>
+              <KerjaanChip label="Semua" jumlah={hitungTahap.total} aktif={pengadaanFilter === 'semua'} onClick={() => { setPengadaanFilter('semua'); setPage(1) }} />
+              {/* Chip kosong disembunyikan seperti chip kerjaan role lain; yang sedang aktif tetap
+                  ditampilkan walau nol supaya tidak hilang dari bawah kursor. */}
+              {PENGADAAN_FILTERS.filter((item) => hitungTahap[item.id] > 0 || pengadaanFilter === item.id).map((item) => (
+                <KerjaanChip key={item.id} label={item.label} jumlah={hitungTahap[item.id]} aktif={pengadaanFilter === item.id} onClick={() => { setPengadaanFilter(item.id); setPage(1) }} />
+              ))}
+            </>
             : <>
               <KerjaanChip label="Semua" jumlah={totalAntrean} aktif={kerjaanFilter === 'semua'} onClick={() => { setKerjaanFilter('semua'); setPage(1) }} />
               {KERJAAN_URUT.filter((id) => hitungKerjaan[id] > 0 || kerjaanFilter === id).map((id) => (
@@ -516,7 +512,7 @@ export default function DashboardPage() {
         </div>
         {role === 'pengadaan'
           ? <div className="mb-3 grid gap-3 md:grid-cols-[1fr_18rem] md:items-center">
-            <p className="page-subtitle">{PENGADAAN_FILTERS.find((item) => item.id === pengadaanFilter)?.helper}</p>
+            <p className="page-subtitle">{PENGADAAN_FILTERS.find((item) => item.id === pengadaanFilter)?.helper ?? PENGADAAN_HELPER_SEMUA}</p>
             <input
               className="input bg-white"
               value={searchInput}

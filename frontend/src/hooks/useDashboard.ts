@@ -16,10 +16,17 @@ export type RingkasanRekap = {
   ditolak: number
 }
 
+/** Langkah kerja Pengadaan (mirror App\Services\Transaksi\TahapPengadaan::SEMUA). */
+export type PengadaanTahapId = 'perlu_dicek' | 'po_in' | 'spp' | 'sergab' | 'perlu_diperbaiki'
+
+export type HitungTahapPengadaan = Record<PengadaanTahapId, number> & { total: number }
+
 export type Ringkasan = {
   antrean: HitungKerjaan
   /** Hanya dikirim untuk role admin & keuangan. */
   rekap?: RingkasanRekap
+  /** Hanya dikirim untuk role pengadaan. */
+  pengadaan_tahap?: HitungTahapPengadaan
 }
 
 export function useRingkasanDashboard(skema: 'semua' | 'TJP' | 'MPP') {

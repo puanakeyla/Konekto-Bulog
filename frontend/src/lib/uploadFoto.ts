@@ -106,49 +106,6 @@ export async function uploadFoto(
   })
 }
 
-export async function uploadPoFoto(
-  poId: number,
-  jenisFoto: string,
-  file: File,
-  onProgress?: (percent: number) => void,
-): Promise<void> {
-  const fotoTerkompres = await kompresFoto(file)
-
-  const formData = new FormData()
-  formData.append('jenis_foto', jenisFoto)
-  formData.append('foto', fotoTerkompres)
-
-  await api.post(`/api/po/${poId}/foto`, formData, {
-    onUploadProgress: (event) => {
-      if (onProgress && event.total) {
-        onProgress(Math.round((event.loaded / event.total) * 100))
-      }
-    },
-  })
-}
-
-export async function uploadSemuaPoFoto(
-  poId: number,
-  fotos: Record<string, File | null>,
-  onProgress: (jenisFoto: string, percent: number) => void,
-): Promise<{ gagal: string[] }> {
-  const gagal: string[] = []
-
-  for (const [jenisFoto, file] of Object.entries(fotos)) {
-    if (!file) continue
-
-    try {
-      onProgress(jenisFoto, 0)
-      await uploadPoFoto(poId, jenisFoto, file, (percent) => onProgress(jenisFoto, percent))
-      onProgress(jenisFoto, 100)
-    } catch {
-      gagal.push(jenisFoto)
-    }
-  }
-
-  return { gagal }
-}
-
 /**
  * Upload tiap foto yang dipilih secara berurutan (bukan paralel) supaya progress
  * per-file jelas dan tidak membebani koneksi HP di lapangan (Bagian 7.2). Kegagalan

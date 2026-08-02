@@ -1,6 +1,5 @@
 import { useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import api from '../../lib/api'
 import { apiErrorMessage } from '../../lib/apiError'
@@ -11,7 +10,6 @@ import PoProgressInfo from './PoProgressInfo'
 
 export default function PoInForm({ po, onChanged }: { po: PoItem; onChanged?: () => void }) {
   const queryClient = useQueryClient()
-  const navigate = useNavigate()
   const [values, setValues] = useState<Record<number, string>>(() => Object.fromEntries(po.po_detail.map((detail) => [detail.id, detail.no_in ?? ''])))
   const [confirmIn, setConfirmIn] = useState(false)
   const [confirmBatal, setConfirmBatal] = useState(false)
@@ -30,12 +28,14 @@ export default function PoInForm({ po, onChanged }: { po: PoItem; onChanged?: ()
         .map((detail) => ({ po_detail_id: detail.id, no_in: (values[detail.id] ?? detail.no_in ?? '').trim() }))
         .filter((item) => item.no_in !== ''),
     }),
+    // Sengaja TIDAK pindah halaman: daftar PO di-invalidate sehingga langkah berikutnya
+    // (form SPP) langsung menggantikan kartu ini di tempat, tanpa mengeluarkan pengguna dari
+    // halaman pengisian yang sedang dikerjakannya.
     onSuccess: () => {
       setConfirmIn(false)
       setValues({})
       afterChange()
-      toast.success(`Nomor IN PO ${po.no_po} tersimpan dan dikunci. Status berubah ke Menunggu SPP.`)
-      navigate('/dashboard')
+      toast.success(`Nomor IN PO ${po.no_po} tersimpan dan dikunci. Lanjut isi No. SPP.`)
     },
     onError: (err) => toast.error(apiErrorMessage(err, 'Gagal menyimpan nomor IN.')),
   })
@@ -45,8 +45,7 @@ export default function PoInForm({ po, onChanged }: { po: PoItem; onChanged?: ()
     onSuccess: () => {
       setConfirmBatal(false)
       afterChange()
-      toast.success(`PO ${po.no_po} dibatalkan.`)
-      navigate('/dashboard')
+      toast.success(`PO ${po.no_po} dibatalkan. Transaksinya kembali tersedia untuk digabung.`)
     },
     onError: (err) => toast.error(apiErrorMessage(err, 'Gagal memperbarui PO.')),
   })

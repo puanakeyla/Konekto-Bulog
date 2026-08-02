@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Transaksi;
 use App\Services\Transaksi\KerjaanTransaksi;
+use App\Services\Transaksi\TahapPengadaan;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
@@ -39,6 +40,13 @@ class DashboardController extends Controller
             ->when(isset($validated['skema']), fn ($q) => $q->where('transaksi.skema', $validated['skema']));
 
         $data = ['antrean' => KerjaanTransaksi::hitung($antrean)];
+
+        // Pengadaan memakai chip per-langkah (PO/IN, SPP, Sergab, ...) menggantikan chip kerjaan,
+        // jadi angkanya harus ikut dikirim -- tanpa ini frontend tidak bisa menyembunyikan chip
+        // yang kosong seperti yang dilakukan role lain.
+        if ($role === 'pengadaan') {
+            $data['pengadaan_tahap'] = TahapPengadaan::hitung($antrean);
+        }
 
         // Kartu Admin memandang SELURUH transaksi lintas tahap, bukan hanya antreannya sendiri
         // (antrean admin memang selalu kosong -- tidak ada tahap yang aktornya admin).

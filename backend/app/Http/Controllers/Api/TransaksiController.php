@@ -13,6 +13,7 @@ use App\Models\Role;
 use App\Models\Transaksi;
 use App\Services\AuditLogService;
 use App\Services\Transaksi\KerjaanTransaksi;
+use App\Services\Transaksi\TahapPengadaan;
 use App\Services\Transaksi\TransaksiStageService;
 use App\Services\Transaksi\TransaksiStages;
 use Illuminate\Database\Eloquent\Builder;
@@ -37,7 +38,7 @@ class TransaksiController extends Controller
         $validated = $request->validate([
             'skema' => ['sometimes', Rule::in(['TJP', 'MPP'])],
             'kerjaan' => ['sometimes', Rule::in(KerjaanTransaksi::SEMUA)],
-            'pengadaan_tahap' => ['sometimes', Rule::in(['perlu_dicek', 'po_in', 'spp', 'sergab', 'perlu_diperbaiki'])],
+            'pengadaan_tahap' => ['sometimes', Rule::in(TahapPengadaan::SEMUA)],
             'q' => ['sometimes', 'string', 'max:100'],
         ]);
 
@@ -85,7 +86,7 @@ class TransaksiController extends Controller
         }
 
         if (($request->user()->role->nama_role ?? null) === 'pengadaan' && isset($validated['pengadaan_tahap'])) {
-            $this->filterTahapPengadaan($query, $validated['pengadaan_tahap']);
+            TahapPengadaan::filter($query, $validated['pengadaan_tahap']);
         }
 
         if (isset($validated['q']) && trim($validated['q']) !== '') {
@@ -105,47 +106,6 @@ class TransaksiController extends Controller
         $transaksi = $query->paginate($request->integer('per_page', 20));
 
         return TransaksiResource::collection($transaksi);
-    }
-
-    /**
-     * Chip tahap Pengadaan. Urutan kerjanya: terima data UB Jastasma -> buat PO & isi IN ->
-     * simpan No. SPP (INI yang mengirim PO ke Keuangan) -> tutup Status Sergab. Karena SPP yang
-     * mengirim, transaksi pada chip 'sergab' `current_stage`-nya sudah 'keuangan' -- yang
-     * memasukkannya kembali ke antrean Pengadaan adalah cabang khusus di
-     * Transaksi::scopeAntreanRole(). Kelimanya saling lepas, jadi satu transaksi hanya muncul
-     * di satu chip.
-     */
-    private function filterTahapPengadaan(Builder $query, string $tahap): void
-    {
-        // Subquery "PO ini masih punya baris IN yang kosong", dipakai dua arm dengan arah berbeda.
-        $adaInKosong = fn ($sub) => $sub->selectRaw('1')
-            ->from('po_detail as pod_in')
-            ->whereColumn('pod_in.data_pengadaan_id', 'kj_pd.id')
-            ->whereNull('pod_in.no_in');
-
-        match ($tahap) {
-            // 'periksa' juga bernilai benar untuk PO yang menunggu review Keuangan; dibatasi ke
-            // transaksi yang memang masih berdiri di tahap Pengadaan supaya tidak tumpang tindih
-            // dengan chip 'sergab'.
-            'perlu_dicek' => KerjaanTransaksi::filter($query, 'periksa')
-                ->where('transaksi.current_stage', 'pengadaan'),
-            'perlu_diperbaiki' => KerjaanTransaksi::filter($query, 'ditolak'),
-            // Syarat "sudah lolos review UB Jastasma" wajib eksplisit di sini: transaksi yang baru
-            // mendarat di Pengadaan juga belum punya PO, jadi tanpa ini chip PO/IN ikut memuat
-            // seluruh isi chip "Perlu dicek". Arm lain tidak kena karena mensyaratkan kj_pd.
-            'po_in' => $query->where('kj_ub.status', 'diterima')
-                ->where(fn (Builder $q) => $q->whereNull('kj_pd.id')->orWhereExists($adaInKosong)),
-            // IN lengkap tapi No. SPP belum diisi = belum dikirim ke Keuangan.
-            'spp' => $query->whereNotNull('kj_pd.id')
-                ->whereNull('kj_pd.no_spp')
-                ->whereNotExists($adaInKosong),
-            // Sudah dikirim ke Keuangan lewat No. SPP, tinggal ditutup Status Sergab-nya.
-            // PO yang ditolak Keuangan juga cocok dengan pola ini, tapi ia milik chip
-            // 'perlu_diperbaiki' -- memperbaiki penolakan didahulukan atas menutup Sergab.
-            'sergab' => $query->whereNotNull('kj_pd.no_spp')
-                ->where('kj_pd.review_status', '!=', 'ditolak')
-                ->whereNotIn('kj_pd.status', ['lengkap', 'dibatalkan']),
-        };
     }
 
     private function filterPencarian(Builder $query, string $keyword): void

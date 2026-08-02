@@ -79,6 +79,43 @@ class FilterTahapPengadaanTest extends TestCase
         $this->assertSame([], $this->idsUntuk('perlu_diperbaiki'));
     }
 
+    /**
+     * Angka chip (dashboard/ringkasan) dan isi tabel (daftar transaksi) berasal dari satu
+     * definisi -- TahapPengadaan. Penjaga ini yang membuat keduanya mustahil menyimpang, karena
+     * chip yang berangka tapi tabelnya kosong (atau sebaliknya) tidak menghasilkan error apa pun.
+     */
+    public function test_angka_chip_sama_dengan_jumlah_baris_tiap_tahap(): void
+    {
+        $this->transaksiSampaiPengadaan('PMK-A', terima: false);
+        $this->transaksiSampaiPengadaan('PMK-B');
+
+        $poC = $this->poService->gabungkanPo([$this->transaksiSampaiPengadaan('PMK-C')->id_transaksi], 'PO-C', $this->pengadaan);
+        $this->isiSemuaIn($poC, 'IN-C');
+
+        $poD = $this->poService->gabungkanPo([$this->transaksiSampaiPengadaan('PMK-D')->id_transaksi], 'PO-D', $this->pengadaan);
+        $this->isiSemuaIn($poD, 'IN-D');
+        Sanctum::actingAs($this->pengadaan);
+        $this->patchJson("/api/po/{$poD->id}/spp", ['no_spp' => 'SPP-D'])->assertOk();
+
+        Sanctum::actingAs($this->pengadaan);
+        $hitung = $this->getJson('/api/dashboard/ringkasan')->assertOk()->json('data.pengadaan_tahap');
+        $this->assertIsArray($hitung, 'Ringkasan role pengadaan harus memuat hitungan per tahap.');
+
+        $total = 0;
+        foreach (['perlu_dicek', 'po_in', 'spp', 'sergab', 'perlu_diperbaiki'] as $tahap) {
+            $this->assertSame(
+                count($this->idsUntuk($tahap)),
+                $hitung[$tahap],
+                "Angka chip '{$tahap}' tidak cocok dengan jumlah baris yang dikembalikan daftarnya.",
+            );
+            $total += $hitung[$tahap];
+        }
+
+        $this->assertSame($total, $hitung['total']);
+        // Kelima chip saling lepas dan menutup seluruh antrean: totalnya harus sama dengan "Semua".
+        $this->assertSame(count($this->idsUntuk('semua')), $hitung['total']);
+    }
+
     /** @return list<string> */
     private function idsUntuk(string $tahap): array
     {

@@ -10,6 +10,7 @@ import { useAuth } from '../hooks/useAuth'
 import { useRekapTransaksi, type RekapTransaksi } from '../hooks/useRekapTransaksi'
 import { useMakloonOptions } from '../hooks/useMakloonOptions'
 import api, { pesanKegagalan } from '../lib/api'
+import { bukaTabBaru } from '../lib/bukaTabBaru'
 import { formatMoney, formatNumber } from '../lib/poFormat'
 import ModalPortal from '../components/ModalPortal'
 
@@ -792,16 +793,14 @@ function DokumenAdminPanel({ row, role }: { row: RekapTransaksi; role: string })
 
   if (fields.length === 0) return null
 
-  const bukaDokumen = async (field: DokumenField) => {
+  const bukaDokumen = (field: DokumenField) => {
     setBusyKey(`open:${field.key}`)
-    try {
+    return bukaTabBaru(async () => {
       const { data } = await api.get<{ url: string }>(`/api/transaksi/${encodeURIComponent(row.id_transaksi)}/foto/${field.key}`)
-      window.open(data.url, '_blank', 'noopener,noreferrer')
-    } catch (err) {
-      toast.error(pesanKegagalan(err) ?? 'Dokumen belum tersedia.')
-    } finally {
-      setBusyKey(null)
-    }
+      return data.url
+    })
+      .catch((err: unknown) => toast.error(pesanKegagalan(err) ?? 'Dokumen belum tersedia.'))
+      .finally(() => setBusyKey(null))
   }
 
   const gantiDokumen = async (field: DokumenField, file: File | null) => {

@@ -237,8 +237,13 @@ function pendingReviewFor(activeStages: StageConfig[], currentIndex: number, tra
       .find((item) => item?.status === 'menunggu_review')
 
     if (data) {
+      // Aksi Terima/Tolak menempel di blok tahap yang DATANYA sedang direview, bukan di blok
+      // peninjaunya -- itu yang bikin "Terima & Lanjutkan" muncul di kartu yang isinya memang
+      // sedang dinilai. Makloon Terima satu-satunya pengecualian: ia tidak punya record sendiri
+      // (dataKeys kosong) dan pekerjaannya -- unggah dokumen lalu terima -- memang milik blok itu,
+      // sementara recordnya menumpang di data_makloon_mpp milik Makloon Kirim.
       return {
-        stageId: currentStage.dataKeys.length === 0 ? currentStage.id : previousStage.id,
+        stageId: currentStage.id === 'makloon_terima' ? currentStage.id : previousStage.id,
         data,
       }
     }
@@ -601,7 +606,10 @@ export default function TransaksiDetailPage() {
   // Keuangan: review data Pengadaan lalu pembayaran.
   const showKeuanganReview = poWaitingReview && isKeuanganRole
   const showBayar = poAccepted && !poPaid && isKeuanganRole
-  const keuanganCurrent = transaksi.current_stage === 'keuangan' && (poWaitingReview || (poAccepted && !poPaid))
+  // Selama PO masih menunggu review, pekerjaan Keuangan (pembayaran) BELUM dimulai dan kartu
+  // Terima/Tolak-nya ada di blok Pengadaan -- menandai blok ini "giliran Anda" cuma memunculkan
+  // kartu kosong tanpa aksi apa pun.
+  const keuanganCurrent = transaksi.current_stage === 'keuangan' && poAccepted && !poPaid
   const keuanganComplete = poPaid
 
   const jemputPanganError = (simpanJemputPangan.error as { response?: { data?: { message?: string } } } | null)?.response?.data?.message
@@ -699,7 +707,9 @@ export default function TransaksiDetailPage() {
               const showPengadaanIn = stage.id === 'pengadaan' && showIsiIn
               const showPengadaanSpp = stage.id === 'pengadaan' && showIsiSpp
               const showPengadaanStatus = stage.id === 'pengadaan' && showStatusSergab
-              const showKeuanganReviewCard = stage.id === 'keuangan' && showKeuanganReview
+              // Keuangan mereview DATA PENGADAAN, jadi kartu Terima/Tolak-nya menempel di blok
+              // Pengadaan -- sejalan dengan aturan pendingReviewFor() untuk tahap non-PO.
+              const showKeuanganReviewCard = stage.id === 'pengadaan' && showKeuanganReview
               const showKeuanganBayar = stage.id === 'keuangan' && showBayar
               const showPoPanel = showPengadaanCombine || showPengadaanIn || showPengadaanSpp || showPengadaanStatus || showKeuanganReviewCard || showKeuanganBayar
               const blockedByPendingPrevious = isCurrent && !!pendingData?.data && stage.id !== pendingData.stageId && !showPoPanel
@@ -822,7 +832,7 @@ export default function TransaksiDetailPage() {
                         {poRejected && po.catatan_penolakan && (
                           <div className="alert-danger mb-3">Ditolak Keuangan: {po.catatan_penolakan}. Perbaiki lalu kirim ulang.</div>
                         )}
-                        <PoStatusSergabForm po={po} transaksiId={transaksi.id_transaksi} skema={transaksi.skema} onChanged={invalidate} />
+                        <PoStatusSergabForm po={po} onChanged={invalidate} />
                       </div>
                     )}
 

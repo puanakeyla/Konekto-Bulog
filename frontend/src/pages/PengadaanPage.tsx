@@ -90,13 +90,13 @@ export default function PengadaanPage() {
             <>
               {loadingTransaksi && <SkeletonPoCards />}
               {transaksiError && <LoadError error={transaksiLoadError} fallback="Gagal memuat transaksi siap PO." />}
-              {!loadingTransaksi && !transaksiError && <GabungPoForm transaksiList={kandidatPo} onChanged={tampilkanInSetelahPo} kembaliKeDashboard={false} />}
+              {!loadingTransaksi && !transaksiError && <GabungPoForm transaksiList={kandidatPo} onChanged={tampilkanInSetelahPo} />}
             </>
           )}
 
           {active === 'in' && <PoList loading={loadingPo} error={poError ? poLoadError : null} empty="Tidak ada PO yang menunggu nomor IN." rows={antrean.in} render={(po) => <PoInForm key={po.id} po={po} />} />}
           {active === 'spp' && <PoList loading={loadingPo} error={poError ? poLoadError : null} empty="Tidak ada PO yang menunggu No. SPP." rows={antrean.spp} render={(po) => <PoSppForm key={po.id} po={po} />} />}
-          {active === 'status' && <PoList loading={loadingPo} error={poError ? poLoadError : null} empty="Tidak ada PO yang menunggu Status Sergab." rows={antrean.status} render={(po) => <PoStatusSergabForm key={po.id} po={po} transaksiId={po.po_detail[0]?.transaksi_id} skema={po.po_detail[0]?.skema ?? undefined} />} />}
+          {active === 'status' && <PoList loading={loadingPo} error={poError ? poLoadError : null} empty="Tidak ada PO yang menunggu Status Sergab." rows={antrean.status} render={(po) => <PoStatusSergabForm key={po.id} po={po} />} />}
 
         </section>
       </div>

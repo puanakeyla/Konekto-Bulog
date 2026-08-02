@@ -1,4 +1,5 @@
 import { useFotoUrl } from '../hooks/useFotoTransaksi'
+import { bukaTabBaru } from '../lib/bukaTabBaru'
 import { labelFoto } from '../lib/fotoDokumen'
 
 /**
@@ -25,10 +26,7 @@ export default function FotoThumb({
   const teks = label ?? labelFoto(jenisFoto)
   const kotak = size === 'sm' ? 'h-20 w-20' : 'h-24 w-24'
 
-  const buka = async () => {
-    const url = asli ?? (await refetch()).data
-    if (url) window.open(url, '_blank', 'noopener,noreferrer')
-  }
+  const buka = () => bukaTabBaru(async () => asli ?? (await refetch()).data)
 
   return (
     <button

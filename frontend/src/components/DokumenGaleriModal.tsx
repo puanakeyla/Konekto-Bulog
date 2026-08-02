@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import api, { pesanKegagalan } from '../lib/api'
+import { bukaTabBaru } from '../lib/bukaTabBaru'
 import { useDokumenTransaksi, type FotoTersimpan } from '../hooks/useFotoTransaksi'
 import { labelFoto, labelRoleFoto } from '../lib/fotoDokumen'
 import ModalPortal from './ModalPortal'
@@ -93,25 +94,32 @@ function FotoKartu({ transaksiId, item }: { transaksiId: string; item: FotoTersi
     }
   }
 
-  const buka = async (download: boolean) => {
-    setBusy(download ? 'download' : 'lihat')
+  // Unduhan tidak kena popup blocker: <a download> yang diklik programatis bukan popup.
+  const unduh = async () => {
+    setBusy('download')
     try {
-      const { data } = await api.get<{ url: string }>(urlFoto({ download }))
-      if (download) {
-        const a = document.createElement('a')
-        a.href = data.url
-        a.rel = 'noopener'
-        document.body.appendChild(a)
-        a.click()
-        a.remove()
-      } else {
-        window.open(data.url, '_blank', 'noopener,noreferrer')
-      }
+      const { data } = await api.get<{ url: string }>(urlFoto({ download: true }))
+      const a = document.createElement('a')
+      a.href = data.url
+      a.rel = 'noopener'
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
     } catch (err) {
       toast.error(pesanKegagalan(err) ?? 'Dokumen tidak dapat dibuka.')
     } finally {
       setBusy(null)
     }
+  }
+
+  const lihat = () => {
+    setBusy('lihat')
+    return bukaTabBaru(async () => {
+      const { data } = await api.get<{ url: string }>(urlFoto({ download: false }))
+      return data.url
+    })
+      .catch((err: unknown) => toast.error(pesanKegagalan(err) ?? 'Dokumen tidak dapat dibuka.'))
+      .finally(() => setBusy(null))
   }
 
   return (
@@ -131,10 +139,10 @@ function FotoKartu({ transaksiId, item }: { transaksiId: string; item: FotoTersi
           <span className="shrink-0 rounded bg-primary-tint px-2 py-0.5 text-[0.6rem] font-bold uppercase text-primary">{labelRoleFoto(item.role)}</span>
         </div>
         <div className="mt-3 flex gap-2">
-          <button type="button" onClick={() => buka(false)} disabled={busy === 'lihat'} className="btn btn-ghost flex-1 border border-border bg-white px-3 py-1.5 text-xs">
+          <button type="button" onClick={lihat} disabled={busy === 'lihat'} className="btn btn-ghost flex-1 border border-border bg-white px-3 py-1.5 text-xs">
             {busy === 'lihat' ? 'Membuka...' : 'Lihat'}
           </button>
-          <button type="button" onClick={() => buka(true)} disabled={busy === 'download'} className="btn btn-ghost flex-1 border border-primary/20 bg-primary-tint px-3 py-1.5 text-xs text-primary">
+          <button type="button" onClick={unduh} disabled={busy === 'download'} className="btn btn-ghost flex-1 border border-primary/20 bg-primary-tint px-3 py-1.5 text-xs text-primary">
             {busy === 'download' ? 'Mengunduh...' : 'Download'}
           </button>
         </div>
