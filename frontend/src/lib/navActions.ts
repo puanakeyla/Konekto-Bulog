@@ -21,7 +21,5 @@ export function buildActions(role: string): NavAction[] {
     actions.push({ to: '/rekap', label: 'Rekap Data' })
   }
 
-  if (role === 'keuangan') actions.push({ to: '/keuangan', label: 'Pembayaran PO' })
-
   return actions
 }
