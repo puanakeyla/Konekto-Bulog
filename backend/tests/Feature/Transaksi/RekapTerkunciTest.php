@@ -213,7 +213,12 @@ class RekapTerkunciTest extends TestCase
         $this->assertNotContains($tanpaPo->id_transaksi, $ids);
     }
 
-    public function test_keuangan_hanya_melihat_transaksi_yang_pembayarannya_sudah_diterima_operasi(): void
+    /**
+     * Keuangan adalah tahap TERAKHIR: tidak ada role yang mereviewnya. `review_status = 'diterima'`
+     * di data_keuangan dipasang sendiri oleh updatePembayaran() saat status_bayar jadi 'dibayarkan',
+     * jadi artinya "pembayaran sudah difinalisasi", bukan "sudah diterima Operasi".
+     */
+    public function test_keuangan_hanya_melihat_transaksi_yang_pembayarannya_sudah_difinalisasi(): void
     {
         $bayarDiterima = $this->buatTjpDenganJpTerkunci();
         $bayarMenunggu = $this->buatTjpDenganJpTerkunci();

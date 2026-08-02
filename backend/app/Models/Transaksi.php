@@ -102,6 +102,11 @@ class Transaksi extends Model
      * daftar transaksi (TransaksiController::index) dan hitungan chip/kartu dashboard
      * (DashboardController::ringkasan). Kalau keduanya menyalin filter masing-masing, angka
      * ringkasan bisa menyimpang dari isi tabel tanpa ada yang menyadarinya.
+     *
+     * Pengadaan adalah SATU-SATUNYA role yang antreannya tidak habis di `current_stage` miliknya:
+     * No. SPP mengirim PO ke Keuangan, tapi Status Sergab-nya masih pekerjaan Pengadaan dan
+     * berjalan paralel dengan pembayaran. Tanpa cabang kedua di bawah, seluruh chip Sergab
+     * kosong permanen karena transaksinya sudah pindah ke tahap 'keuangan'.
      */
     public function scopeAntreanRole(Builder $query, string $role): Builder
     {
@@ -114,8 +119,16 @@ class Transaksi extends Model
             ->all();
 
         return $query
-            ->whereIn('transaksi.current_stage', $stageRoles ?: [$role])
-            ->where('transaksi.status_keseluruhan', 'berjalan');
+            ->where('transaksi.status_keseluruhan', 'berjalan')
+            ->where(function (Builder $antrean) use ($stageRoles, $role) {
+                $antrean->whereIn('transaksi.current_stage', $stageRoles ?: [$role]);
+
+                if ($role === 'pengadaan') {
+                    $antrean->orWhereHas('poDetail.dataPengadaan', fn (Builder $po) => $po
+                        ->whereNotNull('no_spp')
+                        ->whereNotIn('status', ['lengkap', 'dibatalkan']));
+                }
+            });
     }
 
     /**

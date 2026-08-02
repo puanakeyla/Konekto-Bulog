@@ -93,9 +93,13 @@ class TransaksiController extends Controller
         }
 
         // Khusus daftar "siap PO" di Pengadaan: hanya transaksi yang UB Jastasma-nya
-        // sudah diterima (menunggu_review = belum ditinjau Pengadaan, jangan dimunculkan).
+        // sudah diterima (menunggu_review = belum ditinjau Pengadaan, jangan dimunculkan)
+        // DAN belum jadi anggota PO mana pun -- `current_stage` bertahan di 'pengadaan' sampai
+        // Sergab selesai, jadi tanpa whereDoesntHave() transaksi yang sudah ber-PO tetap
+        // ditawarkan untuk digabung lagi.
         if ($request->boolean('siap_po')) {
-            $query->whereHas('dataUbJastasma', fn ($q) => $q->where('status', 'diterima'));
+            $query->whereHas('dataUbJastasma', fn ($q) => $q->where('status', 'diterima'))
+                ->whereDoesntHave('poDetail');
         }
 
         $transaksi = $query->paginate($request->integer('per_page', 20));
@@ -103,33 +107,44 @@ class TransaksiController extends Controller
         return TransaksiResource::collection($transaksi);
     }
 
+    /**
+     * Chip tahap Pengadaan. Urutan kerjanya: terima data UB Jastasma -> buat PO & isi IN ->
+     * simpan No. SPP (INI yang mengirim PO ke Keuangan) -> tutup Status Sergab. Karena SPP yang
+     * mengirim, transaksi pada chip 'sergab' `current_stage`-nya sudah 'keuangan' -- yang
+     * memasukkannya kembali ke antrean Pengadaan adalah cabang khusus di
+     * Transaksi::scopeAntreanRole(). Kelimanya saling lepas, jadi satu transaksi hanya muncul
+     * di satu chip.
+     */
     private function filterTahapPengadaan(Builder $query, string $tahap): void
     {
+        // Subquery "PO ini masih punya baris IN yang kosong", dipakai dua arm dengan arah berbeda.
+        $adaInKosong = fn ($sub) => $sub->selectRaw('1')
+            ->from('po_detail as pod_in')
+            ->whereColumn('pod_in.data_pengadaan_id', 'kj_pd.id')
+            ->whereNull('pod_in.no_in');
+
         match ($tahap) {
-            'perlu_dicek' => KerjaanTransaksi::filter($query, 'periksa'),
+            // 'periksa' juga bernilai benar untuk PO yang menunggu review Keuangan; dibatasi ke
+            // transaksi yang memang masih berdiri di tahap Pengadaan supaya tidak tumpang tindih
+            // dengan chip 'sergab'.
+            'perlu_dicek' => KerjaanTransaksi::filter($query, 'periksa')
+                ->where('transaksi.current_stage', 'pengadaan'),
             'perlu_diperbaiki' => KerjaanTransaksi::filter($query, 'ditolak'),
-            'po_in' => $query->where(function (Builder $q) {
-                $q->whereNull('kj_pd.id')
-                    ->orWhereExists(function ($sub) {
-                        $sub->selectRaw('1')
-                            ->from('po_detail as pod_in')
-                            ->whereColumn('pod_in.data_pengadaan_id', 'kj_pd.id')
-                            ->whereNull('pod_in.no_in');
-                    });
-            }),
+            // Syarat "sudah lolos review UB Jastasma" wajib eksplisit di sini: transaksi yang baru
+            // mendarat di Pengadaan juga belum punya PO, jadi tanpa ini chip PO/IN ikut memuat
+            // seluruh isi chip "Perlu dicek". Arm lain tidak kena karena mensyaratkan kj_pd.
+            'po_in' => $query->where('kj_ub.status', 'diterima')
+                ->where(fn (Builder $q) => $q->whereNull('kj_pd.id')->orWhereExists($adaInKosong)),
+            // IN lengkap tapi No. SPP belum diisi = belum dikirim ke Keuangan.
             'spp' => $query->whereNotNull('kj_pd.id')
-                ->where('kj_pd.review_status', 'draft')
                 ->whereNull('kj_pd.no_spp')
-                ->whereNotExists(function ($sub) {
-                    $sub->selectRaw('1')
-                        ->from('po_detail as pod_in')
-                        ->whereColumn('pod_in.data_pengadaan_id', 'kj_pd.id')
-                        ->whereNull('pod_in.no_in');
-                }),
-            'sergab' => $query->whereNotNull('kj_pd.id')
-                ->where('kj_pd.review_status', 'draft')
-                ->whereNotNull('kj_pd.no_spp')
-                ->where('kj_pd.status', '!=', 'lengkap'),
+                ->whereNotExists($adaInKosong),
+            // Sudah dikirim ke Keuangan lewat No. SPP, tinggal ditutup Status Sergab-nya.
+            // PO yang ditolak Keuangan juga cocok dengan pola ini, tapi ia milik chip
+            // 'perlu_diperbaiki' -- memperbaiki penolakan didahulukan atas menutup Sergab.
+            'sergab' => $query->whereNotNull('kj_pd.no_spp')
+                ->where('kj_pd.review_status', '!=', 'ditolak')
+                ->whereNotIn('kj_pd.status', ['lengkap', 'dibatalkan']),
         };
     }
 

@@ -8,6 +8,7 @@ import { formatMoney, formatNumber } from '../../lib/poFormat'
 import type { PoItem } from '../../hooks/usePoList'
 import ConfirmDialog from '../ConfirmDialog'
 import PoProgressInfo from './PoProgressInfo'
+import PoTransaksiRows from './PoTransaksiRows'
 
 export default function PoSppForm({ po, onChanged }: { po: PoItem; onChanged?: () => void }) {
   const queryClient = useQueryClient()
@@ -25,7 +26,7 @@ export default function PoSppForm({ po, onChanged }: { po: PoItem; onChanged?: (
       queryClient.invalidateQueries({ queryKey: ['antrean-transaksi'] })
       queryClient.invalidateQueries({ queryKey: ['dashboard-ringkasan'] })
       onChanged?.()
-      toast.success(`No. SPP PO ${po.no_po} tersimpan. Kembali ke dashboard untuk cek status berikutnya.`)
+      toast.success(`No. SPP PO ${po.no_po} tersimpan dan PO dikirim ke Keuangan. Sisa langkah Anda: Status Sergab.`)
       navigate('/dashboard')
     },
     onError: (err) => toast.error(apiErrorMessage(err, 'Gagal menyimpan No. SPP.')),
@@ -41,26 +42,27 @@ export default function PoSppForm({ po, onChanged }: { po: PoItem; onChanged?: (
       </div>
       <PoProgressInfo
         posisi="Pengadaan"
-        status="Belum dikirim"
-        berikutnya="Tentukan Status Sergab"
-        keterangan="Seluruh IN sudah terisi. No. SPP disimpan di Pengadaan, lalu Status Sergab menentukan apakah data siap dikirim ke tahap berikutnya."
+        status="Siap dikirim"
+        berikutnya="Keuangan"
+        keterangan="Seluruh IN sudah terisi. Menyimpan No. SPP langsung mengirim PO ini ke Keuangan supaya pembayaran bisa diproses. Status Sergab tetap tugas Anda dan dikerjakan setelahnya."
       />
       {errorMessage && <div className="alert-danger mb-3">{errorMessage}</div>}
+      <PoTransaksiRows po={po} />
       <label className="block">
         <span className="label">No. SPP</span>
         <input required className="input" value={noSpp} onChange={(e) => setNoSpp(e.target.value)} placeholder="Nomor SPP" />
       </label>
       <div className="mt-4 flex justify-end border-t border-border pt-4">
         <button type="submit" disabled={!noSpp.trim() || mutation.isPending} className="btn btn-primary">
-          {mutation.isPending ? 'Menyimpan...' : 'Simpan No. SPP'}
+          {mutation.isPending ? 'Mengirim...' : 'Simpan & Kirim ke Keuangan'}
         </button>
       </div>
 
       <ConfirmDialog
         open={confirmKirim}
-        title="Simpan No. SPP?"
-        description={<>No. SPP akan disimpan untuk PO <strong>{po.no_po}</strong>. Status tetap <strong>Belum dikirim</strong> sampai Status Sergab dipilih dan disimpan.</>}
-        confirmLabel="Simpan No. SPP"
+        title="Kirim PO ke Keuangan?"
+        description={<>No. SPP akan disimpan dan PO <strong>{po.no_po}</strong> beserta <strong>{po.po_detail.length} transaksi</strong> anggotanya langsung dikirim ke <strong>Keuangan</strong>. Setelah itu nomor dan harga PO terkunci; yang tersisa untuk Anda adalah menutup <strong>Status Sergab</strong>. Lanjutkan?</>}
+        confirmLabel="Kirim ke Keuangan"
         loading={mutation.isPending}
         error={errorMessage}
         onCancel={() => setConfirmKirim(false)}

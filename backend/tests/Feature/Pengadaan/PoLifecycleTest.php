@@ -66,9 +66,9 @@ class PoLifecycleTest extends TestCase
         $this->lifecycleService->updatePembayaran($po, 'dibayarkan', '2026-07-12', 'SPP-001');
     }
 
-    public function test_pembayaran_sukses_set_no_spp_dan_menyelesaikan_transaksi(): void
+    public function test_pembayaran_sukses_set_no_spp_dan_mengunci_baris_keuangan(): void
     {
-        [$po, $transaksiIds] = $this->buatPoLengkap(2);
+        [$po, $transaksiIds] = $this->buatPoDikirimKeKeuangan(2);
 
         $dataKeuangan = $this->bayarPo($po, '2026-07-12', 'SPP-001');
 
@@ -76,32 +76,31 @@ class PoLifecycleTest extends TestCase
         $this->assertSame('2026-07-12', $dataKeuangan->tanggal_bayar->format('Y-m-d'));
         $this->assertSame('SPP-001', $po->fresh()->no_spp);
 
-        // Keuangan adalah tahap terakhir: pembayaran penuh menandai transaksi selesai,
-        // current_stage tetap di 'keuangan' (tidak ada tahap Operasi/Gudang di timeline lagi).
+        // Keuangan tahap terakhir, jadi current_stage berhenti di sini. Tapi pelunasan TIDAK
+        // menutup transaksi -- penutupnya Status Sergab 'lengkap' dari Pengadaan.
         foreach ($transaksiIds as $id) {
             $transaksi = Transaksi::find($id);
-            $this->assertSame('selesai', $transaksi->status_keseluruhan);
+            $this->assertSame('berjalan', $transaksi->status_keseluruhan);
             $this->assertSame('keuangan', $transaksi->current_stage);
         }
     }
 
-    public function test_pembayaran_ulang_setelah_selesai_ditolak_guard(): void
+    public function test_pembayaran_ulang_setelah_lunas_ditolak_guard(): void
     {
-        [$po, $transaksiIds] = $this->buatPoLengkap(1);
+        [$po] = $this->buatPoDikirimKeKeuangan(1);
 
         $this->bayarPo($po, '2026-07-12', 'SPP-002');
-        $this->assertSame('selesai', Transaksi::find($transaksiIds[0])->status_keseluruhan);
 
         // Data Keuangan yang sudah 'diterima' tidak bisa dibayar ulang: guard di
-        // updatePembayaran menolaknya, jadi status selesai tetap final (tidak ada
-        // efek samping ganda seperti dobel-advance stage di skema lama).
+        // updatePembayaran menolaknya (tidak ada efek samping ganda seperti dobel-advance
+        // stage di skema lama).
         $this->expectException(HttpException::class);
         $this->lifecycleService->updatePembayaran($po->fresh(), 'dibayarkan', '2026-07-12', null);
     }
 
     public function test_patch_pembayaran_via_http_ditolak_untuk_role_selain_keuangan(): void
     {
-        [$po] = $this->buatPoLengkap(1);
+        [$po] = $this->buatPoDikirimKeKeuangan(1);
 
         Sanctum::actingAs($this->pengadaan);
 
@@ -115,7 +114,7 @@ class PoLifecycleTest extends TestCase
 
     public function test_patch_pembayaran_via_http_sukses(): void
     {
-        [$po] = $this->buatPoLengkap(1);
+        [$po] = $this->buatPoDikirimKeKeuangan(1);
         $this->reviewService->terima($po->fresh(), $this->keuangan);
 
         Sanctum::actingAs($this->keuangan);
@@ -132,10 +131,12 @@ class PoLifecycleTest extends TestCase
 
     public function test_transaksi_selesai_tidak_muncul_di_daftar_tindakan_keuangan(): void
     {
-        [$poSelesai, $transaksiSelesaiIds] = $this->buatPoLengkap(1);
-        [$poMenunggu, $transaksiMenungguIds] = $this->buatPoLengkap(1);
+        [$poSelesai, $transaksiSelesaiIds] = $this->buatPoDikirimKeKeuangan(1);
+        [$poMenunggu, $transaksiMenungguIds] = $this->buatPoDikirimKeKeuangan(1);
 
-        $this->bayarPo($poSelesai, '2026-07-12', 'SPP-SELESAI-001');
+        // Yang menutup transaksi adalah Status Sergab 'lengkap' dari Pengadaan, bukan pembayaran.
+        Sanctum::actingAs($this->pengadaan);
+        $this->patchJson("/api/po/{$poSelesai->id}", ['status' => 'lengkap'])->assertOk();
 
         $this->assertSame('selesai', Transaksi::find($transaksiSelesaiIds[0])->status_keseluruhan);
         $this->assertSame('berjalan', Transaksi::find($transaksiMenungguIds[0])->status_keseluruhan);
@@ -154,7 +155,7 @@ class PoLifecycleTest extends TestCase
 
     public function test_keuangan_tolak_po_lalu_pengadaan_revisi_mengirim_lagi_ke_keuangan(): void
     {
-        [$po, $transaksiIds] = $this->buatPoLengkap(1);
+        [$po, $transaksiIds] = $this->buatPoDikirimKeKeuangan(1);
 
         $this->reviewService->tolak($po->fresh(), $this->keuangan, 'Nomor IN salah.');
 
@@ -230,9 +231,13 @@ class PoLifecycleTest extends TestCase
     }
 
     /**
+     * PO yang sudah diserahkan ke Keuangan: seluruh IN terisi + No. SPP tersimpan. Status Sergab
+     * DIBIARKAN 'proses' -- No. SPP yang mengirim, sedangkan Sergab 'lengkap' adalah penutup yang
+     * langsung menandai transaksinya selesai (dan karenanya tidak cocok untuk fixture pembayaran).
+     *
      * @return array{0: DataPengadaan, 1: array<int, string>}
      */
-    private function buatPoLengkap(int $jumlahBaris): array
+    private function buatPoDikirimKeKeuangan(int $jumlahBaris): array
     {
         $idPemasok = 'PEMASOK-'.uniqid();
         $transaksiIds = [];
@@ -247,9 +252,7 @@ class PoLifecycleTest extends TestCase
             'no_in' => 'IN-'.uniqid().'-'.$i,
         ])->all();
 
-        // Status 'lengkap' + No. SPP diminta eksplisit oleh Pengadaan (alur SERGAB); itulah
-        // yang memindahkan transaksi ke tahap Keuangan sehingga pembayaran bisa diproses.
-        $po = $this->poService->isiNomorIn($po, $items, 'SPP-'.uniqid(), 'lengkap');
+        $po = $this->poService->isiNomorIn($po, $items, 'SPP-'.uniqid());
 
         return [$po, $transaksiIds];
     }

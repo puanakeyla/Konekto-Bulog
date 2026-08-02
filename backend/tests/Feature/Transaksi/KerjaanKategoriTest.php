@@ -82,14 +82,14 @@ class KerjaanKategoriTest extends TestCase
 
     public function test_keuangan_dengan_po_menunggu_review_berkategori_periksa(): void
     {
-        $this->buatPoLengkap();
+        $this->buatPoDikirimKeKeuangan();
 
         $this->assertKerjaan($this->keuangan, 'periksa');
     }
 
     public function test_keuangan_setelah_terima_po_berkategori_isi(): void
     {
-        $po = $this->buatPoLengkap();
+        $po = $this->buatPoDikirimKeKeuangan();
         $this->reviewService->terima($po->fresh(), $this->keuangan);
 
         $this->assertKerjaan($this->keuangan, 'isi');
@@ -97,7 +97,7 @@ class KerjaanKategoriTest extends TestCase
 
     public function test_keuangan_dengan_pembayaran_tersimpan_berkategori_draft(): void
     {
-        $po = $this->buatPoLengkap();
+        $po = $this->buatPoDikirimKeKeuangan();
         $this->reviewService->terima($po->fresh(), $this->keuangan);
         $this->lifecycleService->updatePembayaran($po->fresh(), 'belum', null, 'SPP-DRAFT');
 
@@ -106,7 +106,7 @@ class KerjaanKategoriTest extends TestCase
 
     public function test_po_ditolak_keuangan_berkategori_ditolak_di_pengadaan(): void
     {
-        $po = $this->buatPoLengkap();
+        $po = $this->buatPoDikirimKeKeuangan();
         $this->reviewService->tolak($po->fresh(), $this->keuangan, 'Nomor IN salah.');
 
         $this->assertKerjaan($this->pengadaan, 'ditolak');
@@ -120,7 +120,7 @@ class KerjaanKategoriTest extends TestCase
      */
     public function test_daftar_mengirim_data_po_untuk_baris_yang_ditolak(): void
     {
-        $po = $this->buatPoLengkap();
+        $po = $this->buatPoDikirimKeKeuangan();
         $this->reviewService->tolak($po->fresh(), $this->keuangan, 'Nomor IN salah.');
 
         Sanctum::actingAs($this->pengadaan);
@@ -196,7 +196,12 @@ class KerjaanKategoriTest extends TestCase
         return $transaksi->fresh();
     }
 
-    private function buatPoLengkap(): DataPengadaan
+    /**
+     * PO yang sudah diserahkan ke Keuangan: seluruh IN terisi + No. SPP tersimpan. Status Sergab
+     * SENGAJA dibiarkan 'proses' -- di alur sekarang 'lengkap' adalah penutup yang menandai
+     * transaksinya selesai, sehingga ia akan langsung hilang dari antrean role mana pun.
+     */
+    private function buatPoDikirimKeKeuangan(): DataPengadaan
     {
         $t = $this->transaksiSampaiPengadaan('PEMASOK-'.uniqid());
         $po = $this->poService->gabungkanPo([$t->id_transaksi], 'PO-'.uniqid(), $this->pengadaan);
@@ -206,6 +211,6 @@ class KerjaanKategoriTest extends TestCase
             'no_in' => 'IN-'.uniqid().'-'.$i,
         ])->all();
 
-        return $this->poService->isiNomorIn($po, $items, 'SPP-'.uniqid(), 'lengkap');
+        return $this->poService->isiNomorIn($po, $items, 'SPP-'.uniqid());
     }
 }

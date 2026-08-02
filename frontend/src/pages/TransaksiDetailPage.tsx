@@ -574,28 +574,30 @@ export default function TransaksiDetailPage() {
   const canFillMakloon = canAct && !pendingData && ((transaksi.skema === 'TJP' && transaksi.current_stage === 'makloon') || (transaksi.skema === 'MPP' && transaksi.current_stage === 'makloon_kirim')) && (!makloonStageData || ['draft', 'ditolak'].includes(String(makloonStageData.status)))
   const canFillUb = canAct && !pendingData && transaksi.current_stage === 'ub_jastasma' && (!transaksi.data_ub_jastasma || ['draft', 'ditolak'].includes(String(transaksi.data_ub_jastasma.status)))
   // Tahap PO (level PO, dikerjakan inline). po = PO tempat transaksi ini bernaung (null bila belum).
-  // PENTING: setelah digabung, backend memindahkan current_stage transaksi langsung ke 'keuangan'
-  // (lihat PoGroupingService), padahal pengisian No. IN masih tugas Pengadaan selama PO 'proses'.
-  // Karena itu visibilitas panel PO diturunkan dari STATUS PO + role, bukan current_stage.
+  // PENTING: visibilitas panel PO diturunkan dari STATUS PO + role, BUKAN current_stage. No. SPP
+  // memindahkan transaksi ke tahap 'keuangan' padahal Status Sergab masih tugas Pengadaan dan
+  // berjalan paralel dengan pembayaran; kalau digantungkan ke current_stage, form Sergab hilang
+  // tepat setelah PO dikirim dan tidak akan pernah bisa ditutup.
   const po = transaksi.data_pengadaan
   const isPengadaanRole = role === 'pengadaan' || role === 'admin'
   const isKeuanganRole = role === 'keuangan' || role === 'admin'
   const poRejected = !!po && po.review_status === 'ditolak'
   const poAllInFilled = !!po && po.po_detail.length > 0 && po.po_detail.every((detail) => !!detail.no_in)
-  const poDraftPengadaan = !!po && transaksi.current_stage === 'pengadaan' && (['proses', 'kwitansi_belum_upload', 'foto_belum_lengkap'].includes(po.status) || poRejected) // fase Pengadaan mengisi/memperbaiki PO
-  const poFillingIn = poDraftPengadaan && !poAllInFilled
-  const poFillingSpp = poDraftPengadaan && poAllInFilled && !po.no_spp
-  const poFillingStatus = poDraftPengadaan && poAllInFilled && !!po.no_spp
+  // PO masih punya pekerjaan Pengadaan selama belum ditutup ('lengkap') atau dibatalkan.
+  const poTerbuka = !!po && !['lengkap', 'dibatalkan'].includes(po.status)
+  const poFillingIn = poTerbuka && !poAllInFilled
+  const poFillingSpp = poTerbuka && poAllInFilled && !po.no_spp
+  const poFillingStatus = poTerbuka && poAllInFilled && !!po.no_spp
   const poWaitingReview = !!po && transaksi.current_stage === 'keuangan' && po.review_status === 'menunggu_review'
   const poAccepted = !!po && po.review_status === 'diterima'
   const poPaid = po?.data_keuangan?.status_bayar === 'dibayarkan' || po?.data_keuangan?.review_status === 'diterima'
-  // Pengadaan: gabung PO -> isi No. IN -> isi No. SPP -> status Sergab/kirim Keuangan.
+  // Pengadaan: gabung PO -> isi No. IN -> No. SPP (kirim ke Keuangan) -> tutup Status Sergab.
   const showCombine = !po && transaksi.current_stage === 'pengadaan' && !pendingData && isPengadaanRole
   const showIsiIn = poFillingIn && isPengadaanRole
   const showIsiSpp = poFillingSpp && isPengadaanRole
   const showStatusSergab = poFillingStatus && isPengadaanRole
-  const pengadaanCurrent = showCombine || poDraftPengadaan
-  const pengadaanComplete = !!po && !poDraftPengadaan && po.status === 'lengkap'
+  const pengadaanCurrent = showCombine || poTerbuka
+  const pengadaanComplete = !!po && po.status === 'lengkap'
   // Keuangan: review data Pengadaan lalu pembayaran.
   const showKeuanganReview = poWaitingReview && isKeuanganRole
   const showBayar = poAccepted && !poPaid && isKeuanganRole

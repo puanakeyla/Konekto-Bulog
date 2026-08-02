@@ -15,7 +15,7 @@ type StepId = 'po' | 'in' | 'spp' | 'status'
 const stepLabels: Record<StepId, string> = {
   po: 'Buat PO',
   in: 'Isi IN',
-  spp: 'Kirim ke SPP',
+  spp: 'Kirim ke Keuangan',
   status: 'Status Sergab',
 }
 
@@ -23,8 +23,14 @@ function semuaInTerisi(po: PoItem) {
   return po.po_detail.length > 0 && po.po_detail.every((detail) => !!detail.no_in)
 }
 
+/**
+ * PO yang masih punya pekerjaan Pengadaan. TIDAK boleh disaring dengan `review_status` seperti
+ * dulu: No. SPP kini langsung mengirim PO ke Keuangan (review_status jadi 'menunggu_review' lalu
+ * 'diterima'), padahal Status Sergab-nya masih tugas Pengadaan dan berjalan paralel dengan
+ * pembayaran. Yang benar-benar menandai selesai adalah status Sergab 'lengkap'.
+ */
 function masihDiPengadaan(po: PoItem) {
-  return po.current_stage?.includes('pengadaan') && po.status !== 'dibatalkan' && po.review_status !== 'menunggu_review' && po.review_status !== 'diterima'
+  return po.status !== 'dibatalkan' && po.status !== 'lengkap'
 }
 
 export default function PengadaanPage() {
@@ -91,6 +97,7 @@ export default function PengadaanPage() {
           {active === 'in' && <PoList loading={loadingPo} error={poError ? poLoadError : null} empty="Tidak ada PO yang menunggu nomor IN." rows={antrean.in} render={(po) => <PoInForm key={po.id} po={po} />} />}
           {active === 'spp' && <PoList loading={loadingPo} error={poError ? poLoadError : null} empty="Tidak ada PO yang menunggu No. SPP." rows={antrean.spp} render={(po) => <PoSppForm key={po.id} po={po} />} />}
           {active === 'status' && <PoList loading={loadingPo} error={poError ? poLoadError : null} empty="Tidak ada PO yang menunggu Status Sergab." rows={antrean.status} render={(po) => <PoStatusSergabForm key={po.id} po={po} transaksiId={po.po_detail[0]?.transaksi_id} skema={po.po_detail[0]?.skema ?? undefined} />} />}
+
         </section>
       </div>
     </div>
@@ -99,9 +106,9 @@ export default function PengadaanPage() {
 
 function copyFor(step: StepId) {
   if (step === 'po') return 'Gabungkan transaksi menjadi PO. Setelah PO dibuat, form IN langsung tampil karena PO dan IN satu rangkaian kerja.'
-  if (step === 'in') return 'Isi seluruh nomor IN. Setelah disimpan, IN langsung dikunci dan status berubah ke Menunggu SPP.'
-  if (step === 'spp') return 'Masukkan No. SPP berdasarkan IN yang sudah dikunci.'
-  return 'Pilih Status Sergab. Status Lengkap mengirim data ke Keuangan; Dibatalkan mengembalikan transaksi ke Pengadaan.'
+  if (step === 'in') return 'Isi seluruh nomor IN. Setelah disimpan, IN langsung dikunci dan PO siap dikirim ke Keuangan.'
+  if (step === 'spp') return 'Masukkan No. SPP berdasarkan IN yang sudah dikunci. Menyimpannya langsung mengirim PO ke Keuangan.'
+  return 'Langkah penutup. PO sudah di Keuangan; Status Lengkap menandai transaksinya selesai, Dibatalkan mengembalikannya ke Pengadaan.'
 }
 
 function PoList({ loading, error, empty, rows, render }: { loading: boolean; error: unknown | null; empty: string; rows: PoItem[]; render: (po: PoItem) => ReactNode }) {

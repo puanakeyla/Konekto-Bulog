@@ -12,6 +12,7 @@ import type { PoItem } from '../../hooks/usePoList'
 import ConfirmDialog from '../ConfirmDialog'
 import FotoPicker from '../FotoPicker'
 import PoProgressInfo from './PoProgressInfo'
+import PoTransaksiRows from './PoTransaksiRows'
 
 const statusOptions: { value: PoItem['status']; label: string }[] = [
   { value: 'lengkap', label: 'Lengkap' },
@@ -109,8 +110,8 @@ export default function PoStatusSergabForm({
       toast.success(statusPo === 'dibatalkan'
         ? `PO ${po.no_po} dibatalkan dan transaksi kembali ke Pengadaan.`
         : statusPo === 'lengkap'
-        ? `Data Pengadaan PO ${po.no_po} tersimpan dan siap diteruskan ke Keuangan.`
-        : `Data Pengadaan PO ${po.no_po} tersimpan. Kembali ke dashboard untuk cek status berikutnya.`)
+        ? `Status Sergab PO ${po.no_po} lengkap. ${po.po_detail.length} transaksi anggotanya ditandai selesai.`
+        : `Status Sergab PO ${po.no_po} tersimpan. Transaksinya belum ditutup karena statusnya belum Lengkap.`)
       navigate('/dashboard')
     },
     onError: (err) => toast.error(apiErrorMessage(err, 'Gagal menyimpan data Pengadaan.')),
@@ -122,17 +123,18 @@ export default function PoStatusSergabForm({
     <form className="po-card @container" onSubmit={(e) => { e.preventDefault(); setConfirmSimpan(true) }}>
       <div className="po-card-header">
         <div><div className="po-title">{po.no_po}</div><div className="po-meta">Pemasok {po.id_pemasok} - {formatNumber(po.total_kuantum)} kg - {formatMoney(po.total_harga)}</div></div>
-        <span className={`badge ${statusPo === 'dibatalkan' ? 'badge-danger' : 'badge-warning'}`}>{statusPo === 'dibatalkan' ? 'Dibatalkan' : 'Belum dikirim'}</span>
+        <span className={`badge ${statusPo === 'dibatalkan' ? 'badge-danger' : statusPo === 'lengkap' ? 'badge-success' : 'badge-warning'}`}>{statusPo === 'dibatalkan' ? 'Dibatalkan' : statusPo === 'lengkap' ? 'Siap ditutup' : 'Belum lengkap'}</span>
       </div>
       <PoProgressInfo
-        posisi="Pengadaan"
-        status={statusPo === 'lengkap' ? 'Siap diteruskan' : statusPo === 'dibatalkan' ? 'Dibatalkan' : 'Belum dikirim'}
-        berikutnya={statusPo === 'lengkap' ? 'Keuangan' : statusPo === 'dibatalkan' ? 'Kembali ke Pengadaan' : 'Lengkapi bukti foto'}
+        posisi={po.no_spp ? 'Keuangan (sudah dikirim)' : 'Pengadaan'}
+        status={statusPo === 'lengkap' ? 'Siap ditutup' : statusPo === 'dibatalkan' ? 'Dibatalkan' : 'Belum lengkap'}
+        berikutnya={statusPo === 'lengkap' ? 'Transaksi selesai' : statusPo === 'dibatalkan' ? 'Kembali ke Pengadaan' : 'Lengkapi bukti foto'}
         keterangan={statusPo === 'dibatalkan'
           ? 'PO dibatalkan. Transaksi kembali ke Pengadaan dan bisa digabung ulang bila perlu.'
-          : 'Status Sergab dipakai untuk menandai apakah data Pengadaan sudah siap diteruskan ke tahap berikutnya.'}
+          : 'Status Sergab adalah langkah PENUTUP. PO sudah dikirim ke Keuangan saat No. SPP disimpan; memilih Lengkap di sini menandai seluruh transaksi anggotanya selesai.'}
       />
       {errorMessage && <div className="alert-danger mb-3">{errorMessage}</div>}
+      <PoTransaksiRows po={po} />
 
       <div className="mb-5 border-b border-border pb-5">
         <div className="section-title mb-3">Bukti Foto</div>
@@ -169,8 +171,8 @@ export default function PoStatusSergabForm({
         description={statusPo === 'dibatalkan'
           ? <>PO <strong>{po.no_po}</strong> akan dibatalkan dan transaksi dikembalikan ke tahap <strong>Pengadaan</strong>. Lanjutkan?</>
           : statusPo === 'lengkap'
-          ? <>Foto yang diganti akan disimpan, lalu PO <strong>{po.no_po}</strong> siap diteruskan ke tahap <strong>Keuangan</strong>.</>
-          : <>Foto yang diganti dan Status Sergab PO <strong>{po.no_po}</strong> akan tersimpan. Transaksi tetap berada di tahap <strong>Pengadaan</strong>.</>}
+          ? <>Foto yang diganti akan disimpan, lalu <strong>{po.po_detail.length} transaksi</strong> anggota PO <strong>{po.no_po}</strong> ditandai <strong>selesai</strong>. Ini langkah terakhir dan tidak bisa dibatalkan lewat form ini.</>
+          : <>Foto yang diganti dan Status Sergab PO <strong>{po.no_po}</strong> akan tersimpan. Transaksinya <strong>belum</strong> ditutup karena statusnya belum Lengkap.</>}
         confirmLabel={statusPo === 'dibatalkan' ? 'Batalkan PO' : 'Simpan Status Sergab'}
         loading={mutation.isPending}
         error={errorMessage}

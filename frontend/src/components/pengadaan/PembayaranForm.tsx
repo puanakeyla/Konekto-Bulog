@@ -6,10 +6,12 @@ import { apiErrorMessage } from '../../lib/apiError'
 import { formatMoney, formatNumber } from '../../lib/poFormat'
 import type { PoItem } from '../../hooks/usePoList'
 import ConfirmDialog from '../ConfirmDialog'
+import PoTransaksiRows from './PoTransaksiRows'
 
 // Kartu pembayaran PO (No. SPP + tanggal bayar). Dipakai halaman Keuangan dan panel inline
-// di timeline. Prasyarat backend: PO harus sudah 'lengkap' DAN review_status = 'diterima'
-// (Keuangan menerima data Pengadaan lebih dulu lewat PoReviewActions).
+// di timeline. Prasyarat backend: review_status = 'diterima' (Keuangan menerima data Pengadaan
+// lebih dulu lewat PoReviewActions). Pelunasan TIDAK menutup transaksi -- penutupnya Status
+// Sergab dari Pengadaan, yang berjalan paralel dengan pembayaran ini.
 export default function PembayaranForm({ po, onChanged }: { po: PoItem; onChanged?: () => void }) {
   const queryClient = useQueryClient()
   const [tanggalBayar, setTanggalBayar] = useState('')
@@ -36,7 +38,7 @@ export default function PembayaranForm({ po, onChanged }: { po: PoItem; onChange
       queryClient.invalidateQueries({ queryKey: ['po-list'] })
       onChanged?.()
       toast.success(aksi === 'bayar'
-        ? `PO ${po.no_po} ditandai dibayarkan dan transaksi selesai.`
+        ? `PO ${po.no_po} ditandai dibayarkan.`
         : `Pembayaran PO ${po.no_po} tersimpan sebagai draft.`)
     },
     onError: (err) => toast.error(apiErrorMessage(err, 'Gagal menyimpan pembayaran.')),
@@ -51,26 +53,13 @@ export default function PembayaranForm({ po, onChanged }: { po: PoItem; onChange
         <span className="badge badge-warning">Belum dibayar</span>
       </div>
       {errorMessage && <div className="alert-danger mb-3">{errorMessage}</div>}
-      <div className="data-table-wrap mb-4">
-        <table className="data-table">
-          <thead><tr><th>ID Transaksi</th><th className="text-right">Kuantum</th><th>Nomor IN</th></tr></thead>
-          <tbody>
-            {po.po_detail.map((d) => (
-              <tr key={d.id}>
-                <td className="font-semibold text-primary-dark">{d.transaksi_id}</td>
-                <td className="text-right">{formatNumber(d.kuantum_kontribusi)} kg</td>
-                <td>{d.no_in ?? '-'}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <PoTransaksiRows po={po} />
       <div className="grid gap-4 @md:grid-cols-2">
         <label className="block"><span className="label">No. SPP (berlaku untuk seluruh PO)</span><input required className="input" value={noSpp} onChange={(e) => setNoSpp(e.target.value)} placeholder="Nomor SPP" /></label>
         <label className="block"><span className="label">Tanggal Bayar (wajib untuk menandai dibayarkan)</span><input required type="date" className="input" value={tanggalBayar} onChange={(e) => setTanggalBayar(e.target.value)} /></label>
       </div>
-      {/* Simpan menahan No. SPP & tanggal tanpa melunasi -- "Tandai Dibayarkan" tetap satu-satunya
-          aksi final (transaksi jadi selesai dan tidak bisa dibatalkan). */}
+      {/* Simpan menahan No. SPP & tanggal tanpa melunasi. "Tandai Dibayarkan" mengunci baris
+          Keuangan dan tidak bisa dibatalkan, tapi TIDAK menutup transaksinya. */}
       <div className="mt-4 flex justify-end gap-2">
         <button
           type="button"
@@ -88,7 +77,7 @@ export default function PembayaranForm({ po, onChanged }: { po: PoItem; onChange
       <ConfirmDialog
         open={confirmBayar}
         title="Tandai PO sudah dibayarkan?"
-        description={<>PO <strong>{po.no_po}</strong> akan ditandai sudah dibayarkan dan transaksi selesai. Status pembayaran tidak dapat dibatalkan. Lanjutkan?</>}
+        description={<>PO <strong>{po.no_po}</strong> akan ditandai sudah dibayarkan dan status pembayarannya tidak dapat dibatalkan. Transaksinya sendiri ditutup Pengadaan lewat Status Sergab. Lanjutkan?</>}
         confirmLabel="Tandai Dibayarkan"
         loading={mutation.isPending}
         error={errorMessage}

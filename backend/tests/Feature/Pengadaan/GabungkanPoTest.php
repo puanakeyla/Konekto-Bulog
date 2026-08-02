@@ -15,6 +15,7 @@ use App\Services\Transaksi\TransaksiStageService;
 use Database\Seeders\RoleSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Validation\ValidationException;
+use Laravel\Sanctum\Sanctum;
 use Symfony\Component\HttpKernel\Exception\HttpException;
 use Tests\TestCase;
 
@@ -159,6 +160,42 @@ class GabungkanPoTest extends TestCase
             'PO-TEST-003',
             $this->pengadaan
         );
+    }
+
+    /**
+     * `current_stage` bertahan di 'pengadaan' selama rangkaian PO -> IN -> SPP -> Sergab, jadi
+     * transaksi yang sudah ber-PO masih lolos cek tahap. Tanpa guard keanggotaan ia bisa digabung
+     * dua kali: po_detail jadi dua baris, daftar transaksi tergandakan, dan dua lifecycle PO
+     * saling menimpa current_stage sampai statusnya tidak cocok dengan chip tahap mana pun.
+     */
+    public function test_gabungkan_po_menolak_transaksi_yang_sudah_jadi_anggota_po_lain(): void
+    {
+        $transaksi = $this->transaksiMppSampaiPengadaan('PEMASOK-DOBEL', '2026-07-10', 100);
+
+        app(PoGroupingService::class)->gabungkanPo([$transaksi->id_transaksi], 'PO-DOBEL-1', $this->pengadaan);
+
+        try {
+            app(PoGroupingService::class)->gabungkanPo([$transaksi->id_transaksi], 'PO-DOBEL-2', $this->pengadaan);
+            $this->fail('Transaksi yang sudah ber-PO seharusnya ditolak.');
+        } catch (HttpException $e) {
+            $this->assertStringContainsString('sudah tergabung di PO lain', $e->getMessage());
+        }
+
+        $this->assertSame(1, PoDetail::where('transaksi_id', $transaksi->id_transaksi)->count());
+    }
+
+    public function test_daftar_siap_po_tidak_lagi_menawarkan_transaksi_yang_sudah_ber_po(): void
+    {
+        $sudahPo = $this->transaksiMppSampaiPengadaan('PEMASOK-SIAP-1', '2026-07-10', 100);
+        $belumPo = $this->transaksiMppSampaiPengadaan('PEMASOK-SIAP-2', '2026-07-10', 100);
+
+        app(PoGroupingService::class)->gabungkanPo([$sudahPo->id_transaksi], 'PO-SIAP-1', $this->pengadaan);
+
+        Sanctum::actingAs($this->pengadaan);
+        $ids = collect($this->getJson('/api/transaksi?siap_po=1&per_page=100')->json('data'))
+            ->pluck('id_transaksi');
+
+        $this->assertSame([$belumPo->id_transaksi], $ids->all());
     }
 
     public function test_gabungkan_po_skema_tjp_mengambil_field_dari_tabel_yang_benar(): void

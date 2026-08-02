@@ -63,8 +63,8 @@ const PENGADAAN_FILTERS: { id: PengadaanTahapFilter; label: string; helper: stri
   { id: 'semua', label: 'Semua', helper: 'Semua transaksi Pengadaan yang masih perlu dipantau.' },
   { id: 'perlu_dicek', label: 'Perlu dicek', helper: 'Data dari tahap sebelumnya perlu diterima atau ditolak.' },
   { id: 'po_in', label: 'PO/IN', helper: 'Belum dibuat PO atau nomor IN belum lengkap.' },
-  { id: 'spp', label: 'SPP', helper: 'PO dan IN sudah ada. Langkah berikutnya simpan No. SPP.' },
-  { id: 'sergab', label: 'Sergab', helper: 'No. SPP sudah tersimpan. Langkah berikutnya lengkapi Status Sergab.' },
+  { id: 'spp', label: 'SPP', helper: 'PO dan IN sudah ada. Menyimpan No. SPP langsung mengirim PO ke Keuangan.' },
+  { id: 'sergab', label: 'Sergab', helper: 'PO sudah di Keuangan. Sisa langkah Anda: tutup Status Sergab — Lengkap menandai transaksinya selesai.' },
   { id: 'perlu_diperbaiki', label: 'Perlu diperbaiki', helper: 'Transaksi ditolak atau dikembalikan dari tahap berikutnya. Lihat detailnya, perbaiki, lalu simpan ulang.' },
 ]
 
@@ -151,17 +151,27 @@ function RejectedBadge({ items }: { items: RejectInfo[] }) {
   return <span className="inline-flex items-center gap-1 rounded-md bg-danger-bg px-2 py-1 text-[0.68rem] font-bold text-danger">Ditolak: {items.map((item) => labelTahap(item.stage)).join(', ')}</span>
 }
 
+/**
+ * Kolom Posisi/Status/Berikutnya untuk role Pengadaan, dipetakan ke lima chip tahap.
+ * Urutan cabangnya WAJIB sama dengan TransaksiController::filterTahapPengadaan(), kalau tidak
+ * badge sebuah baris bisa menyebut tahap yang berbeda dari chip yang memuatnya.
+ *
+ * Catatan alur: No. SPP yang mengirim PO ke Keuangan, jadi baris pada tahap Sergab
+ * `current_stage`-nya sudah 'keuangan' -- karena itu cek `kerjaan === 'periksa'` dibatasi ke
+ * transaksi yang memang masih berdiri di tahap Pengadaan (di tahap Keuangan, 'periksa' berarti
+ * PO menunggu review Keuangan, bukan pekerjaan Pengadaan).
+ */
 function pengadaanProgress(t: TransaksiListItem) {
   const po = t.data_pengadaan
   const detail = po?.po_detail ?? []
   const semuaInTerisi = detail.length > 0 && detail.every((item) => !!item.no_in)
 
-  if (t.kerjaan === 'periksa') {
-    return { posisi: 'Pengadaan', status: 'Perlu dicek', berikutnya: 'Terima / Tolak', cls: 'badge-warning' }
-  }
-
   if (t.kerjaan === 'ditolak') {
     return { posisi: 'Pengadaan', status: 'Perlu diperbaiki', berikutnya: 'Perbaiki data', cls: 'badge-danger' }
+  }
+
+  if (t.kerjaan === 'periksa' && t.current_stage === 'pengadaan') {
+    return { posisi: 'Pengadaan', status: 'Perlu dicek', berikutnya: 'Terima / Tolak', cls: 'badge-warning' }
   }
 
   if (!po) {
@@ -173,14 +183,14 @@ function pengadaanProgress(t: TransaksiListItem) {
   }
 
   if (!po.no_spp) {
-    return { posisi: 'SPP', status: 'Menunggu SPP', berikutnya: 'Simpan No. SPP', cls: 'badge-warning' }
+    return { posisi: 'SPP', status: 'Siap dikirim', berikutnya: 'Simpan No. SPP → Keuangan', cls: 'badge-warning' }
   }
 
   if (po.status !== 'lengkap') {
-    return { posisi: 'Sergab', status: 'Proses Sergab', berikutnya: 'Status Sergab', cls: 'badge-warning' }
+    return { posisi: 'Sergab', status: 'Sudah di Keuangan', berikutnya: 'Tutup Status Sergab', cls: 'badge-warning' }
   }
 
-  return { posisi: 'Keuangan', status: 'Menunggu Keuangan', berikutnya: 'Pantau', cls: 'badge' }
+  return { posisi: 'Selesai', status: 'Selesai', berikutnya: '-', cls: 'badge-success' }
 }
 
 function num(value: string | number | null | undefined) {

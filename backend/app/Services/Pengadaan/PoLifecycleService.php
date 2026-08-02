@@ -4,16 +4,17 @@ namespace App\Services\Pengadaan;
 
 use App\Models\DataKeuangan;
 use App\Models\DataPengadaan;
-use App\Models\PoDetail;
-use App\Models\Transaksi;
 use Illuminate\Support\Facades\DB;
 
 class PoLifecycleService
 {
     /**
      * Pembayaran PO oleh Keuangan (level PO). Keuangan adalah tahap TERAKHIR timeline transaksi
-     * (TJP/MPP berhenti di Keuangan). Begitu PO dibayar penuh, seluruh transaksi anggotanya
-     * ditandai status_keseluruhan = 'selesai'. Operasi & Gudang bukan kelanjutan timeline ini.
+     * (TJP/MPP berhenti di Keuangan). Operasi & Gudang bukan kelanjutan timeline ini.
+     *
+     * Pelunasan TIDAK menandai transaksi selesai: penutupnya adalah Status Sergab 'lengkap' dari
+     * Pengadaan (PengadaanController::update). Pembayaran dan Sergab berjalan paralel setelah
+     * No. SPP mengirim PO ke Keuangan, jadi keduanya tidak boleh saling menunggu.
      */
     public function updatePembayaran(DataPengadaan $dataPengadaan, string $statusBayar, ?string $tanggalBayar, ?string $noSpp): DataKeuangan
     {
@@ -35,8 +36,6 @@ class PoLifecycleService
                 abort(422, 'Data Keuangan sudah diterima dan tidak dapat diubah.');
             }
 
-            $statusSebelumnya = $dataKeuangan->status_bayar;
-
             $dataKeuangan->status_bayar = $statusBayar;
 
             // Hanya ditimpa saat benar-benar dikirim nilainya. Simpan draft yang hanya mengubah
@@ -53,23 +52,8 @@ class PoLifecycleService
             }
             $dataKeuangan->save();
 
-            if ($statusBayar === 'dibayarkan' && ($statusSebelumnya !== 'dibayarkan' || $dataKeuangan->wasChanged('review_status'))) {
-                $this->selesaikanTransaksi($dataPengadaan->id);
-            }
-
             return $dataKeuangan;
         });
-    }
-
-    /**
-     * Pembayaran penuh = akhir timeline transaksi. Seluruh transaksi anggota PO ditandai selesai;
-     * current_stage dibiarkan di 'keuangan' (tahap terakhir) dan tidak lagi dimajukan ke Operasi.
-     */
-    private function selesaikanTransaksi(int $dataPengadaanId): void
-    {
-        $transaksiIds = PoDetail::where('data_pengadaan_id', $dataPengadaanId)->pluck('transaksi_id');
-
-        Transaksi::whereIn('id_transaksi', $transaksiIds)->update(['status_keseluruhan' => 'selesai']);
     }
 
     /**

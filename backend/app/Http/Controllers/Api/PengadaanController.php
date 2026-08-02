@@ -102,19 +102,22 @@ class PengadaanController extends Controller
             'status' => ['sometimes', Rule::in(['proses', 'lengkap', 'kwitansi_belum_upload', 'foto_belum_lengkap', 'dibatalkan'])],
         ]);
 
-        if ($dataPengadaan->review_status === 'diterima') {
-            abort(422, 'Data Pengadaan sudah diterima dan tidak dapat diubah.');
+        // Status Sergab dikerjakan Pengadaan SETELAH PO dikirim ke Keuangan (No. SPP), jadi
+        // penguncian "sudah diterima" hanya berlaku untuk isi kontrak PO -- nomor, harga, dan
+        // pembatalan. Kalau `status` ikut dikunci, Keuangan yang cepat menerima PO akan membuat
+        // Pengadaan tidak pernah bisa menutup Sergab-nya.
+        $menguncikanKontrak = array_key_exists('no_po', $validated)
+            || array_key_exists('harga', $validated)
+            || ($validated['status'] ?? null) === 'dibatalkan';
+        if ($dataPengadaan->review_status === 'diterima' && $menguncikanKontrak) {
+            abort(422, 'Data Pengadaan sudah diterima Keuangan; hanya Status Sergab yang masih bisa diubah.');
         }
-
-        // Ditangkap sebelum diubah: dipakai untuk menahan demosi PO yang sudah lepas dari tangan
-        // Pengadaan (lihat cabang elseif di bawah).
-        $reviewStatusSebelum = $dataPengadaan->review_status;
 
         $before = $dataPengadaan->only(['no_po', 'harga', 'total_harga', 'status']);
         // Ditangkap lebih awal karena saat pembatalan po_detail dihapus (transaksi dilepas dari PO).
         $transaksiIds = $dataPengadaan->poDetail()->pluck('transaksi_id');
 
-        return DB::transaction(function () use ($request, $dataPengadaan, $validated, $before, $transaksiIds, $reviewStatusSebelum) {
+        return DB::transaction(function () use ($request, $dataPengadaan, $validated, $before, $transaksiIds) {
             if (array_key_exists('no_po', $validated)) {
                 $dataPengadaan->no_po = $validated['no_po'];
             }
@@ -134,32 +137,20 @@ class PengadaanController extends Controller
             }
 
             if ($dataPengadaan->status === 'lengkap' && trim((string) $dataPengadaan->no_spp) === '') {
-                abort(422, 'No. SPP wajib diisi sebelum PO dikirim ke Keuangan.');
-            }
-
-            if ($dataPengadaan->status === 'lengkap') {
-                $dataPengadaan->review_status = 'menunggu_review';
-                $dataPengadaan->catatan_penolakan = null;
-                $dataPengadaan->reviewed_by = null;
-                $dataPengadaan->reviewed_at = null;
-            } elseif ($dataPengadaan->status !== 'dibatalkan' && $reviewStatusSebelum !== 'menunggu_review') {
-                // Disimpan tapi belum lengkap = draft. PO yang sudah diterima Keuangan tidak
-                // sampai ke sini -- ditahan penjaga di awal method. PO yang sudah menunggu_review
-                // (sudah dikirim ke Keuangan, current_stage anggotanya sudah 'keuangan') sengaja
-                // TIDAK didemosikan ke draft di sini: baris di bawah yang memajukan current_stage
-                // hanya berjalan saat status 'lengkap', jadi kalau review_status ikut turun ke
-                // draft, PO tersangkut -- current_stage tetap 'keuangan' tapi tidak ada kartu
-                // review/pembayaran apa pun yang bisa menanganinya (lihat KerjaanTransaksi::ekspresi()).
-                $dataPengadaan->review_status = 'draft';
+                abort(422, 'No. SPP wajib diisi sebelum Status Sergab bisa dinyatakan lengkap.');
             }
 
             $dataPengadaan->save();
 
+            // Status Sergab 'lengkap' = langkah penutup. Pengirimannya ke Keuangan sudah terjadi
+            // saat No. SPP disimpan (simpanSpp), jadi di sini tinggal menutup transaksinya.
+            // `current_stage` dibiarkan di 'keuangan' supaya pembayaran yang belum rampung tetap
+            // punya tempat; yang menandai rampung adalah status_keseluruhan.
             if ($dataPengadaan->status === 'lengkap') {
                 Transaksi::whereIn('id_transaksi', $transaksiIds)
-                    ->update(['current_stage' => 'keuangan']);
+                    ->update(['status_keseluruhan' => 'selesai']);
 
-                $this->notifikasi->kirimKeRole(['keuangan'], $request->user(), 'dikirim', 'PO dikirim ke Keuangan', "PO {$dataPengadaan->no_po} dikirim ke Keuangan untuk direview.", $transaksiIds->first(), [
+                $this->notifikasi->kirimKeRole(['keuangan', 'pengadaan'], $request->user(), 'diterima', 'Status Sergab lengkap', "Status Sergab PO {$dataPengadaan->no_po} lengkap; transaksinya ditandai selesai.", $transaksiIds->first(), [
                     'data_pengadaan_id' => $dataPengadaan->id,
                     'no_po' => $dataPengadaan->no_po,
                 ]);
@@ -169,8 +160,11 @@ class PengadaanController extends Controller
             // Pengadaan agar bisa digabung ulang ke PO lain (Bagian 3.4). data_pengadaan transaksi
             // kembali null sehingga form gabung muncul lagi di timeline.
             if ($dataPengadaan->status === 'dibatalkan') {
+                // status_keseluruhan ikut dikembalikan: PO yang sempat 'lengkap' sudah menandai
+                // transaksinya selesai, dan tanpa reset ini transaksi kembali ke Pengadaan dalam
+                // keadaan 'selesai' -- hilang dari semua antrean sehingga tidak bisa digabung ulang.
                 Transaksi::whereIn('id_transaksi', $transaksiIds)
-                    ->update(['current_stage' => 'pengadaan']);
+                    ->update(['current_stage' => 'pengadaan', 'status_keseluruhan' => 'berjalan']);
                 $dataPengadaan->poDetail()->delete();
             }
 
@@ -263,11 +257,21 @@ class PengadaanController extends Controller
         $before = $dataPengadaan->only(['no_spp', 'review_status']);
         $transaksiIds = $dataPengadaan->poDetail()->pluck('transaksi_id');
 
-        $dataPengadaan->no_spp = $validated['no_spp'];
-        if (! in_array($dataPengadaan->review_status, ['menunggu_review', 'diterima'], true)) {
-            $dataPengadaan->review_status = 'draft';
-        }
-        $dataPengadaan->save();
+        // No. SPP ADALAH titik serah ke Keuangan: begitu tersimpan, PO langsung dikirim
+        // (review_status 'menunggu_review' + current_stage anggotanya pindah ke 'keuangan')
+        // sehingga Keuangan bisa mulai memproses pembayaran. Status Sergab TIDAK lagi jadi
+        // syarat kirim -- ia sekarang langkah penutup Pengadaan yang berjalan paralel dan
+        // menandai transaksi selesai (lihat update()).
+        DB::transaction(function () use ($dataPengadaan, $validated, $transaksiIds) {
+            $dataPengadaan->no_spp = $validated['no_spp'];
+            $dataPengadaan->review_status = 'menunggu_review';
+            $dataPengadaan->catatan_penolakan = null;
+            $dataPengadaan->reviewed_by = null;
+            $dataPengadaan->reviewed_at = null;
+            $dataPengadaan->save();
+
+            Transaksi::whereIn('id_transaksi', $transaksiIds)->update(['current_stage' => 'keuangan']);
+        });
 
         $this->auditLog->logMany($request->user(), 'simpan_spp_pengadaan', $transaksiIds, [
             'data_pengadaan_id' => $dataPengadaan->id,
@@ -275,7 +279,7 @@ class PengadaanController extends Controller
             'after' => $dataPengadaan->only(['no_spp', 'review_status']),
         ]);
 
-        $this->notifikasi->kirimKeRole(['keuangan', 'pengadaan'], $request->user(), 'dikirim', 'SPP dikirim', "No. SPP PO {$dataPengadaan->no_po} sudah diisi dan dikirim.", $transaksiIds->first(), [
+        $this->notifikasi->kirimKeRole(['keuangan', 'pengadaan'], $request->user(), 'dikirim', 'PO dikirim ke Keuangan', "No. SPP PO {$dataPengadaan->no_po} diisi; PO dikirim ke Keuangan.", $transaksiIds->first(), [
             'data_pengadaan_id' => $dataPengadaan->id,
             'no_po' => $dataPengadaan->no_po,
             'no_spp' => $dataPengadaan->no_spp,

@@ -47,6 +47,16 @@ class PoGroupingService
                     abort(422, "Data UB Jastasma transaksi {$id} belum diterima Pengadaan.");
                 }
 
+                // `current_stage` bertahan di 'pengadaan' SELAMA seluruh rangkaian PO -> IN -> SPP ->
+                // Sergab, jadi cek tahap di atas TIDAK cukup untuk mencegah satu transaksi digabung
+                // dua kali. Tanpa guard ini po_detail-nya jadi dua baris: daftar transaksi tergandakan
+                // (LEFT JOIN po_detail di KerjaanTransaksi::joinTahap) dan dua lifecycle PO saling
+                // menimpa current_stage, sehingga transaksi tersangkut di kombinasi status yang tidak
+                // cocok dengan chip tahap mana pun. ubahAnggota() sudah punya guard yang sama.
+                if (PoDetail::where('transaksi_id', $id)->exists()) {
+                    abort(422, "Transaksi {$id} sudah tergabung di PO lain.");
+                }
+
                 $makloonData = $this->resolveMakloonData($transaksi);
 
                 $key = [
@@ -280,10 +290,21 @@ class PoGroupingService
                 return $dataPengadaan->fresh('poDetail');
             }
 
-            if (! $dataPengadaan->poDetail()->whereNull('no_in')->exists() && $dataPengadaan->no_spp !== null && $dataPengadaan->status === 'lengkap') {
-                $this->resetReview($dataPengadaan);
+            $inLengkap = ! $dataPengadaan->poDetail()->whereNull('no_in')->exists();
 
-                $this->majukanTahapTransaksi($dataPengadaan->id, 'keuangan');
+            // Syarat kirim ke Keuangan = seluruh IN terisi + No. SPP ada. Status Sergab BUKAN lagi
+            // syarat kirim (lihat PengadaanController::simpanSpp): ia langkah penutup yang
+            // dikerjakan Pengadaan setelah PO berada di Keuangan, dan 'lengkap' menandai selesai.
+            if ($inLengkap && $dataPengadaan->no_spp !== null && trim((string) $dataPengadaan->no_spp) !== '') {
+                if ($dataPengadaan->review_status !== 'diterima') {
+                    $this->resetReview($dataPengadaan);
+                }
+
+                $this->majukanTahapTransaksi(
+                    $dataPengadaan->id,
+                    'keuangan',
+                    $dataPengadaan->status === 'lengkap' ? 'selesai' : null,
+                );
             } elseif (! in_array($dataPengadaan->review_status, ['diterima', 'menunggu_review'], true)) {
                 // Belum memenuhi syarat kirim = masih draft. Termasuk PO yang tadinya 'ditolak':
                 // begitu perbaikannya disimpan ia kembali jadi draft, sama seperti saveDraft()
@@ -311,11 +332,14 @@ class PoGroupingService
         $dataPengadaan->reviewed_at = null;
     }
 
-    private function majukanTahapTransaksi(int $dataPengadaanId, string $stageBerikutnya): void
+    private function majukanTahapTransaksi(int $dataPengadaanId, string $stageBerikutnya, ?string $statusKeseluruhan = null): void
     {
         $transaksiIds = PoDetail::where('data_pengadaan_id', $dataPengadaanId)->pluck('transaksi_id');
 
-        Transaksi::whereIn('id_transaksi', $transaksiIds)->update(['current_stage' => $stageBerikutnya]);
+        Transaksi::whereIn('id_transaksi', $transaksiIds)->update(array_filter([
+            'current_stage' => $stageBerikutnya,
+            'status_keseluruhan' => $statusKeseluruhan,
+        ]));
     }
 
     private function resolveMakloonData(Transaksi $transaksi): array
