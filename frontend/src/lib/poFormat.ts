@@ -14,3 +14,15 @@ export function formatMoney(value: string | number) {
 export function formatDate(value: string) {
   return new Date(value).toLocaleDateString('id-ID')
 }
+
+// Kolom decimal(x,2) di DB selalu kembali dengan dua desimal ("2.40"), padahal yang diketik
+// pengguna cuma "2,4". Dua helper di bawah membuang nol ekor itu -- yang pertama untuk NILAI
+// input (tetap pakai titik supaya <input type="number"> menerimanya), yang kedua untuk TAMPILAN.
+export function trimDesimal(value: string | number | null | undefined) {
+  const teks = value === null || value === undefined ? '' : String(value)
+  return /^-?\d+\.\d+$/.test(teks) ? teks.replace(/0+$/, '').replace(/\.$/, '') : teks
+}
+
+export function formatDesimal(value: string | number) {
+  return Number(value).toLocaleString('id-ID', { maximumFractionDigits: 2 })
+}

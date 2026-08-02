@@ -242,7 +242,7 @@ export default function GabungPoForm({
 
           <form className="grid gap-4 @md:grid-cols-2" onSubmit={(e) => { e.preventDefault(); setConfirmGabung(true) }}>
             <label className="block"><span className="label">No. PO</span><input required className="input" value={noPo} onChange={(e) => setNoPo(e.target.value)} placeholder="Contoh: PO-0001/VII/2026" /></label>
-            <label className="block"><span className="label">Harga per kg</span><AngkaInput required value={harga} onChange={setHarga} /></label>
+            <label className="block"><span className="label">Harga per kg</span><AngkaInput required prefix="Rp " value={harga} onChange={setHarga} /></label>
             <label className="block"><span className="label">Total Kuantum</span><input className="input" readOnly value={`${formatNumber(totalSelectedKuantum)} kg`} /></label>
             <label className="block"><span className="label">Total harga</span><input className="input" readOnly value={formatMoney(totalSelectedKuantum * Number(harga || 0))} /></label>
             <div className="@md:col-span-2 flex flex-wrap items-center justify-between gap-3">

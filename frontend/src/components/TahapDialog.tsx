@@ -13,11 +13,12 @@ import ModalPortal from './ModalPortal'
 const FOTO_MAKLOON_TERIMA = ['foto_surat_jalan', 'foto_nota_timbang']
 
 /**
- * Field data_makloon_mpp yang diisi/ditentukan di tahap Makloon Terima, bukan Makloon Kirim.
- * `status` dan kawan-kawannya ikut ke sini karena Terima-lah yang menutup record MPP -- itu
- * sebabnya blok Makloon Kirim menyaringnya keluar supaya tidak tampil dua kali.
+ * Field data_makloon_mpp yang diisi di tahap Makloon Terima, bukan Makloon Kirim -- itu sebabnya
+ * blok Makloon Kirim menyaringnya keluar supaya tidak tampil dua kali. Metadata alur (status,
+ * catatan penolakan, locked_at) tidak ikut: sudah disaring HIDDEN_FIELDS dan diceritakan badge
+ * tahap di sebelah labelnya.
  */
-const MILIK_MAKLOON_TERIMA = new Set(['kuantum_bongkar', 'status', 'catatan_penolakan', 'locked_at'])
+const MILIK_MAKLOON_TERIMA = new Set(['kuantum_bongkar'])
 
 /** Foto mana milik tahap mana -- backend hanya menandai role pemiliknya. */
 function fotoTahap(t: TransaksiListItem, stageId: string, dokumen: FotoTersimpan[]) {

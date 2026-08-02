@@ -11,7 +11,7 @@ import { useRekapTransaksi, type RekapTransaksi } from '../hooks/useRekapTransak
 import { useMakloonOptions } from '../hooks/useMakloonOptions'
 import api, { pesanKegagalan } from '../lib/api'
 import { bukaTabBaru } from '../lib/bukaTabBaru'
-import { formatMoney, formatNumber } from '../lib/poFormat'
+import { formatDesimal, formatMoney, formatNumber, trimDesimal } from '../lib/poFormat'
 import ModalPortal from '../components/ModalPortal'
 
 /**
@@ -35,13 +35,23 @@ function tgl(v: string | null | undefined) {
   return v ? new Date(v).toLocaleDateString('id-ID') : null
 }
 
+/**
+ * Sel kolom pecahan (jarak & mutu gabah): tampil dengan koma id-ID dan sebanyak desimal yang
+ * benar-benar diisi -- 2,4 tetap "2,4", bukan "2,40" atau "2.4". `value` kolomnya sengaja
+ * dibiarkan berupa angka mentah supaya urutan, filter, dan ekspor CSV tetap numerik.
+ */
+function selDesimal(v: string | null | undefined) {
+  return v === null || v === undefined || v === '' ? '-' : formatDesimal(v)
+}
+
 function inputDate(v: string | null | undefined) {
   if (!v) return ''
   return String(v).slice(0, 10)
 }
 
+// Nol ekor kolom decimal(x,2) dibuang: yang diisi "2,4" jangan muncul lagi sebagai "2,40".
 function field(v: string | number | null | undefined) {
-  return v === null || v === undefined ? '' : String(v)
+  return v === null || v === undefined ? '' : trimDesimal(v)
 }
 
 function nullable(v: string) {
@@ -126,7 +136,7 @@ const COLS_JP: SheetColumn<RekapTransaksi>[] = [
   { key: 'jp_kab', label: 'JP · Kabupaten', value: (r) => r.data_jemput_pangan?.kabupaten ?? null, filterable: true },
   { key: 'jp_tgl', label: 'JP · Tanggal Kirim', value: (r) => tgl(r.data_jemput_pangan?.tanggal_kirim) },
   { key: 'jp_kuantum', label: 'JP · Kuantum (kg)', value: (r) => num(r.data_jemput_pangan?.kuantum), render: (r) => r.data_jemput_pangan?.kuantum != null ? formatNumber(r.data_jemput_pangan.kuantum) : '-', align: 'right' },
-  { key: 'jp_jarak', label: 'JP · Jarak (km)', value: (r) => num(r.data_jemput_pangan?.jarak_ke_makloon_km), align: 'right' },
+  { key: 'jp_jarak', label: 'JP · Jarak (km)', value: (r) => num(r.data_jemput_pangan?.jarak_ke_makloon_km), render: (r) => selDesimal(r.data_jemput_pangan?.jarak_ke_makloon_km), align: 'right' },
 ]
 
 // TJP: makloon hanya membongkar (tanggal + kuantum bongkar). Detail pemasok/kendaraan
@@ -149,40 +159,52 @@ const COLS_MAKLOON_MPP: SheetColumn<RekapTransaksi>[] = [
   { key: 'mk_kuantum_bongkar', label: 'Makloon · Kuantum Bongkar (kg)', value: (r) => num(r.data_makloon_mpp?.kuantum_bongkar), render: (r) => r.data_makloon_mpp?.kuantum_bongkar != null ? formatNumber(r.data_makloon_mpp.kuantum_bongkar) : '-', align: 'right' },
 ]
 
-const COLS_UB: SheetColumn<RekapTransaksi>[] = [
-  { key: 'ub_ka1', label: 'UB · KA1', value: (r) => num(r.data_ub_jastasma?.ka1), align: 'right' },
-  { key: 'ub_ka2', label: 'UB · KA2', value: (r) => num(r.data_ub_jastasma?.ka2), align: 'right' },
-  { key: 'ub_ka3', label: 'UB · KA3', value: (r) => num(r.data_ub_jastasma?.ka3), align: 'right' },
-  { key: 'ub_hampa', label: 'UB · Hampa', value: (r) => num(r.data_ub_jastasma?.hampa), align: 'right' },
-  { key: 'ub_hijau', label: 'UB · Butir Hijau', value: (r) => num(r.data_ub_jastasma?.butir_hijau), align: 'right' },
-]
+const COLS_UB: SheetColumn<RekapTransaksi>[] = ([
+  ['ub_ka1', 'UB · KA1', 'ka1'],
+  ['ub_ka2', 'UB · KA2', 'ka2'],
+  ['ub_ka3', 'UB · KA3', 'ka3'],
+  ['ub_hampa', 'UB · Hampa', 'hampa'],
+  ['ub_hijau', 'UB · Butir Hijau', 'butir_hijau'],
+] as const).map(([key, label, field]) => ({
+  key,
+  label,
+  value: (r: RekapTransaksi) => num(r.data_ub_jastasma?.[field]),
+  render: (r: RekapTransaksi) => selDesimal(r.data_ub_jastasma?.[field]),
+  align: 'right' as const,
+}))
 
 /** No. IN spesifik transaksi ini di dalam PO gabungan. */
 function noIn(r: RekapTransaksi) {
   return r.data_pengadaan?.po_detail?.find((d) => d.transaksi_id === r.id_transaksi)?.no_in ?? null
 }
 
+/**
+ * Kunci penggabungan sel untuk kolom yang nilainya milik PO, bukan milik satu transaksi:
+ * No. PO, harga/kg, total kuantum, total harga, dan No. SPP. Semuanya sama persis untuk
+ * seluruh anggota satu PO, jadi mengulangnya per baris cuma bikin bingung -- hanya No. IN
+ * yang memang beda tiap transaksi.
+ *
+ * Memakai ID PO, bukan no_po/no_spp yang teks bebas: dua PO berbeda bisa saja bernomor sama
+ * (salah ketik), dan menggabungkannya jadi satu sel akan menyembunyikan justru kesalahan itu.
+ *
+ * Penggabungan hanya benar kalau baris satu PO berdampingan. Itu dijamin backend: rekap()
+ * mengurutkan skema -> kunci grup PO -> id_transaksi, dengan kunci grup = id_transaksi TERKECIL
+ * di antara anggota PO. Kalau urutan backend diubah, penggabungan di sini ikut rusak.
+ */
+function poMerge(r: RekapTransaksi) {
+  return r.data_pengadaan ? String(r.data_pengadaan.id) : null
+}
+
 const COLS_PENGADAAN: SheetColumn<RekapTransaksi>[] = [
-  {
-    key: 'po_no',
-    label: 'Pengadaan · No. PO',
-    value: (r) => r.data_pengadaan?.no_po ?? null,
-    // Satu PO menaungi beberapa transaksi; sel digabung agar hubungan itu terlihat.
-    // Penggabungan hanya benar kalau baris satu PO berdampingan. Itu dijamin backend:
-    // rekap() mengurutkan skema -> kunci grup PO -> id_transaksi, dengan kunci grup =
-    // id_transaksi TERKECIL di antara anggota PO (bukan no_po, yang teks bebas).
-    // Kalau urutan backend diubah, penggabungan di sini ikut rusak.
-    mergeKey: (r) => r.data_pengadaan?.no_po ?? null,
-    filterable: true,
-  },
+  { key: 'po_no', label: 'Pengadaan · No. PO', value: (r) => r.data_pengadaan?.no_po ?? null, mergeKey: poMerge, filterable: true },
   { key: 'po_in', label: 'Pengadaan · No. IN', value: (r) => noIn(r) },
-  { key: 'po_harga', label: 'Pengadaan · Harga/kg', value: (r) => r.data_pengadaan?.harga != null ? formatMoney(r.data_pengadaan.harga) : null, align: 'right' },
-  { key: 'po_kuantum', label: 'Pengadaan · Total Kuantum (kg)', value: (r) => num(r.data_pengadaan?.total_kuantum), render: (r) => r.data_pengadaan?.total_kuantum != null ? formatNumber(r.data_pengadaan.total_kuantum) : '-', align: 'right' },
-  { key: 'po_total', label: 'Pengadaan · Total Harga', value: (r) => r.data_pengadaan?.total_harga != null ? formatMoney(r.data_pengadaan.total_harga) : null, align: 'right' },
+  { key: 'po_harga', label: 'Pengadaan · Harga/kg', value: (r) => r.data_pengadaan?.harga != null ? formatMoney(r.data_pengadaan.harga) : null, mergeKey: poMerge, align: 'right' },
+  { key: 'po_kuantum', label: 'Pengadaan · Total Kuantum (kg)', value: (r) => num(r.data_pengadaan?.total_kuantum), render: (r) => r.data_pengadaan?.total_kuantum != null ? formatNumber(r.data_pengadaan.total_kuantum) : '-', mergeKey: poMerge, align: 'right' },
+  { key: 'po_total', label: 'Pengadaan · Total Harga', value: (r) => r.data_pengadaan?.total_harga != null ? formatMoney(r.data_pengadaan.total_harga) : null, mergeKey: poMerge, align: 'right' },
 ]
 
 const COLS_KEUANGAN: SheetColumn<RekapTransaksi>[] = [
-  { key: 'ku_spp', label: 'Keuangan · No. SPP', value: (r) => r.data_pengadaan?.no_spp ?? null },
+  { key: 'ku_spp', label: 'Keuangan · No. SPP', value: (r) => r.data_pengadaan?.no_spp ?? null, mergeKey: poMerge },
   { key: 'ku_tgl', label: 'Keuangan · Tanggal Bayar', value: (r) => tgl(r.data_pengadaan?.data_keuangan?.tanggal_bayar) },
 ]
 
@@ -758,7 +780,7 @@ function RekapEditModal({ row, form, role, makloonOptions, isSaving, onChange, o
             <EditSection title="Pengadaan & Keuangan" badge="PO, IN, dan pembayaran">
               {boleh('pengadaan') && <TextField label="No. PO" value={form.po_no} onChange={(v) => onChange('po_no', v)} />}
               {boleh('pengadaan') && <TextField label="No. IN" value={form.po_in} onChange={(v) => onChange('po_in', v)} />}
-              {boleh('pengadaan') && <AngkaField label="Harga/kg" value={form.po_harga} onChange={(v) => onChange('po_harga', v)} />}
+              {boleh('pengadaan') && <AngkaField label="Harga/kg" prefix="Rp " value={form.po_harga} onChange={(v) => onChange('po_harga', v)} />}
               {boleh('keuangan') && <TextField label="No. SPP" value={form.po_spp} onChange={(v) => onChange('po_spp', v)} />}
               {boleh('keuangan') && <TextField type="date" label="Tanggal Bayar" value={form.po_tanggal_bayar} onChange={(v) => onChange('po_tanggal_bayar', v)} />}
             </EditSection>
@@ -899,11 +921,11 @@ function SelectField({ label, children }: { label: string; children: ReactNode }
 }
 
 // Field angka dengan pemisah ribuan langsung saat mengetik (kuantum & harga).
-function AngkaField({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
+function AngkaField({ label, value, onChange, prefix }: { label: string; value: string; onChange: (value: string) => void; prefix?: string }) {
   return (
     <label className="block">
       <span className="label">{label}</span>
-      <AngkaInput value={value} onChange={onChange} />
+      <AngkaInput value={value} onChange={onChange} prefix={prefix} />
     </label>
   )
 }

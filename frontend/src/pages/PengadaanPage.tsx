@@ -35,6 +35,10 @@ function masihDiPengadaan(po: PoItem) {
 
 export default function PengadaanPage() {
   const [active, setActive] = useState<StepId>('po')
+  // PO yang sedang dibuka ulang untuk memperbaiki nomor IN. Nomor IN-nya sudah lengkap, jadi
+  // tanpa pengecualian ini PO tersebut tetap dihitung sebagai antrean SPP -- pengguna diminta
+  // membetulkan IN tapi PO-nya tidak terlihat di filter "Isi IN" tempat pekerjaan itu berada.
+  const [perbaikiInPoId, setPerbaikiInPoId] = useState<number | null>(null)
   const { data: transaksiResult, isLoading: loadingTransaksi, isError: transaksiError, error: transaksiLoadError } = useTransaksiList(1, 100, true)
   const { data: poResult, isLoading: loadingPo, isError: poError, error: poLoadError } = usePoList(1, 100)
 
@@ -48,11 +52,11 @@ export default function PengadaanPage() {
     const poPengadaan = poList.filter(masihDiPengadaan)
     const ditolak = (po: PoItem) => po.review_status === 'ditolak'
     return {
-      in: poPengadaan.filter((po) => !semuaInTerisi(po)),
-      spp: poPengadaan.filter((po) => semuaInTerisi(po) && (!po.no_spp || ditolak(po))),
+      in: poPengadaan.filter((po) => !semuaInTerisi(po) || po.id === perbaikiInPoId),
+      spp: poPengadaan.filter((po) => semuaInTerisi(po) && po.id !== perbaikiInPoId && (!po.no_spp || ditolak(po))),
       status: poPengadaan.filter((po) => semuaInTerisi(po) && !!po.no_spp && !ditolak(po)),
     }
-  }, [poList])
+  }, [poList, perbaikiInPoId])
 
   const counts: Record<StepId, number> = {
     po: kandidatPo.length,
@@ -98,8 +102,11 @@ export default function PengadaanPage() {
             </>
           )}
 
-          {active === 'in' && <PoList loading={loadingPo} error={poError ? poLoadError : null} empty="Tidak ada PO yang menunggu nomor IN." rows={antrean.in} render={(po) => <PoInForm key={po.id} po={po} />} />}
-          {active === 'spp' && <PoList loading={loadingPo} error={poError ? poLoadError : null} empty="Tidak ada PO yang menunggu No. SPP." rows={antrean.spp} render={(po) => <PoSppForm key={po.id} po={po} />} />}
+          {/* Simpan IN pada PO yang sedang diperbaiki memulangkan pengguna ke langkah SPP --
+              di situlah PO itu memang menunggu, dan itu satu-satunya jalan kembali (tidak ada
+              tombol "kembali ke No. SPP" terpisah). */}
+          {active === 'in' && <PoList loading={loadingPo} error={poError ? poLoadError : null} empty="Tidak ada PO yang menunggu nomor IN." rows={antrean.in} render={(po) => <PoInForm key={po.id} po={po} onChanged={po.id === perbaikiInPoId ? () => { setPerbaikiInPoId(null); setActive('spp') } : undefined} />} />}
+          {active === 'spp' && <PoList loading={loadingPo} error={poError ? poLoadError : null} empty="Tidak ada PO yang menunggu No. SPP." rows={antrean.spp} render={(po) => <PoSppForm key={po.id} po={po} onPerbaikiIn={() => { setPerbaikiInPoId(po.id); setActive('in') }} />} />}
           {active === 'status' && <PoList loading={loadingPo} error={poError ? poLoadError : null} empty="Tidak ada PO yang menunggu Status Sergab." rows={antrean.status} render={(po) => <PoStatusSergabForm key={po.id} po={po} />} />}
 
         </section>

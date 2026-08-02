@@ -79,7 +79,11 @@ export default function PoInForm({ po, onChanged }: { po: PoItem; onChanged?: ()
               <tr key={d.id}>
                 <td className="font-semibold text-primary-dark">{d.transaksi_id}</td>
                 <td className="text-right">{formatNumber(d.kuantum_kontribusi)} kg</td>
-                <td><input className="input" placeholder="Masukkan nomor IN" disabled={!!po.no_spp} value={values[d.id] ?? d.no_in ?? ''} onChange={(e) => setValues((prev) => ({ ...prev, [d.id]: e.target.value }))} /></td>
+                {/* IN terkunci setelah No. SPP tersimpan -- KECUALI bila Keuangan menolak PO-nya:
+                    di situlah "Perbaiki nomor IN" dipakai, dan mengunci input membuat tombol itu
+                    membuka form yang tidak bisa diapa-apakan. Backend memang mengizinkannya
+                    (PoGroupingService::isiNomorIn hanya menolak PO batal/lengkap). */}
+                <td><input className="input" placeholder="Masukkan nomor IN" disabled={!!po.no_spp && po.review_status !== 'ditolak'} value={values[d.id] ?? d.no_in ?? ''} onChange={(e) => setValues((prev) => ({ ...prev, [d.id]: e.target.value }))} /></td>
               </tr>
             ))}
           </tbody>

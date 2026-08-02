@@ -24,6 +24,10 @@ class DataJemputPanganResource extends JsonResource
             'kecamatan' => $this->kecamatan,
             'kabupaten' => $this->kabupaten,
             'makloon_user_id' => $this->makloon_user_id,
+            // Nama makloon tujuan ikut dikirim supaya timeline & pop-up tahap bisa menyebut
+            // "PT Jaya Manunggal", bukan angka id user yang tidak berarti apa-apa bagi pembaca.
+            // Relasi `makloon` selalu ikut di-eager-load (index/rekap/show), jadi bukan N+1.
+            'nama_makloon_tujuan' => $this->makloon?->nama_maklon,
             'tanggal_kirim' => $this->tanggal_kirim,
             'kuantum' => $this->when($bolehLihatKuantum, $this->kuantum),
             'jarak_ke_makloon_km' => $this->jarak_ke_makloon_km,

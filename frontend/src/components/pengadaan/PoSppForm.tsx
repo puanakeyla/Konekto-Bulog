@@ -17,7 +17,7 @@ import PoTransaksiRows from './PoTransaksiRows'
  * dibutuhkan hanya mengirim ulang -- bukan mengetik ulang seluruh IN. Kalau ternyata IN-nya yang
  * salah, tombol "Perbaiki nomor IN" membuka kembali langkah IN di tempat.
  */
-export default function PoSppForm({ po, onChanged }: { po: PoItem; onChanged?: () => void }) {
+export default function PoSppForm({ po, onChanged, onPerbaikiIn }: { po: PoItem; onChanged?: () => void; onPerbaikiIn?: () => void }) {
   const queryClient = useQueryClient()
   const [noSpp, setNoSpp] = useState(po.no_spp ?? '')
   const [confirmKirim, setConfirmKirim] = useState(false)
@@ -47,15 +47,10 @@ export default function PoSppForm({ po, onChanged }: { po: PoItem; onChanged?: (
 
   // Langkah IN dibuka kembali di tempat, bukan lewat navigasi: PoInForm sudah menangani simpan,
   // batal, dan penguncian IN-nya sendiri, jadi tidak ada yang perlu digandakan di sini.
+  // TIDAK ada tombol "kembali ke No. SPP" terpisah: menyimpan IN sudah berarti selesai
+  // memperbaiki, jadi tombol Simpan IN itu sendiri yang memulangkan tampilan ke langkah SPP.
   if (perbaikiIn) {
-    return (
-      <div>
-        <button type="button" onClick={() => setPerbaikiIn(false)} className="btn btn-ghost mb-3 border border-border bg-white">
-          &larr; Kembali ke No. SPP
-        </button>
-        <PoInForm po={po} onChanged={onChanged} />
-      </div>
-    )
+    return <PoInForm po={po} onChanged={() => { setPerbaikiIn(false); onChanged?.() }} />
   }
 
   return (
@@ -82,7 +77,10 @@ export default function PoSppForm({ po, onChanged }: { po: PoItem; onChanged?: (
         <input required className="input" value={noSpp} onChange={(e) => setNoSpp(e.target.value)} placeholder="Nomor SPP" />
       </label>
       <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4">
-        <button type="button" onClick={() => setPerbaikiIn(true)} className="btn btn-ghost border border-border bg-white">
+        {/* Di halaman Pengadaan, memperbaiki IN memindahkan PO ini ke filter "Isi IN" (induk
+            yang mengaturnya lewat onPerbaikiIn) supaya posisi PO cocok dengan langkah yang
+            sedang dikerjakan. Di timeline transaksi tidak ada filter, jadi jatuh ke mode lokal. */}
+        <button type="button" onClick={() => (onPerbaikiIn ? onPerbaikiIn() : setPerbaikiIn(true))} className="btn btn-ghost border border-border bg-white">
           Perbaiki nomor IN
         </button>
         <button type="submit" disabled={!noSpp.trim() || mutation.isPending} className="btn btn-primary">

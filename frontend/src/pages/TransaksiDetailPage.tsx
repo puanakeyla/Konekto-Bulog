@@ -8,6 +8,7 @@ import { apiErrorMessage } from '../lib/apiError'
 import { useAuth } from '../hooks/useAuth'
 import { uploadSemuaFoto } from '../lib/uploadFoto'
 import { HIDDEN_FIELDS, formatValue, labelOf } from '../lib/stageField'
+import { trimDesimal } from '../lib/poFormat'
 import AngkaInput from '../components/AngkaInput'
 import FotoPicker from '../components/FotoPicker'
 import FormHero from '../components/FormHero'
@@ -78,6 +79,7 @@ type TransaksiDetail = {
   status_keseluruhan: string
   created_by: number
   created_at: string
+  nama_maklon: string | null
   data_jemput_pangan: StageData | null
   data_makloon_mpp: StageData | null
   data_makloon_tjp: StageData | null
@@ -226,6 +228,19 @@ function actorRoleFor(stageId: string) {
   return STAGE_ACTOR_ROLES[stageId] ?? stageId
 }
 
+/**
+ * Nama pelaku tahap. Untuk Makloon/Makloon Kirim/Makloon Terima, kata "Makloon" saja tidak
+ * memberi tahu apa-apa -- ada banyak mitra makloon. Nama mitranya ikut disebut supaya jelas
+ * makloon MANA yang menerima (pembuat transaksi pada MPP, makloon tujuan pada TJP).
+ *
+ * Awalan "Makloon" dilewati kalau nama mitranya sudah memuatnya sendiri -- banyak yang memang
+ * bernama "Makloon Sejahtera", dan menempelkannya buta menghasilkan "Makloon Makloon Sejahtera".
+ */
+function ownerLabel(owner: string, namaMaklon: string | null) {
+  if (owner !== 'Makloon' || !namaMaklon) return owner
+  return /^makloon\b/i.test(namaMaklon.trim()) ? namaMaklon.trim() : `Makloon ${namaMaklon.trim()}`
+}
+
 function pendingReviewFor(activeStages: StageConfig[], currentIndex: number, transaksi: TransaksiDetail) {
   if (currentIndex <= 0) return null
 
@@ -252,9 +267,11 @@ function pendingReviewFor(activeStages: StageConfig[], currentIndex: number, tra
   return null
 }
 
+// Nol ekor kolom decimal(x,2) dibuang sebelum masuk input: jarak yang diisi 2,49 dikembalikan
+// DB sebagai "2.49" (aman), tapi 2,4 jadi "2.40" dan tampil di form seolah pengguna mengetik itu.
 function textField(data: StageData | null | undefined, key: string) {
   const value = data?.[key]
-  return value === null || value === undefined ? '' : String(value)
+  return value === null || value === undefined ? '' : trimDesimal(value as string | number)
 }
 
 function dateField(data: StageData | null | undefined, key: string) {
@@ -603,15 +620,19 @@ export default function TransaksiDetailPage() {
   const showIsiIn = poFillingIn && isPengadaanRole
   const showIsiSpp = poFillingSpp && isPengadaanRole
   const showStatusSergab = poFillingStatus && isPengadaanRole
-  const pengadaanCurrent = showCombine || poTerbuka
-  const pengadaanComplete = !!po && po.status === 'lengkap'
   // Keuangan: review data Pengadaan lalu pembayaran.
   const showKeuanganReview = poWaitingReview && isKeuanganRole
   const showBayar = poAccepted && !poPaid && isKeuanganRole
-  // Selama PO masih menunggu review, pekerjaan Keuangan (pembayaran) BELUM dimulai dan kartu
-  // Terima/Tolak-nya ada di blok Pengadaan -- menandai blok ini "giliran Anda" cuma memunculkan
-  // kartu kosong tanpa aksi apa pun.
-  const keuanganCurrent = transaksi.current_stage === 'keuangan' && poAccepted && !poPaid
+  // "Sedang berjalan / Giliran Anda" berarti ADA yang harus DIKERJAKAN PEMBACA di blok itu,
+  // bukan sekadar "PO belum tutup buku". Dulu blok Pengadaan digantungkan ke `poTerbuka`, jadi
+  // begitu Keuangan menekan Terima & Lanjutkan blok itu tetap menyala "Giliran Anda" — padahal
+  // sisa pekerjaannya (Status Sergab) milik Pengadaan, dan bagi Keuangan kartunya kosong tanpa
+  // aksi apa pun. Sama untuk Keuangan: selama PO masih direview, aksinya ada di blok Pengadaan.
+  const pengadaanCurrent = showCombine || showIsiIn || showIsiSpp || showStatusSergab || showKeuanganReview
+  const keuanganCurrent = showBayar
+  // Selesai dari sudut pandang pembaca: Pengadaan tutup buku di status 'lengkap', tapi begitu
+  // Keuangan menerima datanya blok itu sudah tidak punya apa-apa lagi untuk role non-Pengadaan.
+  const pengadaanComplete = !!po && (po.status === 'lengkap' || (poAccepted && !isPengadaanRole))
   const keuanganComplete = poPaid
 
   const jemputPanganError = (simpanJemputPangan.error as { response?: { data?: { message?: string } } } | null)?.response?.data?.message
@@ -741,7 +762,7 @@ export default function TransaksiDetailPage() {
                     <div className="flex items-start justify-between gap-3">
                       <div>
                         <h2 className="section-title">{stage.label}{isCurrent && !isPendingReview && !showJemputPanganForm && !showMakloonForm && !showUbForm && !showPoPanel ? ' - sedang berjalan' : ''}</h2>
-                        <p className="mt-1 text-xs text-gray-500">{isComplete ? `Diterima oleh ${stage.owner}${data?.locked_at ? ' - ' + formatDateTime(String(data.locked_at)) : ''}` : isPendingReview ? `Menunggu dicek oleh ${STAGES.find((s) => s.id === transaksi.current_stage)?.owner ?? transaksi.current_stage}` : showJemputPanganForm || showMakloonForm || showUbForm ? 'Giliran Anda mengisi data tahap ini' : showPoPanel ? 'Giliran Anda melanjutkan proses tahap ini' : canReviewThis ? 'Giliran Anda mengecek data tahap sebelumnya' : blockedByPendingPrevious ? 'Terima atau tolak tahap sebelumnya dahulu.' : isFuture ? 'Menunggu tahap sebelumnya' : stage.helper}</p>
+                        <p className="mt-1 text-xs text-gray-500">{isComplete ? `Diterima oleh ${ownerLabel(stage.owner, transaksi.nama_maklon)}${data?.locked_at ? ' - ' + formatDateTime(String(data.locked_at)) : ''}` : isPendingReview ? `Menunggu dicek oleh ${ownerLabel(STAGES.find((s) => s.id === transaksi.current_stage)?.owner ?? transaksi.current_stage, transaksi.nama_maklon)}` : showJemputPanganForm || showMakloonForm || showUbForm ? 'Giliran Anda mengisi data tahap ini' : showPoPanel ? 'Giliran Anda melanjutkan proses tahap ini' : canReviewThis ? 'Giliran Anda mengecek data tahap sebelumnya' : blockedByPendingPrevious ? 'Terima atau tolak tahap sebelumnya dahulu.' : isFuture ? 'Menunggu tahap sebelumnya' : stage.helper}</p>
                       </div>
                       {isCurrent && (
                         isPendingReview

@@ -18,6 +18,7 @@ export default function AngkaInput({
   required,
   disabled,
   readOnly,
+  prefix = '',
 }: {
   value: string | number | null | undefined
   onChange: (raw: string) => void
@@ -26,7 +27,10 @@ export default function AngkaInput({
   required?: boolean
   disabled?: boolean
   readOnly?: boolean
+  /** Awalan tampilan, mis. "Rp " untuk field harga. Ikut terhapus saat parsing (bukan digit). */
+  prefix?: string
 }) {
+  const tampil = formatRibuan(value)
   return (
     <input
       type="text"
@@ -36,7 +40,7 @@ export default function AngkaInput({
       required={required}
       disabled={disabled}
       readOnly={readOnly}
-      value={formatRibuan(value)}
+      value={tampil === '' ? '' : prefix + tampil}
       // Hanya digit yang dipertahankan; pemisah ribuan diabaikan saat parsing.
       onChange={(e) => onChange(e.target.value.replace(/\D/g, ''))}
     />
