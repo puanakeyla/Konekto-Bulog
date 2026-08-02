@@ -37,6 +37,8 @@ class TransaksiController extends Controller
         $validated = $request->validate([
             'skema' => ['sometimes', Rule::in(['TJP', 'MPP'])],
             'kerjaan' => ['sometimes', Rule::in(KerjaanTransaksi::SEMUA)],
+            'pengadaan_tahap' => ['sometimes', Rule::in(['perlu_dicek', 'po_in', 'spp', 'sergab', 'perlu_diperbaiki'])],
+            'q' => ['sometimes', 'string', 'max:100'],
         ]);
 
         // Urut tanggal lalu ID pemasok (ascending) -- keduanya beda tabel per skema, jadi
@@ -58,6 +60,7 @@ class TransaksiController extends Controller
             // apa-apa. Tiga query tambahan per halaman (bukan N+1), halaman dibatasi 20 baris.
             ->with([
                 'dataJemputPangan.makloon', 'dataMakloonMpp', 'dataMakloonTjp', 'dataUbJastasma', 'creator',
+                'poDetail.dataPengadaan.poDetail',
                 'poDetail.dataPengadaan.dataKeuangan',
             ])
             ->orderByRaw('COALESCE(data_makloon_mpp.tanggal_bongkar, data_makloon_tjp.tanggal_bongkar, data_jemput_pangan.tanggal_kirim, DATE(transaksi.created_at))')
@@ -81,6 +84,14 @@ class TransaksiController extends Controller
             KerjaanTransaksi::filter($query, $validated['kerjaan']);
         }
 
+        if (($request->user()->role->nama_role ?? null) === 'pengadaan' && isset($validated['pengadaan_tahap'])) {
+            $this->filterTahapPengadaan($query, $validated['pengadaan_tahap']);
+        }
+
+        if (isset($validated['q']) && trim($validated['q']) !== '') {
+            $this->filterPencarian($query, trim($validated['q']));
+        }
+
         // Khusus daftar "siap PO" di Pengadaan: hanya transaksi yang UB Jastasma-nya
         // sudah diterima (menunggu_review = belum ditinjau Pengadaan, jangan dimunculkan).
         if ($request->boolean('siap_po')) {
@@ -90,6 +101,60 @@ class TransaksiController extends Controller
         $transaksi = $query->paginate($request->integer('per_page', 20));
 
         return TransaksiResource::collection($transaksi);
+    }
+
+    private function filterTahapPengadaan(Builder $query, string $tahap): void
+    {
+        match ($tahap) {
+            'perlu_dicek' => KerjaanTransaksi::filter($query, 'periksa'),
+            'perlu_diperbaiki' => KerjaanTransaksi::filter($query, 'ditolak'),
+            'po_in' => $query->where(function (Builder $q) {
+                $q->whereNull('kj_pd.id')
+                    ->orWhereExists(function ($sub) {
+                        $sub->selectRaw('1')
+                            ->from('po_detail as pod_in')
+                            ->whereColumn('pod_in.data_pengadaan_id', 'kj_pd.id')
+                            ->whereNull('pod_in.no_in');
+                    });
+            }),
+            'spp' => $query->whereNotNull('kj_pd.id')
+                ->where('kj_pd.review_status', 'draft')
+                ->whereNull('kj_pd.no_spp')
+                ->whereNotExists(function ($sub) {
+                    $sub->selectRaw('1')
+                        ->from('po_detail as pod_in')
+                        ->whereColumn('pod_in.data_pengadaan_id', 'kj_pd.id')
+                        ->whereNull('pod_in.no_in');
+                }),
+            'sergab' => $query->whereNotNull('kj_pd.id')
+                ->where('kj_pd.review_status', 'draft')
+                ->whereNotNull('kj_pd.no_spp')
+                ->where('kj_pd.status', '!=', 'lengkap'),
+        };
+    }
+
+    private function filterPencarian(Builder $query, string $keyword): void
+    {
+        $like = '%'.str_replace(['%', '_'], ['\\%', '\\_'], $keyword).'%';
+
+        $query->where(function (Builder $q) use ($like) {
+            $q->where('transaksi.id_transaksi', 'like', $like)
+                ->orWhere('transaksi.skema', 'like', $like)
+                ->orWhere('data_makloon_mpp.id_pemasok', 'like', $like)
+                ->orWhere('data_jemput_pangan.id_pemasok', 'like', $like)
+                ->orWhereHas('creator', fn (Builder $user) => $user
+                    ->where('nama_maklon', 'like', $like)
+                    ->orWhere('username', 'like', $like))
+                ->orWhereHas('dataJemputPangan.makloon', fn (Builder $user) => $user
+                    ->where('nama_maklon', 'like', $like)
+                    ->orWhere('username', 'like', $like))
+                ->orWhereHas('poDetail.dataPengadaan', fn (Builder $po) => $po
+                    ->where('no_po', 'like', $like)
+                    ->orWhere('no_spp', 'like', $like)
+                    ->orWhere('id_pemasok', 'like', $like))
+                ->orWhereHas('poDetail', fn (Builder $detail) => $detail
+                    ->where('no_in', 'like', $like));
+        });
     }
 
     /**
