@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import api from '../../lib/api'
 import { apiErrorMessage } from '../../lib/apiError'
@@ -45,13 +46,16 @@ export default function GabungPoForm({
   preselectId,
   onChanged,
   onSelectionChange,
+  kembaliKeDashboard = true,
 }: {
   transaksiList: TransaksiListItem[]
   preselectId?: string
   onChanged?: () => void
   onSelectionChange?: (count: number, totalKuantum: number) => void
+  kembaliKeDashboard?: boolean
 }) {
   const queryClient = useQueryClient()
+  const navigate = useNavigate()
   const [selected, setSelected] = useState<Set<string>>(() => new Set(preselectId ? [preselectId] : []))
   const [noPo, setNoPo] = useState('')
   const [harga, setHarga] = useState('6500')
@@ -119,14 +123,18 @@ export default function GabungPoForm({
         harga: harga ? Number(harga) : undefined,
       }),
     onSuccess: () => {
-      toast.success(`PO ${noPo} dibuat dari ${selected.size} transaksi. Silakan lanjut isi No. IN.`)
+      toast.success(kembaliKeDashboard
+        ? `PO ${noPo} dibuat dari ${selected.size} transaksi. Cek dashboard untuk langkah berikutnya.`
+        : `PO ${noPo} dibuat dari ${selected.size} transaksi. Lanjut isi nomor IN.`)
       setConfirmGabung(false)
       setSelected(new Set(preselectId ? [preselectId] : []))
       setNoPo('')
       setHarga('6500')
       queryClient.invalidateQueries({ queryKey: ['transaksi-list'] })
       queryClient.invalidateQueries({ queryKey: ['po-list'] })
+      queryClient.invalidateQueries({ queryKey: ['dashboard-ringkasan'] })
       onChanged?.()
+      if (kembaliKeDashboard) navigate('/dashboard')
     },
     onError: (err) => toast.error(apiErrorMessage(err, 'Gagal menggabungkan PO.')),
   })
@@ -252,7 +260,9 @@ export default function GabungPoForm({
           <ConfirmDialog
             open={confirmGabung}
             title="Gabungkan menjadi PO?"
-            description={<>PO <strong>{noPo}</strong> akan dibuat dari <strong>{selected.size} transaksi</strong> terpilih. Setelah itu pekerjaan lanjut ke halaman No. IN. Lanjutkan?</>}
+            description={kembaliKeDashboard
+              ? <>PO <strong>{noPo}</strong> akan dibuat dari <strong>{selected.size} transaksi</strong> terpilih. Setelah tersimpan, Anda akan kembali ke dashboard untuk melihat langkah berikutnya. Lanjutkan?</>
+              : <>PO <strong>{noPo}</strong> akan dibuat dari <strong>{selected.size} transaksi</strong> terpilih. Setelah tersimpan, form nomor IN langsung ditampilkan karena PO dan IN satu rangkaian kerja. Lanjutkan?</>}
             confirmLabel="Buat PO"
             loading={gabungMutation.isPending}
             error={errorMessage}

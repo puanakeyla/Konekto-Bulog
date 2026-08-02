@@ -15,7 +15,7 @@ type StepId = 'po' | 'in' | 'spp' | 'status'
 const stepLabels: Record<StepId, string> = {
   po: 'Buat PO',
   in: 'Isi IN',
-  spp: 'Isi SPP',
+  spp: 'Kirim ke SPP',
   status: 'Status Sergab',
 }
 
@@ -51,15 +51,13 @@ export default function PengadaanPage() {
     status: antrean.status.length,
   }
 
-  const pindahSetelahPo = () => setActive('in')
-  const pindahSetelahIn = () => setActive('spp')
-  const pindahSetelahSpp = () => setActive('status')
+  const tampilkanInSetelahPo = () => setActive('in')
 
   return (
     <div className="min-h-screen bg-surface">
       <FormHero
         title="Pengadaan"
-        subtitle="Kerjakan PO, nomor IN, No. SPP, dan Status Sergab pada halaman terpisah agar tiap petugas bisa melanjutkan dari draft terakhir."
+        subtitle="Pantau posisi PO, lengkapi nomor IN, lalu kirim ke SPP hanya saat data sudah benar. Data yang belum dikirim masih bisa diedit."
         badge="Role Pengadaan"
       />
 
@@ -86,12 +84,12 @@ export default function PengadaanPage() {
             <>
               {loadingTransaksi && <SkeletonPoCards />}
               {transaksiError && <LoadError error={transaksiLoadError} fallback="Gagal memuat transaksi siap PO." />}
-              {!loadingTransaksi && !transaksiError && <GabungPoForm transaksiList={kandidatPo} onChanged={pindahSetelahPo} />}
+              {!loadingTransaksi && !transaksiError && <GabungPoForm transaksiList={kandidatPo} onChanged={tampilkanInSetelahPo} kembaliKeDashboard={false} />}
             </>
           )}
 
-          {active === 'in' && <PoList loading={loadingPo} error={poError ? poLoadError : null} empty="Tidak ada PO yang menunggu nomor IN." rows={antrean.in} render={(po) => <PoInForm key={po.id} po={po} onChanged={pindahSetelahIn} />} />}
-          {active === 'spp' && <PoList loading={loadingPo} error={poError ? poLoadError : null} empty="Tidak ada PO yang menunggu No. SPP." rows={antrean.spp} render={(po) => <PoSppForm key={po.id} po={po} onChanged={pindahSetelahSpp} />} />}
+          {active === 'in' && <PoList loading={loadingPo} error={poError ? poLoadError : null} empty="Tidak ada PO yang menunggu nomor IN." rows={antrean.in} render={(po) => <PoInForm key={po.id} po={po} />} />}
+          {active === 'spp' && <PoList loading={loadingPo} error={poError ? poLoadError : null} empty="Tidak ada PO yang menunggu No. SPP." rows={antrean.spp} render={(po) => <PoSppForm key={po.id} po={po} />} />}
           {active === 'status' && <PoList loading={loadingPo} error={poError ? poLoadError : null} empty="Tidak ada PO yang menunggu Status Sergab." rows={antrean.status} render={(po) => <PoStatusSergabForm key={po.id} po={po} transaksiId={po.po_detail[0]?.transaksi_id} skema={po.po_detail[0]?.skema ?? undefined} />} />}
         </section>
       </div>
@@ -100,10 +98,10 @@ export default function PengadaanPage() {
 }
 
 function copyFor(step: StepId) {
-  if (step === 'po') return 'Gabungkan transaksi menjadi PO. Setelah PO dibuat, pekerjaan lanjut ke halaman Isi IN.'
-  if (step === 'in') return 'Isi nomor IN per transaksi. Draft tetap berada di dashboard sampai seluruh nomor IN terisi.'
-  if (step === 'spp') return 'Isi No. SPP setelah semua IN lengkap. Draft lanjut ke halaman Status Sergab.'
-  return 'Pilih Status Sergab. Status Lengkap akan mengirim PO ke Keuangan.'
+  if (step === 'po') return 'Gabungkan transaksi menjadi PO. Setelah PO dibuat, form IN langsung tampil karena PO dan IN satu rangkaian kerja.'
+  if (step === 'in') return 'Isi seluruh nomor IN. Setelah disimpan, IN langsung dikunci dan status berubah ke Menunggu SPP.'
+  if (step === 'spp') return 'Masukkan No. SPP berdasarkan IN yang sudah dikunci.'
+  return 'Pilih Status Sergab. Status Lengkap mengirim data ke Keuangan; Dibatalkan mengembalikan transaksi ke Pengadaan.'
 }
 
 function PoList({ loading, error, empty, rows, render }: { loading: boolean; error: unknown | null; empty: string; rows: PoItem[]; render: (po: PoItem) => ReactNode }) {
