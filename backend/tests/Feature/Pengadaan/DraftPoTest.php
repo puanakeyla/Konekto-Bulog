@@ -214,32 +214,35 @@ class DraftPoTest extends TestCase
     }
 
     /**
-     * Simpan draft yang hanya mengubah No. SPP mengirim tanggal_bayar = null. Menulisnya apa
-     * adanya akan menghapus tanggal yang sudah tersimpan tanpa diminta.
+     * Simpan draft mengirim tanggal_bayar = null. Menulisnya apa adanya akan menghapus tanggal
+     * yang sudah tersimpan tanpa diminta.
      */
     public function test_simpan_draft_tanpa_tanggal_tidak_menghapus_tanggal_tersimpan(): void
     {
         [$po] = $this->buatPoDikirimKeKeuangan(1);
         $this->reviewService->terima($po->fresh(), $this->keuangan);
+        $noSppDariPengadaan = $po->fresh()->no_spp;
 
-        $this->lifecycleService->updatePembayaran($po->fresh(), 'belum', '2026-07-20', 'SPP-A');
+        $this->lifecycleService->updatePembayaran($po->fresh(), 'belum', '2026-07-20');
 
-        $keuangan = $this->lifecycleService->updatePembayaran($po->fresh(), 'belum', null, 'SPP-B');
+        $keuangan = $this->lifecycleService->updatePembayaran($po->fresh(), 'belum', null);
 
         $this->assertSame('2026-07-20', $keuangan->tanggal_bayar->format('Y-m-d'));
-        $this->assertSame('SPP-B', $po->fresh()->no_spp);
+        // No. SPP milik Pengadaan; jalur pembayaran tidak boleh menyentuhnya.
+        $this->assertSame($noSppDariPengadaan, $po->fresh()->no_spp);
     }
 
     public function test_simpan_pembayaran_belum_bayar_jadi_draft_dan_transaksi_belum_selesai(): void
     {
         [$po, $transaksiIds] = $this->buatPoDikirimKeKeuangan(1);
         $this->reviewService->terima($po->fresh(), $this->keuangan);
+        $noSppDariPengadaan = $po->fresh()->no_spp;
 
-        $keuangan = $this->lifecycleService->updatePembayaran($po->fresh(), 'belum', null, 'SPP-DRAFT');
+        $keuangan = $this->lifecycleService->updatePembayaran($po->fresh(), 'belum', null);
 
         $this->assertSame('draft', $keuangan->review_status);
         $this->assertSame('berjalan', Transaksi::find($transaksiIds[0])->status_keseluruhan);
-        $this->assertSame('SPP-DRAFT', $po->fresh()->no_spp);
+        $this->assertSame($noSppDariPengadaan, $po->fresh()->no_spp);
     }
 
     /**
@@ -251,7 +254,7 @@ class DraftPoTest extends TestCase
         [$po, $transaksiIds] = $this->buatPoDikirimKeKeuangan(1);
         $this->reviewService->terima($po->fresh(), $this->keuangan);
 
-        $keuangan = $this->lifecycleService->updatePembayaran($po->fresh(), 'dibayarkan', '2026-07-20', 'SPP-LUNAS');
+        $keuangan = $this->lifecycleService->updatePembayaran($po->fresh(), 'dibayarkan', '2026-07-20');
 
         $this->assertSame('diterima', $keuangan->review_status);
         $this->assertSame('berjalan', Transaksi::find($transaksiIds[0])->status_keseluruhan);
@@ -262,13 +265,13 @@ class DraftPoTest extends TestCase
         [$po, $transaksiIds] = $this->buatPoDikirimKeKeuangan(1);
         $this->reviewService->terima($po->fresh(), $this->keuangan);
 
-        $draft = $this->lifecycleService->updatePembayaran($po->fresh(), 'belum', null, 'SPP-X');
+        $draft = $this->lifecycleService->updatePembayaran($po->fresh(), 'belum', null);
 
         // Buktikan transisi melewati state draft yang sesungguhnya, bukan cuma titik akhirnya --
         // kalau resetReview() di-revert ke 'menunggu_review', assertion ini akan gagal duluan.
         $this->assertSame('draft', $draft->review_status);
 
-        $keuangan = $this->lifecycleService->updatePembayaran($po->fresh(), 'dibayarkan', '2026-07-21', 'SPP-X');
+        $keuangan = $this->lifecycleService->updatePembayaran($po->fresh(), 'dibayarkan', '2026-07-21');
 
         $this->assertSame('diterima', $keuangan->review_status);
         $this->assertSame('berjalan', Transaksi::find($transaksiIds[0])->status_keseluruhan);

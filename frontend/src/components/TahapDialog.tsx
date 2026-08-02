@@ -166,7 +166,17 @@ export default function TahapDialog({ transaksi, onClose }: { transaksi: Transak
         </ol>
 
         <div className="mt-5 flex justify-end">
-          <Link to={`/transaksi/${encodeURIComponent(transaksi.id_transaksi)}`} className="btn btn-ghost border border-border">Buka halaman transaksi</Link>
+          {/* onClose WAJIB: berpindah dari /transaksi/A ke /transaksi/B memakai komponen route
+              yang sama, jadi dialog ini tidak ikut ter-unmount. Tanpa menutupnya, halaman tujuan
+              memang sudah termuat tapi tertutup penuh oleh dialog -- terlihat seperti tombolnya
+              tidak mengarah ke mana pun. */}
+          <Link
+            to={`/transaksi/${encodeURIComponent(transaksi.id_transaksi)}`}
+            onClick={onClose}
+            className="btn btn-ghost border border-border"
+          >
+            Buka halaman transaksi
+          </Link>
         </div>
       </div>
     </div>

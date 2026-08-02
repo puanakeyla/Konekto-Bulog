@@ -103,10 +103,16 @@ class Transaksi extends Model
      * (DashboardController::ringkasan). Kalau keduanya menyalin filter masing-masing, angka
      * ringkasan bisa menyimpang dari isi tabel tanpa ada yang menyadarinya.
      *
-     * Pengadaan adalah SATU-SATUNYA role yang antreannya tidak habis di `current_stage` miliknya:
-     * No. SPP mengirim PO ke Keuangan, tapi Status Sergab-nya masih pekerjaan Pengadaan dan
-     * berjalan paralel dengan pembayaran. Tanpa cabang kedua di bawah, seluruh chip Sergab
-     * kosong permanen karena transaksinya sudah pindah ke tahap 'keuangan'.
+     * Dua role punya penyesuaian karena Pengadaan & Keuangan kini bekerja PARALEL pada satu PO
+     * (No. SPP mengirim PO ke Keuangan, Status Sergab menutup transaksinya):
+     *
+     * - Pengadaan DITAMBAH transaksi yang tahapnya sudah 'keuangan' tapi Sergab-nya belum ditutup.
+     *   Tanpa itu seluruh chip Sergab kosong permanen.
+     * - Keuangan DIKURANGI transaksi yang pembayarannya sudah lunas. Tahapnya berhenti di
+     *   'keuangan' dan transaksinya baru berstatus 'selesai' setelah Pengadaan menutup Sergab,
+     *   jadi tanpa pengurangan ini PO yang sudah dibayar menggantung di antrean Keuangan --
+     *   dan karena tidak ada cabang yang cocok di KerjaanTransaksi::ekspresi(), ia jatuh ke
+     *   ELSE dan salah berlabel "Perlu diisi".
      */
     public function scopeAntreanRole(Builder $query, string $role): Builder
     {
@@ -128,7 +134,10 @@ class Transaksi extends Model
                         ->whereNotNull('no_spp')
                         ->whereNotIn('status', ['lengkap', 'dibatalkan']));
                 }
-            });
+            })
+            ->when($role === 'keuangan', fn (Builder $q) => $q
+                ->whereDoesntHave('poDetail.dataPengadaan.dataKeuangan', fn (Builder $keu) => $keu
+                    ->where('review_status', 'diterima')));
     }
 
     /**

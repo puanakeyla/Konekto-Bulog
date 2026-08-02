@@ -16,20 +16,14 @@ class PoLifecycleService
      * Pengadaan (PengadaanController::update). Pembayaran dan Sergab berjalan paralel setelah
      * No. SPP mengirim PO ke Keuangan, jadi keduanya tidak boleh saling menunggu.
      */
-    public function updatePembayaran(DataPengadaan $dataPengadaan, string $statusBayar, ?string $tanggalBayar, ?string $noSpp): DataKeuangan
+    public function updatePembayaran(DataPengadaan $dataPengadaan, string $statusBayar, ?string $tanggalBayar): DataKeuangan
     {
-        return DB::transaction(function () use ($dataPengadaan, $statusBayar, $tanggalBayar, $noSpp) {
+        return DB::transaction(function () use ($dataPengadaan, $statusBayar, $tanggalBayar) {
             $dataPengadaan = DataPengadaan::whereKey($dataPengadaan->id)->lockForUpdate()->firstOrFail();
 
             if ($dataPengadaan->review_status !== 'diterima') {
                 abort(422, 'Data Pengadaan belum diterima Keuangan.');
             }
-
-            if ($noSpp !== null) {
-                $dataPengadaan->no_spp = $noSpp;
-            }
-
-            $dataPengadaan->save();
 
             $dataKeuangan = DataKeuangan::firstOrNew(['data_pengadaan_id' => $dataPengadaan->id]);
             if ($dataKeuangan->exists && $dataKeuangan->review_status === 'diterima') {

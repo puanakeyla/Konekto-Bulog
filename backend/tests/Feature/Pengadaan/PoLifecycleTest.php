@@ -63,18 +63,20 @@ class PoLifecycleTest extends TestCase
 
         $this->expectException(HttpException::class);
 
-        $this->lifecycleService->updatePembayaran($po, 'dibayarkan', '2026-07-12', 'SPP-001');
+        $this->lifecycleService->updatePembayaran($po, 'dibayarkan', '2026-07-12');
     }
 
-    public function test_pembayaran_sukses_set_no_spp_dan_mengunci_baris_keuangan(): void
+    public function test_pembayaran_sukses_mengunci_baris_keuangan_tanpa_menyentuh_no_spp(): void
     {
         [$po, $transaksiIds] = $this->buatPoDikirimKeKeuangan(2);
+        $noSppDariPengadaan = $po->fresh()->no_spp;
 
-        $dataKeuangan = $this->bayarPo($po, '2026-07-12', 'SPP-001');
+        $dataKeuangan = $this->bayarPo($po, '2026-07-12');
 
         $this->assertSame('dibayarkan', $dataKeuangan->status_bayar);
         $this->assertSame('2026-07-12', $dataKeuangan->tanggal_bayar->format('Y-m-d'));
-        $this->assertSame('SPP-001', $po->fresh()->no_spp);
+        // No. SPP milik Pengadaan; pembayaran tidak boleh menimpanya.
+        $this->assertSame($noSppDariPengadaan, $po->fresh()->no_spp);
 
         // Keuangan tahap terakhir, jadi current_stage berhenti di sini. Tapi pelunasan TIDAK
         // menutup transaksi -- penutupnya Status Sergab 'lengkap' dari Pengadaan.
@@ -89,13 +91,13 @@ class PoLifecycleTest extends TestCase
     {
         [$po] = $this->buatPoDikirimKeKeuangan(1);
 
-        $this->bayarPo($po, '2026-07-12', 'SPP-002');
+        $this->bayarPo($po, '2026-07-12');
 
         // Data Keuangan yang sudah 'diterima' tidak bisa dibayar ulang: guard di
         // updatePembayaran menolaknya (tidak ada efek samping ganda seperti dobel-advance
         // stage di skema lama).
         $this->expectException(HttpException::class);
-        $this->lifecycleService->updatePembayaran($po->fresh(), 'dibayarkan', '2026-07-12', null);
+        $this->lifecycleService->updatePembayaran($po->fresh(), 'dibayarkan', '2026-07-12');
     }
 
     public function test_patch_pembayaran_via_http_ditolak_untuk_role_selain_keuangan(): void
@@ -116,17 +118,44 @@ class PoLifecycleTest extends TestCase
     {
         [$po] = $this->buatPoDikirimKeKeuangan(1);
         $this->reviewService->terima($po->fresh(), $this->keuangan);
+        $noSppDariPengadaan = $po->fresh()->no_spp;
 
         Sanctum::actingAs($this->keuangan);
 
         $response = $this->patchJson("/api/po/{$po->id}/pembayaran", [
             'status_bayar' => 'dibayarkan',
             'tanggal_bayar' => '2026-07-12',
-            'no_spp' => 'SPP-HTTP-001',
+            // Dikirim sengaja: endpoint ini tidak lagi menerima no_spp, jadi harus diabaikan.
+            // Mengunci input di UI saja tidak menutup jalan ini.
+            'no_spp' => 'SPP-DARI-KEUANGAN',
         ]);
 
         $response->assertOk();
         $response->assertJsonPath('data.status_bayar', 'dibayarkan');
+        $this->assertSame($noSppDariPengadaan, $po->fresh()->no_spp);
+    }
+
+    /**
+     * Pembayaran lunas = pekerjaan Keuangan habis. Transaksinya baru berstatus 'selesai' setelah
+     * Pengadaan menutup Sergab, jadi tanpa pengurangan khusus di scopeAntreanRole() PO yang sudah
+     * dibayar menggantung di antrean Keuangan dan salah berlabel "Perlu diisi" (tidak ada cabang
+     * yang cocok di KerjaanTransaksi::ekspresi(), sehingga jatuh ke ELSE).
+     */
+    public function test_po_yang_sudah_lunas_keluar_dari_antrean_keuangan(): void
+    {
+        [$poLunas, $transaksiLunasIds] = $this->buatPoDikirimKeKeuangan(1);
+        [, $transaksiBelumIds] = $this->buatPoDikirimKeKeuangan(1);
+
+        $this->bayarPo($poLunas, '2026-07-12');
+
+        // Belum ditutup Pengadaan, jadi transaksinya memang masih berjalan.
+        $this->assertSame('berjalan', Transaksi::find($transaksiLunasIds[0])->status_keseluruhan);
+
+        Sanctum::actingAs($this->keuangan);
+        $ids = collect($this->getJson('/api/transaksi')->assertOk()->json('data'))->pluck('id_transaksi')->all();
+
+        $this->assertNotContains($transaksiLunasIds[0], $ids);
+        $this->assertContains($transaksiBelumIds[0], $ids);
     }
 
     public function test_transaksi_selesai_tidak_muncul_di_daftar_tindakan_keuangan(): void
@@ -182,13 +211,13 @@ class PoLifecycleTest extends TestCase
         ]);
     }
 
-    private function bayarPo(DataPengadaan $po, string $tanggalBayar, string $noSpp)
+    private function bayarPo(DataPengadaan $po, string $tanggalBayar)
     {
         if ($po->fresh()->review_status !== 'diterima') {
             $this->reviewService->terima($po->fresh(), $this->keuangan);
         }
 
-        return $this->lifecycleService->updatePembayaran($po->fresh(), 'dibayarkan', $tanggalBayar, $noSpp);
+        return $this->lifecycleService->updatePembayaran($po->fresh(), 'dibayarkan', $tanggalBayar);
     }
 
     private function transaksiSampaiPengadaan(string $idPemasok, string $tanggalBongkar, float $kuantum): Transaksi

@@ -99,7 +99,7 @@ class KerjaanKategoriTest extends TestCase
     {
         $po = $this->buatPoDikirimKeKeuangan();
         $this->reviewService->terima($po->fresh(), $this->keuangan);
-        $this->lifecycleService->updatePembayaran($po->fresh(), 'belum', null, 'SPP-DRAFT');
+        $this->lifecycleService->updatePembayaran($po->fresh(), 'belum', null);
 
         $this->assertKerjaan($this->keuangan, 'draft');
     }

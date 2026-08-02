@@ -12,7 +12,6 @@ import {
   labelTahap,
   rejectedStages,
   type KerjaanId,
-  type RejectInfo,
 } from '../lib/kerjaanTransaksi'
 import { namaTampilan } from '../lib/namaUser'
 import { SkeletonMakloonGroups, SkeletonTable } from '../components/Skeleton'
@@ -134,11 +133,6 @@ function KerjaanChip({ label, jumlah, aktif, onClick }: { label: string; jumlah:
       <span className={`rounded-full px-1.5 py-0.5 text-[0.65rem] ${aktif ? 'bg-white/20' : 'bg-surface'}`}>{jumlah}</span>
     </button>
   )
-}
-
-function RejectedBadge({ items }: { items: RejectInfo[] }) {
-  if (items.length === 0) return null
-  return <span className="inline-flex items-center gap-1 rounded-md bg-danger-bg px-2 py-1 text-[0.68rem] font-bold text-danger">Ditolak: {items.map((item) => labelTahap(item.stage)).join(', ')}</span>
 }
 
 /**
@@ -340,15 +334,14 @@ export default function DashboardPage() {
     [transaksi],
   )
 
-  // Panel "Transaksi ditolak" hanya memuat contoh 5 teratas, jadi cukup dari halaman yang
-  // terbuka; jumlah sebenarnya diambil dari ringkasan server.
-  // Disaring dari kategori yang dikirim server, bukan dihitung ulang dengan rejectedStages():
-  // sumbernya jadi sama dengan chip & badge, jadi angka dan isi panel tidak bisa berbeda.
-  // rejectedStages() tetap dipakai di bawah untuk MENAMPILKAN tahap penolak & catatannya.
-  const rejectedTransaksi = useMemo(
-    () => transaksi.filter((item) => item.kerjaan === 'ditolak'),
-    [transaksi],
-  )
+  // Panel "Transaksi ditolak" tidak memuat daftarnya sendiri -- ia hanya memindahkan filter tabel
+  // ke kategori ditolak. Nama chipnya beda antara Pengadaan (langkah kerja) dan role lain
+  // (kategori kerjaan), tapi keduanya menyaring himpunan yang sama.
+  const bukaDaftarDitolak = () => {
+    if (role === 'pengadaan') setPengadaanFilter('perlu_diperbaiki')
+    else setKerjaanFilter('ditolak')
+    setPage(1)
+  }
 
   // Pengadaan & Keuangan dulu punya kategori buntu "po" sendiri karena data PO tidak ikut
   // endpoint daftar. Sekarang server mengklasifikasi keduanya dari kondisi PO-nya (kj_pd/kj_keu)
@@ -430,33 +423,24 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {rejectedTransaksi.length > 0 && (
+      {/* Satu pintu masuk saja, bukan daftar transaksi kedua. Daftarnya sudah ada di tabel bawah
+          lewat chip "Perlu diperbaiki"; menyalinnya ke sini membuat dua daftar yang bisa berbeda
+          isinya (panel ini hanya melihat halaman yang kebetulan terbuka, chipnya seluruh antrean).
+          Angkanya diambil dari ringkasan server supaya benar untuk seluruh antrean. */}
+      {hitungKerjaan.ditolak > 0 && (
         <div className="mx-auto max-w-6xl px-6 pt-6">
           <section className="panel overflow-hidden border-danger/25">
-            <div className="flex flex-col gap-2 border-b border-danger/15 bg-danger-bg px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex flex-col gap-3 bg-danger-bg px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <h2 className="section-title text-danger">Transaksi ditolak</h2>
-                <p className="page-subtitle">Periksa bagian yang ditandai lalu buka detail transaksi untuk tindak lanjut.</p>
+                <p className="page-subtitle">Perbaiki bagian yang ditandai lalu kirim ulang.</p>
               </div>
-              <span className="badge badge-danger">{rejectedTransaksi.length} transaksi</span>
-            </div>
-            <div className="divide-y divide-border bg-white">
-              {rejectedTransaksi.slice(0, 5).map((item) => {
-                const rejected = rejectedStages(item)
-                return (
-                  <div key={item.id_transaksi} className="flex flex-col gap-2 px-5 py-3 sm:flex-row sm:items-center sm:justify-between">
-                    <div>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="font-bold text-primary-dark">{item.id_transaksi}</span>
-                        <SkemaBadge skema={item.skema} />
-                        <RejectedBadge items={rejected} />
-                      </div>
-                      {rejected[0]?.catatan && <p className="mt-1 text-xs text-danger">{rejected[0].catatan}</p>}
-                    </div>
-                    <Link to={`/transaksi/${encodeURIComponent(item.id_transaksi)}`} className="text-sm font-bold text-primary hover:underline">Lihat detail</Link>
-                  </div>
-                )
-              })}
+              <div className="flex shrink-0 items-center gap-3">
+                <span className="badge badge-danger">{hitungKerjaan.ditolak} transaksi</span>
+                <button type="button" onClick={bukaDaftarDitolak} className="btn btn-primary px-4 py-1.5 text-xs">
+                  Lihat detail
+                </button>
+              </div>
             </div>
           </section>
         </div>

@@ -15,23 +15,23 @@ import PoTransaksiRows from './PoTransaksiRows'
 export default function PembayaranForm({ po, onChanged }: { po: PoItem; onChanged?: () => void }) {
   const queryClient = useQueryClient()
   const [tanggalBayar, setTanggalBayar] = useState('')
-  const [noSpp, setNoSpp] = useState(po.no_spp ?? '')
   const [confirmBayar, setConfirmBayar] = useState(false)
 
   useEffect(() => {
-    setNoSpp(po.no_spp ?? '')
     // Hidrasi dari data tersimpan (draft) supaya "Simpan" dengan tanggal kosong tidak menimpa
     // tanggal_bayar yang sudah ada -- lihat PoLifecycleService::updatePembayaran() yang menulis
     // tanggal_bayar tanpa syarat dari payload ini.
     setTanggalBayar(po.data_keuangan?.tanggal_bayar?.slice(0, 10) ?? '')
-  }, [po.no_spp, po.data_keuangan?.tanggal_bayar])
+  }, [po.data_keuangan?.tanggal_bayar])
 
   const mutation = useMutation({
+    // No. SPP TIDAK ikut dikirim: nomornya milik Pengadaan (dialah yang mengirim PO ke sini
+    // dengan mengisinya), jadi di Keuangan sifatnya baca saja. Mengirimnya balik dari sini
+    // membuka jalan Keuangan menimpa nomor milik tahap sebelumnya.
     mutationFn: (aksi: 'simpan' | 'bayar') => api.patch(`/api/po/${po.id}/pembayaran`, {
       status_bayar: aksi === 'bayar' ? 'dibayarkan' : 'belum',
       // Backend hanya mewajibkan tanggal saat dibayarkan, jadi draft boleh mengirim null.
       tanggal_bayar: tanggalBayar || null,
-      no_spp: noSpp.trim(),
     }),
     onSuccess: (_data, aksi) => {
       setConfirmBayar(false)
@@ -55,21 +55,21 @@ export default function PembayaranForm({ po, onChanged }: { po: PoItem; onChange
       {errorMessage && <div className="alert-danger mb-3">{errorMessage}</div>}
       <PoTransaksiRows po={po} />
       <div className="grid gap-4 @md:grid-cols-2">
-        <label className="block"><span className="label">No. SPP (berlaku untuk seluruh PO)</span><input required className="input" value={noSpp} onChange={(e) => setNoSpp(e.target.value)} placeholder="Nomor SPP" /></label>
+        <label className="block"><span className="label">No. SPP (dari Pengadaan)</span><input readOnly className="input bg-surface text-slate-600" value={po.no_spp ?? '-'} /></label>
         <label className="block"><span className="label">Tanggal Bayar (wajib untuk menandai dibayarkan)</span><input required type="date" className="input" value={tanggalBayar} onChange={(e) => setTanggalBayar(e.target.value)} /></label>
       </div>
-      {/* Simpan menahan No. SPP & tanggal tanpa melunasi. "Tandai Dibayarkan" mengunci baris
-          Keuangan dan tidak bisa dibatalkan, tapi TIDAK menutup transaksinya. */}
+      {/* Simpan menahan tanggal tanpa melunasi. "Tandai Dibayarkan" mengunci baris Keuangan dan
+          tidak bisa dibatalkan, tapi TIDAK menutup transaksinya. */}
       <div className="mt-4 flex justify-end gap-2">
         <button
           type="button"
           onClick={() => mutation.mutate('simpan')}
-          disabled={!noSpp.trim() || mutation.isPending}
+          disabled={mutation.isPending}
           className="btn btn-ghost border border-border bg-white"
         >
           {mutation.isPending ? 'Menyimpan...' : 'Simpan'}
         </button>
-        <button type="submit" disabled={!tanggalBayar || !noSpp.trim() || mutation.isPending} className="btn btn-primary">
+        <button type="submit" disabled={!tanggalBayar || mutation.isPending} className="btn btn-primary">
           {mutation.isPending ? 'Menyimpan...' : 'Tandai Dibayarkan'}
         </button>
       </div>

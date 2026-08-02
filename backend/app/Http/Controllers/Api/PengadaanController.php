@@ -342,24 +342,25 @@ class PengadaanController extends Controller
 
     public function pembayaran(Request $request, DataPengadaan $dataPengadaan)
     {
+        // No. SPP sengaja TIDAK diterima di sini. Nomornya milik Pengadaan -- mengisinya adalah
+        // aksi yang mengirim PO ke Keuangan (simpanSpp) -- jadi bagi Keuangan sifatnya baca saja.
+        // Selama masih boleh dikirim dari endpoint ini, Keuangan bisa menimpa nomor milik tahap
+        // sebelumnya, dan mengunci input di UI saja tidak menutup jalannya.
         $validated = $request->validate([
             'status_bayar' => ['required', Rule::in(['belum', 'dibayarkan'])],
             'tanggal_bayar' => ['required_if:status_bayar,dibayarkan', 'nullable', 'date'],
-            'no_spp' => ['nullable', 'string', 'max:255', Rule::unique('data_pengadaan', 'no_spp')->ignore($dataPengadaan->id)],
         ]);
 
         $dataKeuangan = $this->lifecycleService->updatePembayaran(
             $dataPengadaan,
             $validated['status_bayar'],
             $validated['tanggal_bayar'] ?? null,
-            $validated['no_spp'] ?? null,
         );
 
         $this->auditLog->logMany($request->user(), 'update_pembayaran', $dataPengadaan->poDetail()->pluck('transaksi_id'), [
             'data_pengadaan_id' => $dataPengadaan->id,
             'status_bayar' => $dataKeuangan->status_bayar,
             'tanggal_bayar' => $dataKeuangan->tanggal_bayar,
-            'no_spp' => $dataPengadaan->fresh()->no_spp,
         ]);
 
         $this->notifikasi->kirimKeRole(['pengadaan', 'keuangan'], $request->user(), $dataKeuangan->status_bayar === 'dibayarkan' ? 'diterima' : 'dikirim', 'Pembayaran PO diperbarui', "Pembayaran PO {$dataPengadaan->no_po} diperbarui: {$dataKeuangan->status_bayar}.", $dataPengadaan->poDetail()->value('transaksi_id'), [
