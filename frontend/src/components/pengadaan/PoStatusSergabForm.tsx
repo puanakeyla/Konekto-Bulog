@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import api from '../../lib/api'
 import { apiErrorMessage } from '../../lib/apiError'
@@ -10,11 +11,13 @@ import { usePoFoto } from '../../hooks/usePoFoto'
 import type { PoItem } from '../../hooks/usePoList'
 import ConfirmDialog from '../ConfirmDialog'
 import FotoPicker from '../FotoPicker'
+import PoProgressInfo from './PoProgressInfo'
 
 const statusOptions: { value: PoItem['status']; label: string }[] = [
   { value: 'lengkap', label: 'Lengkap' },
   { value: 'kwitansi_belum_upload', label: 'Kwitansi belum upload' },
   { value: 'foto_belum_lengkap', label: 'Foto belum lengkap' },
+  { value: 'dibatalkan', label: 'Dibatalkan' },
 ]
 
 const FOTO_SERGAB_FIELDS = [
@@ -46,6 +49,7 @@ export default function PoStatusSergabForm({
   onChanged?: () => void
 }) {
   const queryClient = useQueryClient()
+  const navigate = useNavigate()
   const [statusPo, setStatusPo] = useState<PoItem['status']>(po.status === 'proses' ? 'lengkap' : po.status)
   const [fotos, setFotos] = useState<Record<string, File | null>>({})
   const [progress, setProgress] = useState<Record<string, number>>({})
@@ -76,6 +80,10 @@ export default function PoStatusSergabForm({
 
   const mutation = useMutation({
     mutationFn: async () => {
+      if (statusPo === 'dibatalkan') {
+        return api.patch(`/api/po/${po.id}`, { status: statusPo })
+      }
+
       setFotoGagal([])
       const hasil = await uploadSemuaPoFoto(po.id, fotos, (jenisFoto, percent) => {
         setProgress((prev) => ({ ...prev, [jenisFoto]: percent }))
@@ -96,8 +104,14 @@ export default function PoStatusSergabForm({
       queryClient.invalidateQueries({ queryKey: ['po-list'] })
       queryClient.invalidateQueries({ queryKey: ['transaksi-list'] })
       queryClient.invalidateQueries({ queryKey: ['antrean-transaksi'] })
+      queryClient.invalidateQueries({ queryKey: ['dashboard-ringkasan'] })
       onChanged?.()
-      toast.success(statusPo === 'lengkap' ? `Data Pengadaan PO ${po.no_po} disimpan dan dikirim ke Keuangan.` : `Data Pengadaan PO ${po.no_po} tersimpan sebagai draft.`)
+      toast.success(statusPo === 'dibatalkan'
+        ? `PO ${po.no_po} dibatalkan dan transaksi kembali ke Pengadaan.`
+        : statusPo === 'lengkap'
+        ? `Data Pengadaan PO ${po.no_po} tersimpan dan siap diteruskan ke Keuangan.`
+        : `Data Pengadaan PO ${po.no_po} tersimpan. Kembali ke dashboard untuk cek status berikutnya.`)
+      navigate('/dashboard')
     },
     onError: (err) => toast.error(apiErrorMessage(err, 'Gagal menyimpan data Pengadaan.')),
   })
@@ -108,8 +122,16 @@ export default function PoStatusSergabForm({
     <form className="po-card @container" onSubmit={(e) => { e.preventDefault(); setConfirmSimpan(true) }}>
       <div className="po-card-header">
         <div><div className="po-title">{po.no_po}</div><div className="po-meta">Pemasok {po.id_pemasok} - {formatNumber(po.total_kuantum)} kg - {formatMoney(po.total_harga)}</div></div>
-        <span className="badge badge-warning">No. SPP {po.no_spp}</span>
+        <span className={`badge ${statusPo === 'dibatalkan' ? 'badge-danger' : 'badge-warning'}`}>{statusPo === 'dibatalkan' ? 'Dibatalkan' : 'Belum dikirim'}</span>
       </div>
+      <PoProgressInfo
+        posisi="Pengadaan"
+        status={statusPo === 'lengkap' ? 'Siap diteruskan' : statusPo === 'dibatalkan' ? 'Dibatalkan' : 'Belum dikirim'}
+        berikutnya={statusPo === 'lengkap' ? 'Keuangan' : statusPo === 'dibatalkan' ? 'Kembali ke Pengadaan' : 'Lengkapi bukti foto'}
+        keterangan={statusPo === 'dibatalkan'
+          ? 'PO dibatalkan. Transaksi kembali ke Pengadaan dan bisa digabung ulang bila perlu.'
+          : 'Status Sergab dipakai untuk menandai apakah data Pengadaan sudah siap diteruskan ke tahap berikutnya.'}
+      />
       {errorMessage && <div className="alert-danger mb-3">{errorMessage}</div>}
 
       <div className="mb-5 border-b border-border pb-5">
@@ -137,17 +159,19 @@ export default function PoStatusSergabForm({
       </label>
       <div className="mt-4 flex justify-end border-t border-border pt-4">
         <button type="submit" disabled={mutation.isPending} className="btn btn-primary">
-          {mutation.isPending ? 'Menyimpan...' : 'Simpan Data Pengadaan'}
+          {mutation.isPending ? 'Menyimpan...' : statusPo === 'dibatalkan' ? 'Batalkan PO' : 'Simpan Status Sergab'}
         </button>
       </div>
 
       <ConfirmDialog
         open={confirmSimpan}
-        title="Simpan data Pengadaan?"
-        description={statusPo === 'lengkap'
-          ? <>Foto yang diganti akan disimpan, lalu PO <strong>{po.no_po}</strong> dikirim ke tahap <strong>Keuangan</strong>.</>
-          : <>Foto yang diganti dan Status Sergab PO <strong>{po.no_po}</strong> akan tersimpan sebagai draft.</>}
-        confirmLabel="Simpan Data Pengadaan"
+        title={statusPo === 'dibatalkan' ? 'Batalkan PO ini?' : 'Simpan Status Sergab?'}
+        description={statusPo === 'dibatalkan'
+          ? <>PO <strong>{po.no_po}</strong> akan dibatalkan dan transaksi dikembalikan ke tahap <strong>Pengadaan</strong>. Lanjutkan?</>
+          : statusPo === 'lengkap'
+          ? <>Foto yang diganti akan disimpan, lalu PO <strong>{po.no_po}</strong> siap diteruskan ke tahap <strong>Keuangan</strong>.</>
+          : <>Foto yang diganti dan Status Sergab PO <strong>{po.no_po}</strong> akan tersimpan. Transaksi tetap berada di tahap <strong>Pengadaan</strong>.</>}
+        confirmLabel={statusPo === 'dibatalkan' ? 'Batalkan PO' : 'Simpan Status Sergab'}
         loading={mutation.isPending}
         error={errorMessage}
         onCancel={() => setConfirmSimpan(false)}
