@@ -16,7 +16,6 @@ export function buildActions(role: string): NavAction[] {
 
   if (role === 'jemput_pangan') actions.push({ to: '/transaksi/baru', label: 'Buat Transaksi' })
   if (role === 'makloon') actions.push({ to: '/transaksi/baru-mpp', label: 'Buat MPP' })
-  if (role === 'pengadaan') actions.push({ to: '/pengadaan', label: 'Pengadaan PO' })
 
   if (['jemput_pangan', 'makloon', 'ub_jastasma', 'pengadaan', 'keuangan'].includes(role)) {
     actions.push({ to: '/rekap', label: 'Rekap Data' })
