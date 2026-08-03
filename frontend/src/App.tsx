@@ -15,6 +15,11 @@ import AdminUsersPage from './pages/AdminUsersPage'
 import MonitoringPage from './pages/MonitoringPage'
 import RekapTransaksiPage from './pages/RekapTransaksiPage'
 import AdminAuditLogPage from './pages/AdminAuditLogPage'
+import AdminGudangPage from './pages/AdminGudangPage'
+import PengolahanListPage from './pages/PengolahanListPage'
+import PengolahanDetailPage from './pages/PengolahanDetailPage'
+import MoPage from './pages/MoPage'
+import RekapPengolahanPage from './pages/RekapPengolahanPage'
 
 const queryClient = new QueryClient()
 
@@ -53,9 +58,15 @@ function AppRoutes() {
         <Route path="/pengadaan" element={<PengadaanPage />} />
         <Route path="/keuangan" element={<KeuanganPage />} />
         <Route path="/admin/users" element={<AdminUsersPage />} />
+        <Route path="/admin/gudang" element={<AdminGudangPage />} />
         <Route path="/admin/audit-logs" element={<AdminAuditLogPage />} />
         <Route path="/monitoring" element={<MonitoringPage />} />
         <Route path="/rekap" element={<RekapTransaksiPage />} />
+        {/* Rantai pengolahan (GDG/UBJ), terpisah dari timeline transaksi TJP/MPP. */}
+        <Route path="/pengolahan" element={<PengolahanListPage />} />
+        <Route path="/pengolahan/:id" element={<PengolahanDetailPage />} />
+        <Route path="/mo" element={<MoPage />} />
+        <Route path="/rekap-pengolahan" element={<RekapPengolahanPage />} />
       </Route>
     </Routes>
   )

@@ -27,6 +27,16 @@ function waktu(value: string) {
   return new Intl.DateTimeFormat('id-ID', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }).format(new Date(value))
 }
 
+/**
+ * Kolom notifikasi.transaksi_id dipakai bersama dua rantai (SerGab & Pengolahan) karena tidak
+ * punya FK. Id keduanya berformat mirip, jadi tanpa penanda `data.modul` notifikasi pengolahan
+ * akan menautkan ke halaman transaksi yang tidak pernah ada.
+ */
+function tautanNotifikasi(item: NotifikasiItem) {
+  const id = encodeURIComponent(item.transaksi_id ?? '')
+  return item.data?.modul === 'pengolahan' ? `/pengolahan/${id}` : `/transaksi/${id}`
+}
+
 export default function NotificationBell({ enabled = true }: { enabled?: boolean }) {
   const rootRef = useRef<HTMLDivElement>(null)
   const [open, setOpen] = useState(false)
@@ -91,8 +101,8 @@ export default function NotificationBell({ enabled = true }: { enabled?: boolean
                 <div className="text-sm font-bold text-primary-dark">{item.judul}</div>
                 <p className="mt-1 text-xs leading-5 text-slate-500">{item.pesan}</p>
                 {item.transaksi_id && (
-                  <Link to={`/transaksi/${encodeURIComponent(item.transaksi_id)}`} onClick={() => readThenClose(item)} className="mt-2 inline-flex text-xs font-bold text-primary hover:underline">
-                    Buka transaksi
+                  <Link to={tautanNotifikasi(item)} onClick={() => readThenClose(item)} className="mt-2 inline-flex text-xs font-bold text-primary hover:underline">
+                    {item.data?.modul === 'pengolahan' ? 'Buka pengolahan' : 'Buka transaksi'}
                   </Link>
                 )}
               </div>

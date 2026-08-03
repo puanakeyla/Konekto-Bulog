@@ -13,7 +13,6 @@ export type AdminUser = {
   role_id: number
   role: Role
   nama_maklon: string | null
-  nama_gudang: string | null
   kecamatan: string | null
   kabupaten: string | null
   is_active: boolean
