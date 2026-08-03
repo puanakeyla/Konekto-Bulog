@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 import { useAntreanTransaksi, type TransaksiListItem } from '../hooks/useTransaksiList'
-import { useRingkasanDashboard, usePantauan, type PantauanBaris, type PengadaanTahapId } from '../hooks/useDashboard'
+import { useRingkasanDashboard, type PengadaanTahapId } from '../hooks/useDashboard'
 import { kunciTransaksi, tanggalTransaksi } from '../lib/transaksiKunci'
 import {
   KERJAAN_KETERANGAN,
@@ -15,7 +15,6 @@ import {
 } from '../lib/kerjaanTransaksi'
 import { namaTampilan } from '../lib/namaUser'
 import { SkeletonMakloonGroups, SkeletonTable } from '../components/Skeleton'
-import DataSpreadsheet, { type SheetColumn } from '../components/DataSpreadsheet'
 
 type SkemaFilter = 'semua' | 'TJP' | 'MPP'
 type PengadaanTahapFilter = 'semua' | PengadaanTahapId
@@ -177,119 +176,6 @@ function pengadaanProgress(t: TransaksiListItem) {
   return { posisi: 'Selesai', status: 'Selesai', berikutnya: '-', cls: 'badge-success' }
 }
 
-function num(value: string | number | null | undefined) {
-  if (value === null || value === undefined || value === '') return 0
-  return Number(value) || 0
-}
-
-function fmt(value: number) {
-  return new Intl.NumberFormat('id-ID', { maximumFractionDigits: 0 }).format(value)
-}
-
-function pct(value: number) {
-  return `${new Intl.NumberFormat('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value)}%`
-}
-
-type PantauanRow = {
-  nama: string
-  gabahDiterima: number
-  gabahAdministrasi: number
-  belumDiadministrasi: number
-  gabahSudahDiolah: number
-  stokGudangAdmAda: number
-  hgl: number
-  broken: number
-  menir: number
-  katul: number
-  rataRendemen: number
-  realisasiPenerimaanHgb: number
-  hglBelumAdministrasi: number
-  persenDiolah: number
-}
-
-type OperasiTotals = {
-  gabahDiolah: number
-  hgl: number
-  broken: number
-  menir: number
-  katul: number
-  rendemenPersen: number
-  realisasiPenerimaanHgb: number
-}
-
-// Kolom "Hasil Olah" & "Realisasi HGB" pada Pantauan Admin dulunya diisi dari modul
-// Operasi/Gudang lama. Modul itu diganti alur Pengolahan (pengolahan/mo); rewiring tabel
-// pantauan ke sumber baru belum tercakup rencana ini, jadi sementara diisi nol.
-// TODO(pengolahan): hitung hasil olah & realisasi dari data mo/pengolahan.
-const HASIL_OLAH_KOSONG: OperasiTotals = {
-  gabahDiolah: 0,
-  hgl: 0,
-  broken: 0,
-  menir: 0,
-  katul: 0,
-  rendemenPersen: 0,
-  realisasiPenerimaanHgb: 0,
-}
-
-/**
- * Penjumlahan per makloon TIDAK lagi dilakukan di sini -- server yang mengirimkannya sudah
- * teragregasi (GET /api/dashboard/pantauan). Menjumlahkannya di browser berarti hanya baris
- * yang kebetulan ter-fetch yang terhitung, dan di atas satu halaman angkanya salah tanpa
- * tanda apa pun. Fungsi ini kini hanya menurunkan kolom-kolom lanjutan dari dua angka dasar.
- */
-function pantauanRows(rows: PantauanBaris[], hasilOperasi: OperasiTotals): PantauanRow[] {
-  const items: PantauanRow[] = rows.map((row) => ({
-    nama: row.nama,
-    gabahDiterima: num(row.gabah_diterima),
-    gabahAdministrasi: num(row.gabah_administrasi),
-    belumDiadministrasi: 0,
-    gabahSudahDiolah: 0,
-    stokGudangAdmAda: 0,
-    hgl: 0,
-    broken: 0,
-    menir: 0,
-    katul: 0,
-    rataRendemen: 0,
-    realisasiPenerimaanHgb: 0,
-    hglBelumAdministrasi: 0,
-    persenDiolah: 0,
-  }))
-
-  const totalAdministrasi = items.reduce((sum, row) => sum + row.gabahAdministrasi, 0)
-  const fallbackGabahDiolah = items.reduce((sum, row) => sum + row.gabahAdministrasi, 0)
-  const totalGabahDiolah = hasilOperasi.gabahDiolah > 0 ? hasilOperasi.gabahDiolah : fallbackGabahDiolah
-
-  return items
-    .map((row) => {
-      const share = totalAdministrasi > 0 ? row.gabahAdministrasi / totalAdministrasi : (items.length > 0 ? 1 / items.length : 0)
-      const gabahSudahDiolah = totalGabahDiolah * share
-      const hgl = hasilOperasi.hgl * share
-      const broken = hasilOperasi.broken * share
-      const menir = hasilOperasi.menir * share
-      const katul = hasilOperasi.katul * share
-      const realisasiPenerimaanHgb = hasilOperasi.realisasiPenerimaanHgb * share
-      const belumDiadministrasi = Math.max(row.gabahDiterima - row.gabahAdministrasi, 0)
-      const stokGudangAdmAda = Math.max(row.gabahAdministrasi - gabahSudahDiolah, 0)
-      const hglBelumAdministrasi = Math.max(hgl - realisasiPenerimaanHgb, 0)
-
-      return {
-        ...row,
-        gabahSudahDiolah,
-        belumDiadministrasi,
-        stokGudangAdmAda,
-        hgl,
-        broken,
-        menir,
-        katul,
-        realisasiPenerimaanHgb,
-        hglBelumAdministrasi,
-        rataRendemen: hasilOperasi.rendemenPersen,
-        persenDiolah: row.gabahAdministrasi > 0 ? (gabahSudahDiolah / row.gabahAdministrasi) * 100 : 0,
-      }
-    })
-    .sort((a, b) => b.gabahDiterima - a.gabahDiterima || a.nama.localeCompare(b.nama, 'id'))
-}
-
 export default function DashboardPage() {
   const { user } = useAuth()
   const role = user?.role.nama_role ?? ''
@@ -314,7 +200,6 @@ export default function DashboardPage() {
   // melaporkan sebagian data saja. Daftarnya kembali paginated karena filternya sudah di query.
   const { data: ringkasan } = useRingkasanDashboard(skemaFilter)
   const { data: antreanPage, isLoading } = useAntreanTransaksi(page, skemaFilter, role === 'pengadaan' ? 'semua' : kerjaanFilter, 25, search, role === 'pengadaan' ? pengadaanFilter : 'semua')
-  const { data: pantauanBaris } = usePantauan(role === 'admin')
 
   const transaksi = antreanPage?.items ?? []
   const meta = antreanPage?.meta
@@ -360,7 +245,6 @@ export default function DashboardPage() {
         kartuKetiga,
         { label: 'Ditolak', value: hitungKerjaan.ditolak, sub: 'perlu revisi', tone: 'danger' as const, icon: ICONS.ditolak },
       ]
-  const pantauan = useMemo(() => pantauanRows(pantauanBaris ?? [], HASIL_OLAH_KOSONG), [pantauanBaris])
 
   const now = new Date()
   const jam = now.getHours()
@@ -443,12 +327,6 @@ export default function DashboardPage() {
               </div>
             </div>
           </section>
-        </div>
-      )}
-
-      {role === 'admin' && (
-        <div className="mx-auto max-w-[96rem] px-4 pt-6 sm:px-6 2xl:max-w-[104rem]">
-          <PantauanPengadaanTable rows={pantauan} />
         </div>
       )}
 
@@ -614,99 +492,6 @@ function StatCard({
         </span>
       </div>
     </div>
-  )
-}
-
-function PantauanPengadaanTable({ rows }: { rows: PantauanRow[] }) {
-  // null = tabel belum sempat melapor (render pertama); pakai seluruh baris dulu.
-  const [barisTampil, setBarisTampil] = useState<PantauanRow[] | null>(null)
-  const rowsTampil = barisTampil ?? rows
-
-  const totals = rowsTampil.reduce(
-    (acc, row) => ({
-      gabahDiterima: acc.gabahDiterima + row.gabahDiterima,
-      gabahAdministrasi: acc.gabahAdministrasi + row.gabahAdministrasi,
-      belumDiadministrasi: acc.belumDiadministrasi + row.belumDiadministrasi,
-      gabahSudahDiolah: acc.gabahSudahDiolah + row.gabahSudahDiolah,
-      stokGudangAdmAda: acc.stokGudangAdmAda + row.stokGudangAdmAda,
-      hgl: acc.hgl + row.hgl,
-      broken: acc.broken + row.broken,
-      menir: acc.menir + row.menir,
-      katul: acc.katul + row.katul,
-      realisasiPenerimaanHgb: acc.realisasiPenerimaanHgb + row.realisasiPenerimaanHgb,
-      hglBelumAdministrasi: acc.hglBelumAdministrasi + row.hglBelumAdministrasi,
-    }),
-    { gabahDiterima: 0, gabahAdministrasi: 0, belumDiadministrasi: 0, gabahSudahDiolah: 0, stokGudangAdmAda: 0, hgl: 0, broken: 0, menir: 0, katul: 0, realisasiPenerimaanHgb: 0, hglBelumAdministrasi: 0 },
-  )
-  const totalRendemen = totals.gabahSudahDiolah > 0
-    ? rowsTampil.reduce((sum, row) => sum + (row.rataRendemen * row.gabahSudahDiolah), 0) / totals.gabahSudahDiolah
-    : 0
-  const totalPersenDiolah = totals.gabahAdministrasi > 0 ? (totals.gabahSudahDiolah / totals.gabahAdministrasi) * 100 : 0
-  const columns: SheetColumn<PantauanRow>[] = [
-    { key: 'nama', label: 'Nama Makloon', value: (row) => row.nama, filterable: true },
-    { key: 'gabah_diterima', label: 'GKP - Gabah Diterima', value: (row) => row.gabahDiterima, align: 'right' },
-    { key: 'gabah_administrasi', label: 'GKP - Gabah Sudah di IN', value: (row) => row.gabahAdministrasi, align: 'right' },
-    { key: 'belum_administrasi', label: 'GKP - Belum di IN', value: (row) => row.belumDiadministrasi, align: 'right' },
-    { key: 'gabah_diolah', label: 'GKP - Gabah Sudah Diolah', value: (row) => row.gabahSudahDiolah, align: 'right' },
-    { key: 'stok_gudang', label: 'GKP - Stok di Gudang ADM Ada', value: (row) => row.stokGudangAdmAda, align: 'right' },
-    { key: 'hgl', label: 'Kuantum Hasil Olah - HGL', value: (row) => row.hgl, align: 'right' },
-    { key: 'broken', label: 'Hasil Olah - Broken', value: (row) => row.broken, align: 'right' },
-    { key: 'menir', label: 'Hasil Olah - Menir', value: (row) => row.menir, align: 'right' },
-    { key: 'katul', label: 'Hasil Olah - Katul', value: (row) => row.katul, align: 'right' },
-    { key: 'rendemen', label: 'Rata-rata Rendemen', value: (row) => pct(row.rataRendemen), align: 'right' },
-    { key: 'hgb', label: 'Kuantum Penerimaan HGL', value: (row) => row.realisasiPenerimaanHgb, align: 'right' },
-    { key: 'hgl_belum', label: 'HGL Belum Administrasi', value: (row) => row.hglBelumAdministrasi, align: 'right' },
-    { key: 'persen_diolah', label: 'Persentase Gabah Diolah vs Administrasi', value: (row) => pct(row.persenDiolah), align: 'right' },
-  ]
-  const summary = [
-    { label: 'Gabah Diterima', value: fmt(totals.gabahDiterima), tone: 'primary' },
-    { label: 'Gabah Administrasi', value: fmt(totals.gabahAdministrasi), tone: 'primary' },
-    { label: 'Belum Diadministrasi', value: fmt(totals.belumDiadministrasi), tone: 'warning' },
-    { label: 'Gabah Sudah Diolah', value: fmt(totals.gabahSudahDiolah), tone: 'success' },
-    { label: 'Rata-rata Rendemen', value: pct(totalRendemen), tone: 'accent' },
-    { label: 'Persentase Diolah', value: pct(totalPersenDiolah), tone: 'accent' },
-  ]
-
-  return (
-    <section className="panel panel-pad">
-      <div className="toolbar-card mb-4">
-        <div>
-          <p className="text-[0.68rem] font-bold uppercase tracking-[0.18em] text-accent">Pantauan Admin</p>
-          <h2 className="section-title mt-1">Pantauan Pengadaan GKP Tahun 2026</h2>
-          <p className="page-subtitle">Satu baris = satu makloon - {columns.length} kolom</p>
-        </div>
-        <span className="badge">{rows.length} makloon</span>
-      </div>
-
-      <DataSpreadsheet
-        rows={rows}
-        columns={columns}
-        rowKey={(row) => row.nama}
-        namaFile="pantauan-pengadaan-gkp"
-        emptyTitle="Belum ada data pantauan"
-        emptyCopy="Data muncul setelah transaksi TJP atau MPP masuk rekap admin."
-        onFilteredChange={setBarisTampil}
-      />
-
-      <div className="mt-4 rounded-lg border border-border bg-surface px-4 py-3">
-        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-          <span className="section-title">Total pantauan pengadaan</span>
-          <span className="text-xs font-semibold text-slate-500">
-            {rowsTampil.length === rows.length
-              ? 'Dihitung dari seluruh makloon pada pantauan'
-              : `Mengikuti filter tabel — ${rowsTampil.length} dari ${rows.length} makloon`}
-          </span>
-        </div>
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {summary.map((item) => (
-            <div key={item.label} className="rounded-lg border border-border bg-white px-4 py-3">
-              <div className="text-[0.68rem] font-bold uppercase tracking-[0.14em] text-slate-500">{item.label}</div>
-              <div className={`mt-1 text-2xl font-extrabold ${item.tone === 'warning' ? 'text-warning' : item.tone === 'success' ? 'text-success' : item.tone === 'accent' ? 'text-accent' : 'text-primary-dark'}`}>{item.value}</div>
-            </div>
-          ))}
-        </div>
-      </div>
-    </section>
   )
 }
 

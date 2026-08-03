@@ -40,20 +40,3 @@ export function useRingkasanDashboard(skema: 'semua' | 'TJP' | 'MPP') {
     },
   })
 }
-
-export type PantauanBaris = {
-  nama: string
-  gabah_diterima: number
-  gabah_administrasi: number
-}
-
-export function usePantauan(aktif: boolean) {
-  return useQuery({
-    queryKey: ['dashboard-pantauan'],
-    enabled: aktif,
-    queryFn: async () => {
-      const { data } = await api.get<{ data: PantauanBaris[] }>('/api/dashboard/pantauan')
-      return data.data
-    },
-  })
-}

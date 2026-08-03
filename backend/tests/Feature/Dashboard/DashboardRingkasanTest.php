@@ -25,7 +25,7 @@ class DashboardRingkasanTest extends TestCase
         return User::factory()->create(['role_id' => Role::where('nama_role', $role)->value('id')]);
     }
 
-    private function transaksi(string $skema, string $stage, string $status = 'berjalan', int $creator = null): Transaksi
+    private function transaksi(string $skema, string $stage, string $status = 'berjalan'): Transaksi
     {
         static $n = 0;
         $n++;
@@ -35,7 +35,7 @@ class DashboardRingkasanTest extends TestCase
             'skema' => $skema,
             'current_stage' => $stage,
             'status_keseluruhan' => $status,
-            'created_by' => $creator ?? User::first()->id,
+            'created_by' => User::first()->id,
         ]);
     }
 
@@ -159,31 +159,5 @@ class DashboardRingkasanTest extends TestCase
             $daftar = $this->getJson("/api/transaksi?kerjaan={$kerjaan}&per_page=100")->assertOk()->json('data');
             $this->assertCount($hitung[$kerjaan], $daftar, "Jumlah baris kerjaan={$kerjaan} tidak sama dengan angka chip");
         }
-    }
-
-    public function test_pantauan_hanya_untuk_admin(): void
-    {
-        Sanctum::actingAs($this->user('makloon'));
-
-        $this->getJson('/api/dashboard/pantauan')->assertForbidden();
-    }
-
-    public function test_pantauan_menjumlahkan_per_makloon(): void
-    {
-        $this->seed(RoleSeeder::class);
-        $makloonRoleId = Role::where('nama_role', 'makloon')->value('id');
-        $mk = User::factory()->create(['role_id' => $makloonRoleId, 'nama_maklon' => 'Makloon Alpha']);
-        $admin = $this->user('admin');
-        Sanctum::actingAs($admin);
-
-        $t1 = $this->transaksi('MPP', 'ub_jastasma', 'berjalan', $mk->id);
-        DataMakloonMpp::create(['transaksi_id' => $t1->id_transaksi, 'id_pemasok' => 'P1', 'tanggal_bongkar' => '2026-07-02', 'kuantum' => 1000, 'status' => 'diterima']);
-        $t2 = $this->transaksi('MPP', 'ub_jastasma', 'berjalan', $mk->id);
-        DataMakloonMpp::create(['transaksi_id' => $t2->id_transaksi, 'id_pemasok' => 'P2', 'tanggal_bongkar' => '2026-07-03', 'kuantum' => 500, 'status' => 'diterima']);
-
-        $this->getJson('/api/dashboard/pantauan')
-            ->assertOk()
-            ->assertJsonPath('data.0.nama', 'Makloon Alpha')
-            ->assertJsonPath('data.0.gabah_diterima', 1500);
     }
 }

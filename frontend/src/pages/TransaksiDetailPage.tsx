@@ -578,7 +578,7 @@ export default function TransaksiDetailPage() {
   // Makloon Terima bukan review "baca lalu klik": backend menolak Terima selama surat jalan &
   // nota timbang belum terunggah (TransaksiController@terima), jadi tanpa gerbang ini user baru
   // tahu setelah kena 422. Kuantum bongkar ikut diwajibkan supaya tidak ada baris tanpa angka
-  // bongkar -- kolom itu yang dipakai rekap & pantauan pengadaan.
+  // bongkar -- kolom itu yang dipakai rekap.
   const makloonTerimaKurang = transaksi.current_stage !== 'makloon_terima'
     ? []
     : [

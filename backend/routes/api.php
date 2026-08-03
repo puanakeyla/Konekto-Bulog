@@ -36,10 +36,7 @@ Route::middleware(['auth:sanctum', 'user.aktif'])->group(function () {
     Route::get('/gudang-options', [GudangOptionController::class, 'index']);
 
     // Angka ringkasan dashboard dihitung di database, bukan dari baris yang ter-fetch browser.
-    Route::prefix('dashboard')->group(function () {
-        Route::get('/ringkasan', [DashboardController::class, 'ringkasan']);
-        Route::get('/pantauan', [DashboardController::class, 'pantauan'])->middleware('role:admin');
-    });
+    Route::get('/dashboard/ringkasan', [DashboardController::class, 'ringkasan']);
 
     Route::prefix('monitoring')->group(function () {
         Route::get('/sebaran-tahap', [MonitoringController::class, 'sebaranTahap']);

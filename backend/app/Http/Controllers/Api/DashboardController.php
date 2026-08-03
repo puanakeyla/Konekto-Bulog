@@ -14,10 +14,10 @@ use Illuminate\Validation\Rule;
  * Angka ringkasan dashboard, dihitung di database.
  *
  * Sebelumnya frontend menarik 200 baris rekap lalu menjumlahkannya sendiri. Selama data masih
- * puluhan baris hasilnya kebetulan benar; begitu melewati 200 transaksi, kartu statistik dan
- * tabel Pantauan diam-diam melaporkan angka dari 200 baris itu saja -- tanpa error, tanpa
- * tanda. Menaikkan batasnya bukan jawaban (hanya memindah beban ke memori browser), jadi
- * penjumlahannya dipindah ke SQL dan frontend cukup menerima angka jadi.
+ * puluhan baris hasilnya kebetulan benar; begitu melewati 200 transaksi, kartu statistik
+ * diam-diam melaporkan angka dari 200 baris itu saja -- tanpa error, tanpa tanda. Menaikkan
+ * batasnya bukan jawaban (hanya memindah beban ke memori browser), jadi penjumlahannya
+ * dipindah ke SQL dan frontend cukup menerima angka jadi.
  */
 class DashboardController extends Controller
 {
@@ -118,58 +118,4 @@ class DashboardController extends Controller
             ->count('ditolak.transaksi_id');
     }
 
-    /**
-     * Tabel Pantauan Admin: satu baris per makloon. Kolom hasil olah sengaja tidak dihitung di
-     * sini -- modul Pengolahan yang dulu mengisinya sudah dihapus, jadi frontend menampilkannya
-     * nol. Yang dijumlahkan hanya dua angka yang datanya memang ada:
-     *   - gabah_diterima     : kuantum bongkar yang dicatat Makloon (TJP) / kuantum MPP
-     *   - gabah_administrasi : kuantum yang sudah masuk PO (po_detail.kuantum_kontribusi)
-     *
-     * ponytail: agregasi penuh seluruh tabel -- terukur ~1,1 detik pada 30.000 transaksi dan
-     * tumbuh linear. Masih wajar untuk satu tabel ringkasan milik Admin, tapi kalau datanya
-     * menembus ratusan ribu, bungkus dengan Cache::remember beberapa menit (angkanya bersifat
-     * ikhtisar, tidak perlu real-time) atau pindahkan ke tabel ringkasan yang di-update
-     * saat PO berubah.
-     */
-    public function pantauan(Request $request)
-    {
-        abort_unless($request->user()->role->nama_role === 'admin', 403);
-
-        // Dijumlahkan dulu per ID makloon, BARU di-join ke users. Kalau users ikut di-join
-        // sebelum agregasi, MySQL harus mencocokkan 30.000 baris ke tabel user lewat ekspresi
-        // CASE (tidak terindeks); dengan urutan ini join-nya hanya menyentuh puluhan baris hasil.
-        $perMakloon = Transaksi::query()
-            ->leftJoin('data_makloon_tjp', 'data_makloon_tjp.transaksi_id', '=', 'transaksi.id_transaksi')
-            ->leftJoin('data_makloon_mpp', 'data_makloon_mpp.transaksi_id', '=', 'transaksi.id_transaksi')
-            ->leftJoin('data_jemput_pangan', 'data_jemput_pangan.transaksi_id', '=', 'transaksi.id_transaksi')
-            ->leftJoin('po_detail', 'po_detail.transaksi_id', '=', 'transaksi.id_transaksi')
-            // Mitra makloon berbeda sumbernya per skema: MPP dibuat makloon sendiri (created_by),
-            // TJP menunjuk makloon lewat data_jemput_pangan.makloon_user_id -- sama seperti
-            // TransaksiResource::makloonUser().
-            ->selectRaw("
-                CASE WHEN transaksi.skema = 'MPP' THEN transaksi.created_by ELSE data_jemput_pangan.makloon_user_id END as makloon_id,
-                COALESCE(SUM(COALESCE(data_makloon_tjp.kuantum_bongkar, data_makloon_mpp.kuantum, 0)), 0) as gabah_diterima,
-                COALESCE(SUM(COALESCE(po_detail.kuantum_kontribusi, 0)), 0) as gabah_administrasi
-            ")
-            ->groupBy('makloon_id');
-
-        $baris = DB::query()
-            ->fromSub($perMakloon, 'agg')
-            ->leftJoin('users', 'users.id', '=', 'agg.makloon_id')
-            ->orderByDesc('agg.gabah_diterima')
-            ->orderBy('nama')
-            ->get([
-                DB::raw("COALESCE(users.nama_maklon, 'Tanpa makloon') as nama"),
-                'agg.gabah_diterima',
-                'agg.gabah_administrasi',
-            ]);
-
-        return response()->json([
-            'data' => $baris->map(fn ($row) => [
-                'nama' => $row->nama,
-                'gabah_diterima' => (float) $row->gabah_diterima,
-                'gabah_administrasi' => (float) $row->gabah_administrasi,
-            ])->values(),
-        ]);
-    }
 }
