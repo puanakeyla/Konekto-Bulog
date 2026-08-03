@@ -6,15 +6,20 @@ use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\FotoController;
 use App\Http\Controllers\Api\FotoStreamController;
+use App\Http\Controllers\Api\GudangController;
 use App\Http\Controllers\Api\GudangOptionController;
 use App\Http\Controllers\Api\MakloonOptionController;
+use App\Http\Controllers\Api\MoController;
 use App\Http\Controllers\Api\MonitoringController;
 use App\Http\Controllers\Api\NotifikasiController;
 use App\Http\Controllers\Api\PengadaanController;
+use App\Http\Controllers\Api\PengolahanController;
 use App\Http\Controllers\Api\TransaksiController;
 use Illuminate\Support\Facades\Route;
 
 Route::pattern('transaksi', '.*');
+// id_pengolahan memuat garis miring (00001/08/2026/GDG), sama seperti id_transaksi.
+Route::pattern('pengolahan', '.*');
 
 Route::post('/login', [AuthController::class, 'login']);
 
@@ -53,6 +58,8 @@ Route::middleware(['auth:sanctum', 'user.aktif'])->group(function () {
         Route::patch('/users/{user}/deactivate', [AdminUserController::class, 'deactivate']);
         Route::patch('/users/{user}/akses-edit', [AdminUserController::class, 'aksesEdit']);
         Route::apiResource('users', AdminUserController::class);
+        // Gudang A/B/C/D adalah data master, bukan akun user -- lihat GudangOptionController.
+        Route::apiResource('gudang', GudangController::class)->except(['show']);
     });
 
     Route::get('/transaksi', [TransaksiController::class, 'index']);
@@ -90,6 +97,47 @@ Route::middleware(['auth:sanctum', 'user.aktif'])->group(function () {
     // 40/menit masih longgar untuk pengiriman satu tahap (maks ~7 foto) beserta retry-nya.
     Route::post('/transaksi/{transaksi}/foto', [FotoController::class, 'store'])
         ->middleware('throttle:40,1');
+
+    // === Alur Pengolahan (rantai kedua, GDG/UBJ) ===
+    // Route bersuffix WAJIB didaftarkan sebelum '/pengolahan/{pengolahan}': pattern-nya greedy
+    // ('.*'), jadi show akan menelan 'rekap'/'kandidat-mo' sebagai bagian dari id.
+    Route::get('/pengolahan', [PengolahanController::class, 'index']);
+    Route::get('/pengolahan/rekap', [PengolahanController::class, 'rekap']);
+    Route::get('/pengolahan/kandidat-mo', [PengolahanController::class, 'kandidatMo'])
+        ->middleware('role:operasi|admin');
+    Route::post('/pengolahan', [PengolahanController::class, 'store'])
+        ->middleware('role:gudang|ub_jastasma|admin');
+    Route::patch('/pengolahan/{pengolahan}/gudang', [PengolahanController::class, 'gudang'])
+        ->middleware('role:gudang|admin');
+    Route::patch('/pengolahan/{pengolahan}/lhpk', [PengolahanController::class, 'lhpk'])
+        ->middleware('role:ub_jastasma|admin');
+    Route::post('/pengolahan/{pengolahan}/terima', [PengolahanController::class, 'terima']);
+    Route::post('/pengolahan/{pengolahan}/tolak', [PengolahanController::class, 'tolak']);
+    Route::get('/pengolahan/{pengolahan}/foto/{jenisFoto}', [PengolahanController::class, 'fotoLink']);
+    Route::post('/pengolahan/{pengolahan}/foto', [PengolahanController::class, 'fotoUpload'])
+        ->middleware('throttle:40,1');
+    Route::get('/pengolahan/{pengolahan}', [PengolahanController::class, 'show']);
+
+    Route::post('/mo/gabungkan', [MoController::class, 'gabungkan'])
+        ->middleware('role:operasi|admin');
+    Route::get('/mo', [MoController::class, 'index'])
+        ->middleware('role:gudang|ub_jastasma|operasi|pengadaan|admin');
+    Route::get('/mo/{mo}', [MoController::class, 'show'])
+        ->middleware('role:gudang|ub_jastasma|operasi|pengadaan|admin');
+    Route::patch('/mo/{mo}', [MoController::class, 'update'])
+        ->middleware('role:operasi|admin');
+    Route::patch('/mo/{mo}/anggota', [MoController::class, 'ubahAnggota'])
+        ->middleware('role:operasi|admin');
+    Route::post('/mo/{mo}/kirim', [MoController::class, 'kirim'])
+        ->middleware('role:operasi|admin');
+    Route::post('/mo/{mo}/batalkan', [MoController::class, 'batalkan'])
+        ->middleware('role:operasi|admin');
+    Route::post('/mo/{mo}/terima', [MoController::class, 'terima'])
+        ->middleware('role:pengadaan|admin');
+    Route::post('/mo/{mo}/tolak', [MoController::class, 'tolak'])
+        ->middleware('role:pengadaan|admin');
+    Route::patch('/mo/{mo}/out', [MoController::class, 'isiOut'])
+        ->middleware('role:pengadaan|admin');
 
     Route::post('/pengadaan/gabungkan-po', [PengadaanController::class, 'gabungkanPo'])
         ->middleware('role:pengadaan|admin');
