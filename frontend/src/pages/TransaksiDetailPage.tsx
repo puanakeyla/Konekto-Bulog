@@ -316,7 +316,6 @@ export default function TransaksiDetailPage() {
   const { id } = useParams<{ id: string }>()
   const { user } = useAuth()
   const queryClient = useQueryClient()
-  const [catatan, setCatatan] = useState('')
   const [expandedStages, setExpandedStages] = useState<Set<string>>(new Set())
   const toggleStage = (stageId: string) =>
     setExpandedStages((prev) => {
@@ -434,7 +433,6 @@ export default function TransaksiDetailPage() {
       return api.post(`/api/transaksi/${encodeURIComponent(id!)}/terima`, payload)
     },
     onSuccess: (_res, stageLabel) => {
-      setCatatan('')
       setKuantumBongkarMpp('')
       setFotosMakloonTerima({})
       setProgressMakloonTerima({})
@@ -445,9 +443,9 @@ export default function TransaksiDetailPage() {
   })
 
   const tolak = useMutation({
-    mutationFn: (_stageLabel: string) => api.post(`/api/transaksi/${encodeURIComponent(id!)}/tolak`, { catatan }),
-    onSuccess: (_res, stageLabel) => {
-      setCatatan('')
+    mutationFn: ({ catatan }: { stageLabel: string; catatan: string }) =>
+      api.post(`/api/transaksi/${encodeURIComponent(id!)}/tolak`, { catatan }),
+    onSuccess: (_res, { stageLabel }) => {
       invalidate()
       toast.success(`Transaksi dikembalikan ke ${stageLabel} untuk direvisi.`)
     },
@@ -815,10 +813,8 @@ export default function TransaksiDetailPage() {
                           stageLabel={stage.label}
                           acceptLabel={stage.id === 'makloon_terima' ? 'Simpan & Terima' : 'Terima & Lanjutkan'}
                           blokir={stage.id === 'makloon_terima' ? makloonTerimaKurang : []}
-                          catatan={catatan}
-                          setCatatan={setCatatan}
                           onAccept={() => terima.mutate(stage.label)}
-                          onReject={() => tolak.mutate(stage.label)}
+                          onReject={(catatan) => tolak.mutate({ stageLabel: stage.label, catatan })}
                           acceptPending={terima.isPending}
                           rejectPending={tolak.isPending}
                           actionError={actionError}
@@ -1186,9 +1182,28 @@ function DokumenSlot({ field, fotos, setFotos, progress, fotoGagal, tersimpan }:
   )
 }
 
-function ReviewActions({ stageLabel, acceptLabel = 'Terima & Lanjutkan', blokir = [], catatan, setCatatan, onAccept, onReject, acceptPending, rejectPending, actionError }: any) {
+function ReviewActions({
+  stageLabel,
+  acceptLabel = 'Terima & Lanjutkan',
+  blokir = [],
+  onAccept,
+  onReject,
+  acceptPending,
+  rejectPending,
+  actionError,
+}: {
+  stageLabel: string
+  acceptLabel?: string
+  blokir?: string[]
+  onAccept: () => void
+  onReject: (catatan: string) => void
+  acceptPending: boolean
+  rejectPending: boolean
+  actionError?: string | null
+}) {
   const [dialog, setDialog] = useState<null | 'terima' | 'tolak'>(null)
   const [warning, setWarning] = useState<string | null>(null)
+  const [catatan, setCatatan] = useState('')
   // Pola sama dengan form tahap lain: tidak di-disable keras (user perlu bisa menekan dan tahu
   // ALASANNYA), tapi ditahan sebelum dialog dengan daftar apa yang masih kurang.
   const bukaTerima = () => {
@@ -1230,7 +1245,11 @@ function ReviewActions({ stageLabel, acceptLabel = 'Terima & Lanjutkan', blokir 
         confirmDisabled={!catatan.trim()}
         error={actionError}
         onCancel={() => { setDialog(null); setCatatan('') }}
-        onConfirm={onReject}
+        onConfirm={() => {
+          onReject(catatan.trim())
+          setDialog(null)
+          setCatatan('')
+        }}
       >
         <textarea className="input mt-3 min-h-24" placeholder="Catatan penolakan (wajib diisi)" value={catatan} onChange={(e) => setCatatan(e.target.value)} />
       </ConfirmDialog>
