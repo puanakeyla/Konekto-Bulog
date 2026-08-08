@@ -47,7 +47,7 @@ class MoController extends Controller
         return response()->json([
             'data' => $mo->load([
                 'makloon:id,nama_maklon',
-                'reviewer:id,name',
+                'reviewer:id,username,nama_maklon',
                 'moDetail.transaksiPengolahan.dataLhpk',
                 'moDetail.transaksiPengolahan.dataGudang',
             ]),
