@@ -19,6 +19,8 @@ class AlurPengolahanTest extends TestCase
     private array $user = [];
     private Gudang $gudang;
     private User $makloon;
+    /** Makloon yang akan ditulis pengisi tahap pertama -- diset oleh buat(). */
+    private User $makloonTahapPertama;
 
     protected function setUp(): void
     {
@@ -38,14 +40,19 @@ class AlurPengolahanTest extends TestCase
         $this->gudang = Gudang::create(['kode' => 'ADA08001', 'nama' => 'Gudang A']);
     }
 
+    /**
+     * Yang dipilih saat membuat adalah GUDANG-nya; makloon menyusul dari pengisi tahap pertama,
+     * jadi $makloon di sini hanya menentukan nilai yang dikirim tahap itu nanti.
+     */
     private function buat(string $skema, ?User $makloon = null): string
     {
         $pembuat = $skema === 'GDG' ? $this->user['gudang'] : $this->user['ub_jastasma'];
+        $this->makloonTahapPertama = $makloon ?? $this->makloon;
 
         return $this->actingAs($pembuat)
             ->postJson('/api/pengolahan', [
                 'skema' => $skema,
-                'makloon_user_id' => ($makloon ?? $this->makloon)->id,
+                'gudang_id' => $this->gudang->id,
             ])
             ->assertStatus(201)
             ->json('data.id_pengolahan');
@@ -55,7 +62,7 @@ class AlurPengolahanTest extends TestCase
     {
         return $this->actingAs($this->user['gudang'])
             ->patchJson('/api/pengolahan/'.$id.'/gudang', [
-                'gudang_id' => $this->gudang->id,
+                'makloon_user_id' => $this->makloonTahapPertama->id,
                 'tanggal_masuk_gudang' => '2026-08-03',
                 'kuantum_hgl' => 12480,
                 'plat_mobil' => 'BE 1234 AB',
@@ -68,10 +75,9 @@ class AlurPengolahanTest extends TestCase
     {
         return $this->actingAs($this->user['ub_jastasma'])
             ->patchJson('/api/pengolahan/'.$id.'/lhpk', [
-                'gudang_tujuan_id' => $this->gudang->id,
+                'makloon_user_id' => $this->makloonTahapPertama->id,
                 'no_lhpk' => $noLhpk,
                 'tanggal_lhpk' => '2026-08-03',
-                'kuantum_stok_gudang' => 50000,
                 'kuantum_gabah_diolah' => $gabah,
                 'kuantum_beras_hgl' => $hgl,
                 'kualitas' => 'Medium',
@@ -422,6 +428,67 @@ class AlurPengolahanTest extends TestCase
         // Belum ada MO dan belum ada OUT.
         $this->assertSame([], $rekap('operasi'));
         $this->assertSame([], $rekap('pengadaan'));
+    }
+
+    /**
+     * Stok gudang adalah angka SISTEM per gudang: HGL diterima di gudang itu dikurangi gabah
+     * yang sudah diolah. Sebelumnya ia cuma menyalin kuantum HGL transaksinya sendiri.
+     */
+    public function test_stok_gudang_dihitung_per_gudang_bukan_per_transaksi(): void
+    {
+        // Satu pengolahan GDG tuntas sampai LHPK diterima: 12.480 masuk, 20.000 diolah.
+        $selesai = $this->buat('GDG');
+        $this->isiGudang($selesai)->assertOk();
+        $this->terima($selesai, 'ub_jastasma')->assertOk();
+        $this->isiLhpk($selesai, 'LHPK/900')->assertOk();
+        $this->terima($selesai, 'operasi')->assertOk();
+
+        $this->assertEqualsWithDelta(12480 - 20000, Gudang::stokBerjalan($this->gudang->id), 0.01);
+
+        // Pengolahan berikutnya di gudang yang sama: HGL-nya baru terhitung setelah DITERIMA.
+        $berjalan = $this->buat('GDG');
+        $this->isiGudang($berjalan)->assertOk();
+        $this->assertEqualsWithDelta(12480 - 20000, Gudang::stokBerjalan($this->gudang->id), 0.01);
+
+        $this->terima($berjalan, 'ub_jastasma')->assertOk();
+        $stokSetelahDiterima = 12480 * 2 - 20000;
+        $this->assertEqualsWithDelta($stokSetelahDiterima, Gudang::stokBerjalan($this->gudang->id), 0.01);
+
+        // Angka yang sama itulah yang disnapshot ke LHPK -- bukan angka kiriman klien.
+        $this->isiLhpk($berjalan, 'LHPK/901')->assertOk();
+        $this->assertEqualsWithDelta(
+            $stokSetelahDiterima,
+            (float) PengolahanLhpk::where('transaksi_pengolahan_id', $berjalan)->value('kuantum_stok_gudang'),
+            0.01,
+        );
+
+        // Gudang lain berdiri sendiri.
+        $gudangLain = Gudang::create(['kode' => 'ADA08002', 'nama' => 'Gudang B']);
+        $this->assertEqualsWithDelta(0, Gudang::stokBerjalan($gudangLain->id), 0.01);
+    }
+
+    /** Makloon ditetapkan pengisi tahap pertama; tahap kedua mencocokkan, tidak menimpa. */
+    public function test_makloon_hanya_bisa_ditetapkan_tahap_pertama(): void
+    {
+        $makloonLain = User::create([
+            'username' => 'makloon_3',
+            'password' => bcrypt('secret12'),
+            'role_id' => Role::where('nama_role', 'makloon')->value('id'),
+            'nama_maklon' => 'Makloon Gamma',
+        ]);
+
+        // GDG: Gudang tahap pertama -> dia yang menetapkan.
+        $id = $this->buat('GDG');
+        $this->assertNull(TransaksiPengolahan::find($id)->makloon_user_id);
+
+        $this->isiGudang($id)->assertOk();
+        $this->assertSame($this->makloon->id, TransaksiPengolahan::find($id)->makloon_user_id);
+
+        // UB Jastasma tahap kedua: kiriman makloon-nya diabaikan.
+        $this->terima($id, 'ub_jastasma')->assertOk();
+        $this->makloonTahapPertama = $makloonLain;
+        $this->isiLhpk($id)->assertOk();
+        $this->assertSame($this->makloon->id, TransaksiPengolahan::find($id)->makloon_user_id);
     }
 
     public function test_id_pengolahan_berformat_dan_berurut_per_skema(): void

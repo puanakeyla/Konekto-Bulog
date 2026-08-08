@@ -19,6 +19,7 @@ class TransaksiPengolahan extends Model
     protected $fillable = [
         'id_pengolahan',
         'skema',
+        'gudang_id',
         'makloon_user_id',
         'current_stage',
         'status_keseluruhan',
@@ -55,6 +56,12 @@ class TransaksiPengolahan extends Model
             $transaksi->dataGudang?->delete();
             $transaksi->dataLhpk?->delete();
         });
+    }
+
+    /** Gudang tujuan pengolahan ini -- dipilih saat transaksi dibuat, tidak berubah setelahnya. */
+    public function gudang(): BelongsTo
+    {
+        return $this->belongsTo(Gudang::class, 'gudang_id');
     }
 
     public function makloon(): BelongsTo

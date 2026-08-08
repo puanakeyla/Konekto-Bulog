@@ -79,8 +79,14 @@ export default function MoPage() {
     return cocokCari && cocokMakloon
   })
 
+  // Kandidat MO selalu sudah lewat tahap pertama, jadi makloon-nya pasti terisi -- baris tanpa
+  // makloon (baru dibuat, tahap pertama belum diisi) disaring supaya tidak jadi opsi kosong.
   const opsiMakloon = Array.from(
-    new Map(semuaKandidat.map((item) => [item.makloon_user_id, item.makloon?.nama_maklon ?? '-'])).entries(),
+    new Map(
+      semuaKandidat
+        .filter((item) => item.makloon_user_id !== null)
+        .map((item) => [String(item.makloon_user_id), item.makloon?.nama_maklon ?? '-']),
+    ).entries(),
   )
 
   const total = semuaKandidat

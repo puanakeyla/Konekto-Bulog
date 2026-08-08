@@ -12,7 +12,7 @@ import {
 import { pesanError } from '../lib/pesanError'
 import { KERJAAN_KETERANGAN, KERJAAN_LABEL, KERJAAN_URUT, type KerjaanId } from '../lib/kerjaanTransaksi'
 import { SkeletonTable } from '../components/Skeleton'
-import MakloonCombobox from '../components/MakloonCombobox'
+import { useGudangOptions } from '../hooks/useGudang'
 
 /** Role yang boleh memulai rantai, beserta skema yang jadi tanggung jawabnya. */
 const SKEMA_PEMBUAT: Record<string, SkemaPengolahan> = { gudang: 'GDG', ub_jastasma: 'UBJ' }
@@ -26,7 +26,7 @@ type MakloonGroup = { nama: string; rows: PengolahanItem[]; gdg: number; ubj: nu
 function groupByMakloon(items: PengolahanItem[]): MakloonGroup[] {
   const map = new Map<string, MakloonGroup>()
   for (const row of items) {
-    const nama = row.makloon?.nama_maklon ?? 'Tanpa makloon'
+    const nama = row.makloon?.nama_maklon ?? 'Makloon belum diisi'
     let group = map.get(nama)
     if (!group) {
       group = { nama, rows: [], gdg: 0, ubj: 0 }
@@ -102,9 +102,10 @@ export default function PengolahanListPage() {
   const [antrean, setAntrean] = useState(role !== 'admin')
   const [search, setSearch] = useState('')
   const [kerjaanFilter, setKerjaanFilter] = useState<KerjaanId | 'semua'>('semua')
-  const [makloonBaru, setMakloonBaru] = useState<number | null>(null)
+  const [gudangBaru, setGudangBaru] = useState('')
 
   const { data, isLoading } = usePengolahanList({ page, skema, antrean, search, kerjaan: kerjaanFilter })
+  const { data: gudangOptions = [] } = useGudangOptions()
   const { buat } = usePengolahanMutations()
 
   const skemaSaya = SKEMA_PEMBUAT[role]
@@ -116,16 +117,16 @@ export default function PengolahanListPage() {
 
   const buatBaru = (e: React.FormEvent) => {
     e.preventDefault()
-    if (!makloonBaru) return
+    if (!gudangBaru) return
 
     const skemaDipakai = skemaSaya ?? 'GDG'
 
     buat.mutate(
-      { skema: skemaDipakai, makloon_user_id: makloonBaru },
+      { skema: skemaDipakai, gudang_id: Number(gudangBaru) },
       {
         onSuccess: (item) => {
           toast.success(`Pengolahan ${item.id_pengolahan} dibuat.`)
-          setMakloonBaru(null)
+          setGudangBaru('')
         },
         onError: (err) => toast.error(pesanError(err)),
       },
@@ -141,15 +142,29 @@ export default function PengolahanListPage() {
         </p>
       </div>
 
+      {/* Yang dipilih di awal adalah GUDANG-nya: satu pengolahan = mengisi satu gudang.
+          Makloon asalnya ditetapkan oleh pengisi tahap pertama, karena di skema UBJ ia baru
+          diketahui saat LHPK ditulis. */}
       {bolehBuat && (
         <form onSubmit={buatBaru} className="panel panel-pad mb-6 grid gap-4 sm:grid-cols-[1fr_auto] sm:items-end">
           <div>
-            <label className="label" htmlFor="makloon">
-              Makloon {skemaSaya && <span className="text-muted">— skema {skemaSaya}</span>}
+            <label className="label" htmlFor="gudang-baru">
+              Gudang {skemaSaya && <span className="text-muted">— skema {skemaSaya}</span>}
             </label>
-            <MakloonCombobox value={makloonBaru} onChange={setMakloonBaru} reserveSpaceWhenOpen />
+            <select
+              id="gudang-baru"
+              className="input bg-white"
+              value={gudangBaru}
+              onChange={(e) => setGudangBaru(e.target.value)}
+            >
+              <option value="">Pilih gudang...</option>
+              {gudangOptions.map((item) => (
+                <option key={item.id} value={item.id}>{item.kode} - {item.nama}</option>
+              ))}
+            </select>
+            <p className="page-subtitle mt-1">Makloon asalnya diisi pada tahap pertama.</p>
           </div>
-          <button type="submit" className="btn btn-primary" disabled={buat.isPending || !makloonBaru}>
+          <button type="submit" className="btn btn-primary" disabled={buat.isPending || !gudangBaru}>
             Mulai pengolahan
           </button>
         </form>

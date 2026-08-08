@@ -24,7 +24,11 @@ class PengolahanStageService
     {
     }
 
-    public function createTransaksi(User $creator, string $skema, int $makloonUserId): TransaksiPengolahan
+    /**
+     * Transaksi dimulai dari GUDANG-nya, bukan makloon: satu pengolahan adalah "isi gudang Y",
+     * dan makloon asalnya baru diketahui saat tahap pertama diisi (lihat setMakloon).
+     */
+    public function createTransaksi(User $creator, string $skema, int $gudangId): TransaksiPengolahan
     {
         if (! in_array($skema, PengolahanStages::SKEMA, true)) {
             abort(422, 'Skema pengolahan tidak dikenal.');
@@ -35,13 +39,13 @@ class PengolahanStageService
             abort(403, 'Role Anda tidak dapat memulai skema pengolahan ini.');
         }
 
-        return DB::transaction(function () use ($creator, $skema, $makloonUserId) {
+        return DB::transaction(function () use ($creator, $skema, $gudangId) {
             $firstStage = PengolahanStages::stageAt($skema, 0);
 
             $transaksi = TransaksiPengolahan::create([
                 'id_pengolahan' => $this->generateId($skema),
                 'skema' => $skema,
-                'makloon_user_id' => $makloonUserId,
+                'gudang_id' => $gudangId,
                 'current_stage' => $firstStage['role'],
                 'status_keseluruhan' => 'berjalan',
                 'created_by' => $creator->id,
@@ -49,11 +53,33 @@ class PengolahanStageService
 
             $this->auditLog->logPengolahan($creator, 'buat_pengolahan', $transaksi->id_pengolahan, [
                 'skema' => $skema,
-                'makloon_user_id' => $makloonUserId,
+                'gudang_id' => $gudangId,
             ]);
 
             return $transaksi;
         });
+    }
+
+    /**
+     * Makloon ditetapkan oleh pengisi tahap PERTAMA (Gudang di GDG, UB Jastasma di UBJ) dan
+     * setelah itu hanya bisa dibaca -- tahap kedua mencocokkan, bukan menentukan ulang. Admin
+     * tetap boleh mengubahnya untuk membereskan salah input.
+     */
+    public function setMakloon(TransaksiPengolahan $transaksi, User $actor, string $role, ?int $makloonUserId): void
+    {
+        if ($makloonUserId === null) {
+            return;
+        }
+
+        $tahapPertama = PengolahanStages::stageAt($transaksi->skema, 0)['role'];
+        $bolehMenetapkan = $role === $tahapPertama || $actor->role->nama_role === 'admin';
+
+        if (! $bolehMenetapkan || $transaksi->makloon_user_id === $makloonUserId) {
+            return;
+        }
+
+        $transaksi->makloon_user_id = $makloonUserId;
+        $transaksi->save();
     }
 
     public function saveDraft(TransaksiPengolahan $transaksi, User $actor, string $role, array $data): Model

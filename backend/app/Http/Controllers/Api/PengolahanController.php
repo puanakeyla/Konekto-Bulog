@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\Gudang;
 use App\Models\Role;
 use App\Models\TransaksiPengolahan;
 use App\Models\User;
@@ -41,7 +42,7 @@ class PengolahanController extends Controller
         $role = $request->user()->role->nama_role;
 
         $daftar = TransaksiPengolahan::query()
-            ->with(['makloon:id,nama_maklon', 'dataGudang.gudang', 'dataLhpk.gudangTujuan', 'moDetail.mo'])
+            ->with(['gudang', 'makloon:id,nama_maklon', 'dataGudang.gudang', 'dataLhpk.gudangTujuan', 'moDetail.mo'])
             ->when(isset($validated['skema']), fn ($q) => $q->where('skema', $validated['skema']))
             // Antrean hanya bermakna untuk role yang memegang tahap; admin melihat semuanya.
             ->when(($validated['antrean'] ?? false) && $role !== 'admin', fn ($q) => $q->antreanRole($role))
@@ -107,7 +108,7 @@ class PengolahanController extends Controller
         $this->assertPembaca($request);
 
         $query = TransaksiPengolahan::query()
-            ->with(['makloon:id,nama_maklon', 'dataGudang.gudang', 'dataLhpk.gudangTujuan', 'moDetail.mo'])
+            ->with(['gudang', 'makloon:id,nama_maklon', 'dataGudang.gudang', 'dataLhpk.gudangTujuan', 'moDetail.mo'])
             ->orderByDesc('created_at');
 
         $this->terapkanFilterTerkunci($query, $request->user()->role->nama_role);
@@ -147,40 +148,49 @@ class PengolahanController extends Controller
     {
         $this->assertPembaca($request);
 
+        $pengolahan->load([
+            'gudang',
+            'makloon:id,nama_maklon',
+            'creator:id,username,nama_maklon',
+            'dataGudang.gudang',
+            'dataLhpk.gudangTujuan',
+            'moDetail.mo',
+            'riwayatPenolakan.penolak:id,username,nama_maklon',
+        ]);
+
         return response()->json([
-            'data' => $pengolahan->load([
-                'makloon:id,nama_maklon',
-                'creator:id,username,nama_maklon',
-                'dataGudang.gudang',
-                'dataLhpk.gudangTujuan',
-                'moDetail.mo',
-                'riwayatPenolakan.penolak:id,username,nama_maklon',
-            ]),
+            'data' => [
+                ...$pengolahan->toArray(),
+                // Angka yang akan disnapshot ke LHPK saat disimpan -- ditampilkan read-only di form
+                // supaya pengisi melihat nilai yang sama dengan yang nanti tersimpan.
+                'stok_gudang_berjalan' => Gudang::stokBerjalan($pengolahan->gudang_id),
+            ],
         ]);
     }
 
     public function store(Request $request)
     {
+        // Yang dipilih di awal adalah GUDANG-nya. Makloon menyusul dari pengisi tahap pertama
+        // (PengolahanStageService::setMakloon) karena di skema UBJ makloon baru diketahui
+        // saat LHPK ditulis.
         $validated = $request->validate([
             'skema' => ['required', Rule::in(PengolahanStages::SKEMA)],
-            'makloon_user_id' => ['required', 'integer', Rule::exists('users', 'id')],
+            'gudang_id' => ['required', 'integer', Rule::exists('gudang', 'id')],
         ]);
-
-        $this->assertMakloon($validated['makloon_user_id']);
 
         $transaksi = $this->service->createTransaksi(
             $request->user(),
             $validated['skema'],
-            $validated['makloon_user_id'],
+            $validated['gudang_id'],
         );
 
-        return response()->json(['data' => $transaksi], 201);
+        return response()->json(['data' => $transaksi->load('gudang')], 201);
     }
 
     public function gudang(Request $request, TransaksiPengolahan $pengolahan)
     {
         $validated = $request->validate([
-            'gudang_id' => ['nullable', 'integer', Rule::exists('gudang', 'id')],
+            'makloon_user_id' => ['nullable', 'integer', Rule::exists('users', 'id')],
             'tanggal_masuk_gudang' => ['nullable', 'date'],
             'kuantum_hgl' => ['nullable', 'numeric', 'min:0'],
             'plat_mobil' => ['nullable', 'string', 'max:20'],
@@ -195,11 +205,12 @@ class PengolahanController extends Controller
     {
         $lhpkId = $pengolahan->dataLhpk?->id;
 
+        // `kuantum_stok_gudang` sengaja TIDAK diterima dari klien: ia dihitung server dari stok
+        // berjalan gudangnya (lihat simpanTahap).
         $validated = $request->validate([
-            'gudang_tujuan_id' => ['nullable', 'integer', Rule::exists('gudang', 'id')],
+            'makloon_user_id' => ['nullable', 'integer', Rule::exists('users', 'id')],
             'no_lhpk' => ['nullable', 'string', 'max:100', Rule::unique('pengolahan_lhpk', 'no_lhpk')->ignore($lhpkId)],
             'tanggal_lhpk' => ['nullable', 'date'],
-            'kuantum_stok_gudang' => ['nullable', 'numeric', 'min:0'],
             'kuantum_gabah_diolah' => ['nullable', 'numeric', 'min:0'],
             'kuantum_beras_hgl' => ['nullable', 'numeric', 'min:0'],
             'kualitas' => ['nullable', 'string', 'max:50'],
@@ -297,6 +308,25 @@ class PengolahanController extends Controller
     {
         $kirim = (bool) ($validated['kirim'] ?? false);
         unset($validated['kirim']);
+
+        $makloonUserId = $validated['makloon_user_id'] ?? null;
+        unset($validated['makloon_user_id']);
+
+        if ($makloonUserId !== null) {
+            $this->assertMakloon($makloonUserId);
+            $this->service->setMakloon($pengolahan, $request->user(), $role, $makloonUserId);
+        }
+
+        // Gudang tidak lagi diketik per tahap -- kolom tahap cuma menyalin gudang header supaya
+        // rekap & Gudang::sudahDipakai() tetap membaca kolom yang sama seperti sebelumnya.
+        if ($role === 'gudang') {
+            $validated['gudang_id'] = $pengolahan->gudang_id;
+        } else {
+            $validated['gudang_tujuan_id'] = $pengolahan->gudang_id;
+            // Stok gudang adalah angka sistem, bukan ketikan: snapshot stok berjalan gudang ini
+            // pada saat LHPK disimpan.
+            $validated['kuantum_stok_gudang'] = Gudang::stokBerjalan($pengolahan->gudang_id);
+        }
 
         $record = $kirim
             ? $this->service->submitStage($pengolahan, $request->user(), $role, $validated)

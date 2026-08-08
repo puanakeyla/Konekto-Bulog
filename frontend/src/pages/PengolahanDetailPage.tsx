@@ -5,11 +5,11 @@ import { toast } from 'sonner'
 import api from '../lib/api'
 import { useAuth } from '../hooks/useAuth'
 import { useFotoPengolahanUrl } from '../hooks/useFotoTransaksi'
-import { useGudangOptions } from '../hooks/useGudang'
 import {
   LABEL_TAHAP,
   URUTAN_TAHAP,
   useKandidatMo,
+  tahapTerlihat,
   usePengolahanDetail,
   usePengolahanMutations,
   type DataGudang,
@@ -25,10 +25,11 @@ import { apiErrorMessage } from '../lib/apiError'
 import AngkaInput from '../components/AngkaInput'
 import ConfirmDialog from '../components/ConfirmDialog'
 import FotoPicker from '../components/FotoPicker'
+import MakloonCombobox from '../components/MakloonCombobox'
 
 type FormNilai = Record<string, string>
 /** `ribuan` = kuantum (kg) yang selalu bulat -- dirender AngkaInput agar berpemisah ribuan. */
-type FieldDef = { key: string; label: string; type?: string; readOnly?: boolean; ribuan?: boolean }
+type FieldDef = { key: string; label: string; type?: string; ribuan?: boolean }
 
 const FIELD_GUDANG: FieldDef[] = [
   { key: 'tanggal_masuk_gudang', label: 'Tanggal masuk gudang', type: 'date' },
@@ -40,17 +41,18 @@ const FIELD_GUDANG: FieldDef[] = [
 const FIELD_LHPK: FieldDef[] = [
   { key: 'no_lhpk', label: 'Nomor LHPK' },
   { key: 'tanggal_lhpk', label: 'Tanggal LHPK', type: 'date' },
-  { key: 'kuantum_stok_gudang', label: 'Kuantum stok gudang otomatis (kg)', readOnly: true, ribuan: true },
   { key: 'kuantum_gabah_diolah', label: 'Kuantum gabah yang sudah diolah (kg)', ribuan: true },
   { key: 'kuantum_beras_hgl', label: 'Kuantum beras HGL (kg)', ribuan: true },
   { key: 'kualitas', label: 'Kualitas' },
-  { key: 'broken', label: 'Broken (%)', type: 'number' },
-  { key: 'menir', label: 'Menir (%)', type: 'number' },
-  { key: 'katul', label: 'Katul (%)', type: 'number' },
-  { key: 'ka1', label: 'KA1 (%)', type: 'number' },
-  { key: 'ka2', label: 'KA2 (%)', type: 'number' },
-  { key: 'ka3', label: 'KA3 (%)', type: 'number' },
-  { key: 'reject', label: 'Reject (%)', type: 'number' },
+  // Angka mutu BUKAN persen -- nilainya ditulis apa adanya (mis. 6,5 / 18,5). Hanya rendemen
+  // yang benar-benar persen karena ia rasio beras HGL terhadap gabah diolah.
+  { key: 'broken', label: 'Broken', type: 'number' },
+  { key: 'menir', label: 'Menir', type: 'number' },
+  { key: 'katul', label: 'Katul', type: 'number' },
+  { key: 'ka1', label: 'KA1', type: 'number' },
+  { key: 'ka2', label: 'KA2', type: 'number' },
+  { key: 'ka3', label: 'KA3', type: 'number' },
+  { key: 'reject', label: 'Reject', type: 'number' },
 ]
 
 const STATUS_LABEL: Record<StatusTahap, string> = {
@@ -100,9 +102,7 @@ function tanggal(value: string | null | undefined) {
   return value ? value.slice(0, 10) : '-'
 }
 
-/** Nilai tampil satu field; stok gudang jatuh ke kuantum HGL milik Gudang selama belum diisi. */
-function nilaiField(field: FieldDef, form: FormNilai, transaksi: PengolahanItem): string {
-  if (field.key === 'kuantum_stok_gudang') return String(form[field.key] || transaksi.data_gudang?.kuantum_hgl || '')
+function nilaiField(field: FieldDef, form: FormNilai): string {
   return form[field.key] ?? ''
 }
 
@@ -123,7 +123,6 @@ export default function PengolahanDetailPage() {
   const kembaliKeDaftar = () => navigate('/pengolahan')
   const role = user?.role.nama_role ?? ''
   const { data: transaksi, isLoading, isError, error, refetch } = usePengolahanDetail(id)
-  const { data: gudangOptions } = useGudangOptions()
   const { simpanGudang, simpanLhpk, terima, tolak, unggahFoto } = usePengolahanMutations(id)
   const { data: kandidatMo = [] } = useKandidatMo()
   const operasiWorkspace = useMutation({
@@ -191,7 +190,7 @@ export default function PengolahanDetailPage() {
   })
 
   const [form, setForm] = useState<FormNilai>({})
-  const [gudangId, setGudangId] = useState('')
+  const [makloonId, setMakloonId] = useState<number | null>(null)
   const [fotoPilihan, setFotoPilihan] = useState<Partial<Record<TahapPengolahan, File>>>({})
   const [tahapTerbuka, setTahapTerbuka] = useState<Set<TahapPengolahan>>(new Set())
 
@@ -215,10 +214,11 @@ export default function PengolahanDetailPage() {
 
   useEffect(() => {
     if (!transaksi) return
+    setMakloonId(transaksi.makloon_user_id)
+
     const sumber = transaksi.current_stage === 'gudang' ? transaksi.data_gudang : transaksi.data_lhpk
     if (!sumber) {
-      setForm(transaksi.current_stage === 'ub_jastasma' ? { kuantum_stok_gudang: transaksi.data_gudang?.kuantum_hgl ?? '' } : {})
-      setGudangId(transaksi.current_stage === 'ub_jastasma' ? String(transaksi.data_gudang?.gudang_id ?? '') : '')
+      setForm({})
       return
     }
 
@@ -228,16 +228,8 @@ export default function PengolahanDetailPage() {
       const raw = (sumber as unknown as Record<string, unknown>)[field.key]
       nilai[field.key] = raw === null || raw === undefined ? '' : String(raw).slice(0, field.type === 'date' ? 10 : undefined)
     }
-    if (transaksi.current_stage === 'ub_jastasma' && !nilai.kuantum_stok_gudang) {
-      nilai.kuantum_stok_gudang = transaksi.data_gudang?.kuantum_hgl ?? ''
-    }
 
     setForm(nilai)
-    setGudangId(
-      transaksi.current_stage === 'gudang'
-        ? String(transaksi.data_gudang?.gudang_id ?? '')
-        : String(transaksi.data_lhpk?.gudang_tujuan_id ?? transaksi.data_gudang?.gudang_id ?? ''),
-    )
   }, [transaksi])
 
   if (isLoading) return <div className="mx-auto max-w-5xl px-6 py-8 text-sm text-gray-400">Memuat...</div>
@@ -257,6 +249,12 @@ export default function PengolahanDetailPage() {
   if (!transaksi) return <div className="mx-auto max-w-5xl px-6 py-8 text-sm text-danger">Pengolahan tidak ditemukan.</div>
 
   const urutan = URUTAN_TAHAP[transaksi.skema]
+  // Sama seperti kolom Rekap: tiap role hanya melihat tahap sampai tahapnya sendiri, jadi
+  // Gudang tidak melihat MO/OUT dan UB Jastasma tidak melihat isi Operasi.
+  const terlihat = tahapTerlihat(role, transaksi.skema)
+  const tahapDitampilkan = urutan.filter((tahap) => terlihat.includes(tahap))
+  // Makloon ditetapkan pengisi tahap PERTAMA; tahap kedua mencocokkan saja (server ikut menjaga).
+  const tahapPertama = urutan[0]
   const indexAktif = urutan.indexOf(transaksi.current_stage)
   const tahapDireview = indexAktif > 0 ? urutan[indexAktif - 1] : null
   const dataDireview = tahapDireview ? dataUntukTahap(transaksi, tahapDireview) : null
@@ -276,18 +274,15 @@ export default function PengolahanDetailPage() {
     const jenisFoto = tahap === 'gudang' ? 'foto_notim' : 'foto_lhpk'
     const recordTahap = dataUntukTahap(transaksi, tahap)
 
+    // Gudang & kuantum stok gudang tidak ikut dikirim: yang pertama sudah terkunci di header
+    // transaksi, yang kedua dihitung server dari stok berjalan gudang itu.
     const bodyUntuk = (kirimTahap: boolean) => {
       const body: Record<string, unknown> = { ...form, kirim: kirimTahap }
       for (const key of Object.keys(body)) {
         if (body[key] === '') body[key] = null
       }
 
-      if (tahap === 'gudang') {
-        body.gudang_id = gudangId ? Number(gudangId) : null
-      } else if (tahap === 'ub_jastasma') {
-        body.gudang_tujuan_id = gudangId ? Number(gudangId) : null
-        if (!body.kuantum_stok_gudang) body.kuantum_stok_gudang = transaksi.data_gudang?.kuantum_hgl ?? null
-      }
+      if (tahap === tahapPertama) body.makloon_user_id = makloonId
 
       return body
     }
@@ -344,7 +339,9 @@ export default function PengolahanDetailPage() {
             <p className="text-[0.68rem] font-bold uppercase tracking-[0.18em] text-accent">Pengolahan alur {transaksi.skema}</p>
             <h1 className="section-title mt-1">{transaksi.id_pengolahan}</h1>
             <p className="page-subtitle">
-              Makloon: <span className="font-semibold text-primary-dark">{transaksi.makloon?.nama_maklon ?? '-'}</span>
+              Gudang: <span className="font-semibold text-primary-dark">{transaksi.gudang?.nama ?? '-'}</span>
+              {' · '}
+              Makloon: <span className="font-semibold text-primary-dark">{transaksi.makloon?.nama_maklon ?? 'belum diisi'}</span>
             </p>
           </div>
           <div className="flex flex-wrap justify-end gap-2">
@@ -357,7 +354,8 @@ export default function PengolahanDetailPage() {
       </section>
 
       <ol className="relative ml-3 space-y-4 border-l border-border pl-6 sm:ml-5 sm:pl-8">
-        {urutan.map((tahap, index) => {
+        {tahapDitampilkan.map((tahap) => {
+          const index = urutan.indexOf(tahap)
           const data = dataUntukTahap(transaksi, tahap)
           const aktif = index === indexAktif && transaksi.status_keseluruhan === 'berjalan'
           const lewat = index < indexAktif || transaksi.status_keseluruhan === 'selesai'
@@ -456,9 +454,9 @@ export default function PengolahanDetailPage() {
                       transaksi={transaksi}
                       form={form}
                       setForm={setForm}
-                      gudangId={gudangId}
-                      setGudangId={setGudangId}
-                      gudangOptions={gudangOptions ?? []}
+                      makloonId={makloonId}
+                      setMakloonId={setMakloonId}
+                      bolehPilihMakloon={tahap === tahapPertama}
                       kirimTahap={kirimTahap}
                       fotoPilihan={fotoPilihan[tahap] ?? null}
                       setFotoPilihan={(file) => setFotoPilihan((prev) => ({ ...prev, [tahap]: file ?? undefined }))}
@@ -547,7 +545,7 @@ function TahapSummary({ tahap, transaksi }: { tahap: TahapPengolahan; transaksi:
       <DataGrid
         rows={[
           ['Makloon', transaksi.makloon?.nama_maklon ?? '-'],
-          ['Gudang', data?.gudang?.nama ?? '-'],
+          ['Gudang', transaksi.gudang?.nama ?? '-'],
           ['Tanggal masuk', tanggal(data?.tanggal_masuk_gudang)],
           ['Kuantum HGL', fmt(data?.kuantum_hgl, ' kg')],
           ['Plat mobil', data?.plat_mobil ?? '-'],
@@ -564,14 +562,15 @@ function TahapSummary({ tahap, transaksi }: { tahap: TahapPengolahan; transaksi:
         rows={[
           ['Nomor LHPK', data?.no_lhpk ?? '-'],
           ['Tanggal LHPK', tanggal(data?.tanggal_lhpk)],
-          ['Stok gudang', fmt(data?.kuantum_stok_gudang ?? transaksi.data_gudang?.kuantum_hgl, ' kg')],
+          ['Gudang', transaksi.gudang?.nama ?? '-'],
+          ['Stok gudang saat LHPK', fmt(data?.kuantum_stok_gudang, ' kg')],
           ['Gabah diolah', fmt(data?.kuantum_gabah_diolah, ' kg')],
           ['Beras HGL', fmt(data?.kuantum_beras_hgl, ' kg')],
           ['Rendemen', fmt(data?.rendemen, '%')],
           ['Kualitas', data?.kualitas ?? '-'],
-          ['Broken / Menir / Katul', `${fmt(data?.broken, '%')} / ${fmt(data?.menir, '%')} / ${fmt(data?.katul, '%')}`],
-          ['KA1 / KA2 / KA3', `${fmt(data?.ka1, '%')} / ${fmt(data?.ka2, '%')} / ${fmt(data?.ka3, '%')}`],
-          ['Reject', fmt(data?.reject, '%')],
+          ['Broken / Menir / Katul', `${fmt(data?.broken)} / ${fmt(data?.menir)} / ${fmt(data?.katul)}`],
+          ['KA1 / KA2 / KA3', `${fmt(data?.ka1)} / ${fmt(data?.ka2)} / ${fmt(data?.ka3)}`],
+          ['Reject', fmt(data?.reject)],
         ]}
       />
     )
@@ -1017,9 +1016,9 @@ function FormTahap({
   transaksi,
   form,
   setForm,
-  gudangId,
-  setGudangId,
-  gudangOptions,
+  makloonId,
+  setMakloonId,
+  bolehPilihMakloon,
   kirimTahap,
   fotoPilihan,
   setFotoPilihan,
@@ -1029,9 +1028,10 @@ function FormTahap({
   transaksi: PengolahanItem
   form: FormNilai
   setForm: (value: FormNilai) => void
-  gudangId: string
-  setGudangId: (value: string) => void
-  gudangOptions: { id: number; kode: string; nama: string }[]
+  makloonId: number | null
+  setMakloonId: (value: number | null) => void
+  /** Hanya pengisi tahap PERTAMA yang menetapkan makloon; tahap kedua membacanya saja. */
+  bolehPilihMakloon: boolean
   kirimTahap: (kirim: boolean) => void
   fotoPilihan: File | null
   setFotoPilihan: (file: File | null) => void
@@ -1054,8 +1054,8 @@ function FormTahap({
   const [warning, setWarning] = useState<string | null>(null)
 
   const kurang = [
-    ...(gudangId ? [] : [tahap === 'gudang' ? 'Gudang' : 'Gudang tujuan']),
-    ...fields.filter((field) => !nilaiField(field, form, transaksi).trim()).map((field) => field.label),
+    ...(bolehPilihMakloon && !makloonId ? ['Makloon'] : []),
+    ...fields.filter((field) => !nilaiField(field, form).trim()).map((field) => field.label),
   ]
 
   /**
@@ -1086,45 +1086,55 @@ function FormTahap({
         <StatusPill status={dataUntukTahap(transaksi, tahap)?.status} />
       </div>
 
+      {/* Gudang tidak diketik lagi di sini: ia dipilih sekali saat pengolahan dibuat. */}
       <div className="mt-4 grid gap-4 sm:grid-cols-2">
         <div>
-          <label className="label" htmlFor="gudang">
-            {tahap === 'gudang' ? 'Gudang' : 'Gudang tujuan'}
-          </label>
-          <select id="gudang" className="input bg-white" value={gudangId} onChange={(e) => setGudangId(e.target.value)}>
-            <option value="">Pilih gudang...</option>
-            {gudangOptions.map((item) => (
-              <option key={item.id} value={item.id}>{item.kode} - {item.nama}</option>
-            ))}
-          </select>
+          <label className="label" htmlFor="makloon-tahap">Makloon asal</label>
+          {bolehPilihMakloon ? (
+            <MakloonCombobox value={makloonId} onChange={setMakloonId} reserveSpaceWhenOpen />
+          ) : (
+            <input
+              id="makloon-tahap"
+              className="input bg-white text-muted"
+              value={transaksi.makloon?.nama_maklon ?? '-'}
+              readOnly
+            />
+          )}
         </div>
 
+        {tahap === 'ub_jastasma' && (
+          <div>
+            <label className="label" htmlFor="stok-gudang">Kuantum stok gudang otomatis (kg)</label>
+            {/* Angka sistem: stok berjalan gudang ini (HGL diterima - gabah yang sudah diolah).
+                Dihitung ulang server saat disimpan, jadi di sini murni tampilan. */}
+            <input
+              id="stok-gudang"
+              className="input bg-white text-muted"
+              value={fmt(transaksi.stok_gudang_berjalan ?? 0)}
+              readOnly
+            />
+          </div>
+        )}
+
         {fields.map((field) => {
-          const terkunci = !!field.readOnly && transaksi.skema === 'GDG'
-          const nilai = nilaiField(field, form, transaksi)
+          const nilai = nilaiField(field, form)
 
           return (
             <div key={field.key}>
-              <label className="label" htmlFor={field.key}>
-                {field.key === 'kuantum_stok_gudang' && transaksi.skema !== 'GDG'
-                  ? 'Kuantum stok gudang (kg)'
-                  : field.label}
-              </label>
+              <label className="label" htmlFor={field.key}>{field.label}</label>
               {field.ribuan ? (
                 <AngkaInput
-                  className={`input bg-white ${terkunci ? 'text-muted' : ''}`}
+                  className="input bg-white"
                   value={nilai}
-                  readOnly={terkunci}
                   onChange={(raw) => setForm({ ...form, [field.key]: raw })}
                 />
               ) : (
                 <input
                   id={field.key}
-                  className={`input bg-white ${terkunci ? 'text-muted' : ''}`}
+                  className="input bg-white"
                   type={field.type ?? 'text'}
                   step={field.type === 'number' ? '0.01' : undefined}
                   value={nilai}
-                  readOnly={terkunci}
                   onChange={(e) => setForm({ ...form, [field.key]: e.target.value })}
                   placeholder={field.key === 'no_lhpk' ? 'LHPK/00832/02/2026/ADA08001' : undefined}
                 />

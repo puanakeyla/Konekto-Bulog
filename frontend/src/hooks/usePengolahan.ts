@@ -46,8 +46,14 @@ export type DataLhpk = {
 export type PengolahanItem = {
   id_pengolahan: string
   skema: SkemaPengolahan
-  makloon_user_id: number
+  /** Gudang tujuan, dipilih saat transaksi dibuat. */
+  gudang_id: number | null
+  gudang?: Gudang | null
+  /** Null sampai pengisi tahap pertama menetapkannya. */
+  makloon_user_id: number | null
   makloon?: { id: number; nama_maklon: string | null } | null
+  /** Hanya ada di response detail: stok berjalan gudang ini (dihitung server). */
+  stok_gudang_berjalan?: number
   current_stage: TahapPengolahan
   /** Klasifikasi antrean dari server (KerjaanPengolahan), ikut tiap baris daftar. */
   kerjaan?: KerjaanId
@@ -77,6 +83,20 @@ export type PengolahanItem = {
 export const URUTAN_TAHAP: Record<SkemaPengolahan, TahapPengolahan[]> = {
   GDG: ['gudang', 'ub_jastasma', 'operasi', 'pengadaan'],
   UBJ: ['ub_jastasma', 'gudang', 'operasi', 'pengadaan'],
+}
+
+/**
+ * Tahap yang boleh dilihat sebuah role pada satu skema: KUMULATIF sampai tahapnya sendiri.
+ * GDG -> Gudang lihat Gudang saja; UB Jastasma lihat Gudang + UB; Operasi + Operasi; dst.
+ * Urutannya beda per skema (UBJ menulis LHPK duluan), jadi batasnya dihitung dari URUTAN_TAHAP.
+ *
+ * Satu sumber untuk halaman detail DAN rekap -- dua aturan terpisah pasti melenceng.
+ */
+export function tahapTerlihat(role: string, skema: SkemaPengolahan): TahapPengolahan[] {
+  const urutan = URUTAN_TAHAP[skema]
+  if (role === 'admin') return [...urutan]
+  const batas = urutan.indexOf(role as TahapPengolahan)
+  return batas < 0 ? [] : urutan.slice(0, batas + 1)
 }
 
 export const LABEL_TAHAP: Record<TahapPengolahan, string> = {
@@ -165,7 +185,7 @@ export function usePengolahanMutations(id?: string) {
   const path = (suffix: string) => `/api/pengolahan/${encodeURIComponent(id ?? '')}${suffix}`
 
   const buat = useMutation({
-    mutationFn: async (body: { skema: SkemaPengolahan; makloon_user_id: number }) => {
+    mutationFn: async (body: { skema: SkemaPengolahan; gudang_id: number }) => {
       const { data } = await api.post<{ data: PengolahanItem }>('/api/pengolahan', body)
       return data.data
     },
