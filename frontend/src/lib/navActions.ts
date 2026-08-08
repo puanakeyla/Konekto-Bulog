@@ -8,6 +8,9 @@ const ROLE_PENGOLAHAN = ['gudang', 'ub_jastasma', 'operasi', 'pengadaan']
 // di semua halaman, bukan hanya muncul sebagai tombol besar di dashboard.
 export function buildActions(role: string): NavAction[] {
   const actions: NavAction[] = []
+  const pushAction = (action: NavAction) => {
+    if (!actions.some((item) => item.to === action.to)) actions.push(action)
+  }
 
   if (role === 'admin') {
     return [
@@ -22,19 +25,17 @@ export function buildActions(role: string): NavAction[] {
     ]
   }
 
-  if (role === 'jemput_pangan') actions.push({ to: '/transaksi/baru', label: 'Buat Transaksi' })
-  if (role === 'makloon') actions.push({ to: '/transaksi/baru-mpp', label: 'Buat MPP' })
+  if (role === 'jemput_pangan') pushAction({ to: '/transaksi/baru', label: 'Buat Transaksi' })
+  if (role === 'makloon') pushAction({ to: '/transaksi/baru-mpp', label: 'Buat MPP' })
 
   if (['jemput_pangan', 'makloon', 'ub_jastasma', 'pengadaan', 'keuangan'].includes(role)) {
-    actions.push({ to: '/rekap', label: 'Rekap Data' })
+    pushAction({ to: '/rekap', label: 'Rekap Data' })
   }
 
   if (ROLE_PENGOLAHAN.includes(role)) {
-    actions.push(
-      { to: '/pengolahan', label: 'Pengolahan' },
-      { to: '/mo', label: 'MO' },
-      { to: '/rekap-pengolahan', label: 'Rekap Pengolahan' },
-    )
+    pushAction({ to: '/rekap', label: 'Rekap Data' })
+    pushAction({ to: '/pengolahan', label: 'Pengolahan' })
+    pushAction({ to: '/rekap-pengolahan', label: 'Rekap Pengolahan' })
   }
 
   return actions
