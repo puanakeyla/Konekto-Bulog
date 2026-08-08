@@ -76,7 +76,11 @@ export default function RekapPengolahanPage() {
           <div>
             <p className="text-[0.68rem] font-bold uppercase tracking-[0.18em] text-accent">Rekap</p>
             <h1 className="section-title mt-1">Rekap Pengolahan</h1>
-            <p className="page-subtitle">Data dipisah per skema GDG dan UBJ agar mudah dicek seperti Rekap Sergab.</p>
+            <p className="page-subtitle">
+              Dipisah per skema GDG dan UBJ, seperti Rekap Sergab. Sebuah baris baru masuk rekap
+              setelah data tahap Anda <strong>diterima</strong> — selama masih draft atau menunggu review,
+              angkanya belum final dan belum ditampilkan di sini.
+            </p>
           </div>
           <span className="badge">{rows.length} baris</span>
         </div>
@@ -114,7 +118,7 @@ export default function RekapPengolahanPage() {
           isError={isError}
           errorMessage={(error as { response?: { data?: { message?: string } } } | null)?.response?.data?.message ?? null}
           emptyTitle="Belum ada pengolahan GDG"
-          emptyCopy="Data muncul setelah Gudang memulai alur pengolahan GDG."
+          emptyCopy="Data muncul setelah data tahap Anda pada alur GDG diterima tahap berikutnya."
         />
       </section>
 
@@ -135,7 +139,7 @@ export default function RekapPengolahanPage() {
           isError={isError}
           errorMessage={(error as { response?: { data?: { message?: string } } } | null)?.response?.data?.message ?? null}
           emptyTitle="Belum ada pengolahan UBJ"
-          emptyCopy="Data muncul setelah UB Jastasma memulai alur pengolahan UBJ."
+          emptyCopy="Data muncul setelah data tahap Anda pada alur UBJ diterima tahap berikutnya."
         />
       </section>
     </div>

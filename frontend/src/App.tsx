@@ -59,6 +59,8 @@ function AppRoutes() {
         <Route path="/keuangan" element={<KeuanganPage />} />
         <Route path="/admin/users" element={<AdminUsersPage />} />
         <Route path="/admin/gudang" element={<AdminGudangPage />} />
+        {/* Komponen yang sama, mode baca-saja: role pengolahan tidak diarahkan ke URL /admin. */}
+        <Route path="/gudang" element={<AdminGudangPage />} />
         <Route path="/admin/audit-logs" element={<AdminAuditLogPage />} />
         <Route path="/monitoring" element={<MonitoringPage />} />
         <Route path="/rekap" element={<RekapTransaksiPage />} />

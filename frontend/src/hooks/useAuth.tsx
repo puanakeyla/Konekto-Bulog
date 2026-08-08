@@ -16,7 +16,8 @@ type User = {
 }
 
 type AuthContextValue = {
-  user: User | undefined
+  /** `null` = sudah logout secara eksplisit; `undefined` = belum/gagal dimuat. */
+  user: User | null | undefined
   isLoading: boolean
   login: (username: string, password: string) => Promise<void>
   logout: () => Promise<void>
@@ -27,7 +28,7 @@ const AuthContext = createContext<AuthContextValue | null>(null)
 export function AuthProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient()
 
-  const { data: user, isLoading } = useQuery({
+  const { data: user, isLoading } = useQuery<User | null>({
     queryKey: ['me'],
     queryFn: async () => {
       const { data } = await api.get<{ user: User }>('/api/me')
@@ -43,8 +44,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   const logout = async () => {
-    await api.post('/api/logout')
-    queryClient.setQueryData(['me'], undefined)
+    // Ditulis DULUAN supaya layar langsung pindah ke /login, tidak menunggu request selesai.
+    // Sebelumnya nilainya `undefined`, dan React Query memperlakukan `undefined` sebagai
+    // "batalkan update" -- cache tidak pernah berubah, jadi UI baru sadar sudah logout ketika
+    // ada query lain yang kena 401. Itu penyebab "keluar role lama banget".
+    queryClient.setQueryData(['me'], null)
+
+    try {
+      await api.post('/api/logout')
+    } finally {
+      // Buang cache role lama; tanpa ini login berikutnya sempat menampilkan data akun sebelumnya.
+      // Kunci 'me' dipertahankan supaya nilai null di atas tidak ikut terhapus dan memicu refetch.
+      queryClient.removeQueries({ predicate: (query) => query.queryKey[0] !== 'me' })
+    }
   }
 
   return (

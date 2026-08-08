@@ -25,10 +25,14 @@ export function useGudangOptions() {
   })
 }
 
-/** Daftar lengkap termasuk yang nonaktif -- hanya untuk layar Admin. */
-export function useGudangList() {
+/**
+ * Daftar lengkap termasuk yang nonaktif -- endpointnya admin-only, jadi `enabled` wajib dimatikan
+ * untuk role lain supaya halaman baca-saja tidak menembak /api/admin/gudang dan kena 403.
+ */
+export function useGudangList(enabled = true) {
   return useQuery({
     queryKey: ['gudang-list'],
+    enabled,
     queryFn: async () => {
       const { data } = await api.get<{ data: Gudang[] }>('/api/admin/gudang')
       return data.data

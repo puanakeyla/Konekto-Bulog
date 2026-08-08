@@ -112,6 +112,7 @@ export default function PengolahanListPage() {
   const rows = data?.data ?? []
   const hitung = data?.kerjaan_hitung
   const groups = groupByMakloon(rows)
+  const tampilChip = KERJAAN_URUT.filter((id) => (hitung?.[id] ?? 0) > 0 || kerjaanFilter === id)
 
   const buatBaru = (e: React.FormEvent) => {
     e.preventDefault()
@@ -184,24 +185,29 @@ export default function PengolahanListPage() {
       </div>
 
       {/* Angka chip datang dari server untuk SELURUH daftar -- kalau dihitung dari `rows`, ia
-          hanya mencerminkan halaman yang kebetulan terbuka. */}
-      <div className="mb-3 flex flex-wrap items-center gap-2">
-        <KerjaanChip
-          label="Semua"
-          jumlah={hitung?.total ?? 0}
-          aktif={kerjaanFilter === 'semua'}
-          onClick={() => { setKerjaanFilter('semua'); setPage(1) }}
-        />
-        {KERJAAN_URUT.map((id) => (
+          hanya mencerminkan halaman yang kebetulan terbuka.
+          Kategori kosong disembunyikan: chip bernilai 0 tidak bisa diapa-apakan, cuma bikin ramai.
+          Chip yang sedang aktif tetap dirender walau jadi 0, kalau tidak filternya hilang sendiri
+          dan tabel kosong tanpa jalan kembali. */}
+      {tampilChip.length > 0 && (
+        <div className="mb-3 flex flex-wrap items-center gap-2">
           <KerjaanChip
-            key={id}
-            label={KERJAAN_LABEL[id]}
-            jumlah={hitung?.[id] ?? 0}
-            aktif={kerjaanFilter === id}
-            onClick={() => { setKerjaanFilter(id); setPage(1) }}
+            label="Semua"
+            jumlah={hitung?.total ?? 0}
+            aktif={kerjaanFilter === 'semua'}
+            onClick={() => { setKerjaanFilter('semua'); setPage(1) }}
           />
-        ))}
-      </div>
+          {tampilChip.map((id) => (
+            <KerjaanChip
+              key={id}
+              label={KERJAAN_LABEL[id]}
+              jumlah={hitung?.[id] ?? 0}
+              aktif={kerjaanFilter === id}
+              onClick={() => { setKerjaanFilter(id); setPage(1) }}
+            />
+          ))}
+        </div>
+      )}
       {kerjaanFilter !== 'semua' && <p className="page-subtitle mb-3">{KERJAAN_KETERANGAN[kerjaanFilter]}</p>}
 
       {isLoading && <SkeletonTable />}

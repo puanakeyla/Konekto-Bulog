@@ -2,26 +2,40 @@ import { useState } from 'react'
 import { Navigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import { useAuth } from '../hooks/useAuth'
-import { useGudangList, useGudangMutations, type Gudang, type GudangImportResult } from '../hooks/useGudang'
+import { useGudangList, useGudangMutations, useGudangOptions, type Gudang, type GudangImportResult } from '../hooks/useGudang'
 import { pesanError } from '../lib/pesanError'
 
 const KOSONG = { kode: '', nama: '', aktif: true }
 
+/** Role rantai pengolahan boleh MELIHAT daftarnya -- mereka yang memilih gudang saat mengisi. */
+const ROLE_PEMBACA = ['gudang', 'ub_jastasma', 'operasi', 'pengadaan']
+
 /**
  * Master gudang. Gudang A/B/C/D adalah DATA, bukan akun user -- satu akun gudang pusat
  * memilih dari daftar ini saat mengisi.
+ *
+ * Satu komponen untuk dua peran: Admin mengelola (tambah/edit/hapus/import), role pengolahan
+ * hanya membaca gudang yang aktif. Dipisah jadi dua halaman cuma akan menggandakan tabelnya.
  */
 export default function AdminGudangPage() {
   const { user } = useAuth()
-  const { data: daftar, isLoading } = useGudangList()
+  const isAdmin = user?.role.nama_role === 'admin'
+  const { data: daftarAdmin, isLoading: isLoadingAdmin } = useGudangList(isAdmin)
+  const { data: daftarAktif, isLoading: isLoadingAktif } = useGudangOptions()
   const { simpan, hapus, importGudang } = useGudangMutations()
   const [form, setForm] = useState<typeof KOSONG & { id?: number }>(KOSONG)
   const [importFile, setImportFile] = useState<File | null>(null)
   const [importInputKey, setImportInputKey] = useState(0)
   const [importResult, setImportResult] = useState<GudangImportResult | null>(null)
 
-  if (user?.role.nama_role !== 'admin') return <Navigate to="/" replace />
+  if (!isAdmin && !ROLE_PEMBACA.includes(user?.role.nama_role ?? '')) return <Navigate to="/" replace />
 
+  // /api/gudang-options memang hanya mengembalikan yang aktif, jadi flag-nya diisi konstan
+  // supaya satu tabel bisa merender kedua sumber tanpa cabang tipe.
+  const daftar: Gudang[] = isAdmin
+    ? daftarAdmin ?? []
+    : (daftarAktif ?? []).map((item) => ({ ...item, aktif: true }))
+  const isLoading = isAdmin ? isLoadingAdmin : isLoadingAktif
   const reset = () => setForm(KOSONG)
 
   const kirim = (e: React.FormEvent) => {
@@ -62,12 +76,15 @@ export default function AdminGudangPage() {
   return (
     <div className="mx-auto max-w-5xl px-6 py-8">
       <div className="mb-6">
-        <h1 className="section-title">Master Gudang</h1>
+        <h1 className="section-title">{isAdmin ? 'Master Gudang' : 'Daftar Gudang'}</h1>
         <p className="page-subtitle">
-          Daftar gudang yang bisa dipilih saat mengisi data pengolahan. Satu akun Gudang memilih dari daftar ini.
+          {isAdmin
+            ? 'Daftar gudang yang bisa dipilih saat mengisi data pengolahan. Satu akun Gudang memilih dari daftar ini.'
+            : 'Gudang aktif yang bisa Anda pilih saat mengisi data pengolahan. Perubahan daftarnya lewat Admin.'}
         </p>
       </div>
 
+      {isAdmin && (
       <form onSubmit={kirim} className="panel panel-pad mb-6 grid gap-4 sm:grid-cols-[10rem_1fr_auto] sm:items-end">
         <div>
           <label className="label" htmlFor="kode">Kode</label>
@@ -100,7 +117,9 @@ export default function AdminGudangPage() {
           )}
         </div>
       </form>
+      )}
 
+      {isAdmin && (
       <section className="panel panel-pad mb-6">
         <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
           <div>
@@ -144,6 +163,7 @@ export default function AdminGudangPage() {
           Contoh CSV: kode,nama,aktif lalu ADA08001,Gudang A,aktif.
         </div>
       </section>
+      )}
 
       <div className="panel overflow-hidden">
         <table className="w-full text-sm">
@@ -151,52 +171,60 @@ export default function AdminGudangPage() {
             <tr>
               <th className="px-4 py-2">Kode</th>
               <th className="px-4 py-2">Nama</th>
-              <th className="px-4 py-2">Status</th>
-              <th className="px-4 py-2 text-right">Aksi</th>
+              {/* Tampilan baca-saja hanya berisi gudang aktif, jadi kolom Status & Aksi tidak
+                  punya isi yang bermakna di sana. */}
+              {isAdmin && <th className="px-4 py-2">Status</th>}
+              {isAdmin && <th className="px-4 py-2 text-right">Aksi</th>}
             </tr>
           </thead>
           <tbody>
-            {isLoading && <tr><td colSpan={4} className="px-4 py-6 text-center text-gray-400">Memuat...</td></tr>}
-            {!isLoading && (daftar ?? []).length === 0 && (
-              <tr><td colSpan={4} className="px-4 py-6 text-center text-gray-400">Belum ada gudang.</td></tr>
+            {isLoading && <tr><td colSpan={isAdmin ? 4 : 2} className="px-4 py-6 text-center text-gray-400">Memuat...</td></tr>}
+            {!isLoading && daftar.length === 0 && (
+              <tr><td colSpan={isAdmin ? 4 : 2} className="px-4 py-6 text-center text-gray-400">Belum ada gudang.</td></tr>
             )}
-            {(daftar ?? []).map((item) => (
+            {daftar.map((item) => (
               <tr key={item.id} className="border-t border-border">
                 <td className="px-4 py-2 font-medium text-primary-dark">{item.kode}</td>
                 <td className="px-4 py-2">{item.nama}</td>
-                <td className="px-4 py-2">
-                  <span className={`badge ${item.aktif ? 'badge-success' : 'badge-warning'}`}>
-                    {item.aktif ? 'Aktif' : 'Nonaktif'}
-                  </span>
-                </td>
-                <td className="px-4 py-2">
-                  <div className="flex justify-end gap-2">
-                    <button
-                      type="button"
-                      className="btn btn-ghost px-3 py-1 text-xs"
-                      onClick={() => setForm({ id: item.id, kode: item.kode, nama: item.nama, aktif: item.aktif })}
-                    >
-                      Edit
-                    </button>
-                    <button
-                      type="button"
-                      className="btn btn-outline-danger px-3 py-1 text-xs"
-                      onClick={() => hapusGudang(item)}
-                      disabled={hapus.isPending}
-                    >
-                      Hapus
-                    </button>
-                  </div>
-                </td>
+                {isAdmin && (
+                  <>
+                    <td className="px-4 py-2">
+                      <span className={`badge ${item.aktif ? 'badge-success' : 'badge-warning'}`}>
+                        {item.aktif ? 'Aktif' : 'Nonaktif'}
+                      </span>
+                    </td>
+                    <td className="px-4 py-2">
+                      <div className="flex justify-end gap-2">
+                        <button
+                          type="button"
+                          className="btn btn-ghost px-3 py-1 text-xs"
+                          onClick={() => setForm({ id: item.id, kode: item.kode, nama: item.nama, aktif: item.aktif })}
+                        >
+                          Edit
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-outline-danger px-3 py-1 text-xs"
+                          onClick={() => hapusGudang(item)}
+                          disabled={hapus.isPending}
+                        >
+                          Hapus
+                        </button>
+                      </div>
+                    </td>
+                  </>
+                )}
               </tr>
             ))}
           </tbody>
         </table>
       </div>
 
-      <p className="page-subtitle mt-3">
-        Gudang yang sudah dipakai pada data pengolahan tidak bisa dihapus — nonaktifkan saja supaya data lama tetap utuh.
-      </p>
+      {isAdmin && (
+        <p className="page-subtitle mt-3">
+          Gudang yang sudah dipakai pada data pengolahan tidak bisa dihapus — nonaktifkan saja supaya data lama tetap utuh.
+        </p>
+      )}
     </div>
   )
 }

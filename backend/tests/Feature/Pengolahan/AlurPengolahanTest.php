@@ -395,6 +395,35 @@ class AlurPengolahanTest extends TestCase
             ->assertJsonPath('kerjaan_hitung.total', 4);
     }
 
+    /**
+     * Rekap Pengolahan mengikuti aturan Rekap SerGab: baris baru muncul setelah data tahap milik
+     * role itu DITERIMA, bukan begitu dikirim.
+     */
+    public function test_rekap_hanya_memuat_data_yang_sudah_diterima(): void
+    {
+        // A: Gudang baru mengirim, belum diterima UB Jastasma.
+        $dikirim = $this->buat('GDG');
+        $this->isiGudang($dikirim)->assertOk();
+
+        // B: Gudang sudah diterima UB Jastasma.
+        $diterima = $this->buat('GDG');
+        $this->isiGudang($diterima)->assertOk();
+        $this->terima($diterima, 'ub_jastasma')->assertOk();
+
+        $rekap = fn (string $role) => collect(
+            $this->actingAs($this->user[$role])->getJson('/api/pengolahan/rekap')->assertOk()->json('data')
+        )->pluck('id_pengolahan')->all();
+
+        $this->assertSame([$diterima], $rekap('gudang'));
+        // Admin memakai tahap pertama skema, jadi hasilnya sama untuk GDG.
+        $this->assertSame([$diterima], $rekap('admin'));
+        // LHPK belum diisi sama sekali; rekap UB Jastasma masih kosong.
+        $this->assertSame([], $rekap('ub_jastasma'));
+        // Belum ada MO dan belum ada OUT.
+        $this->assertSame([], $rekap('operasi'));
+        $this->assertSame([], $rekap('pengadaan'));
+    }
+
     public function test_id_pengolahan_berformat_dan_berurut_per_skema(): void
     {
         $this->assertSame('00001/08/2026/GDG', $this->buat('GDG'));

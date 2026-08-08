@@ -7,9 +7,18 @@ import { buildActions } from './navActions.ts'
 // Dua menu rekap harus selalu berdampingan di ujung kanan, apa pun rolenya -- itu satu-satunya
 // alasan fungsi ini memisahkan `rekap` dari `actions`.
 test('menu rekap selalu dua terakhir dan berdampingan', () => {
-  for (const role of ['admin', 'gudang', 'ub_jastasma', 'operasi', 'pengadaan']) {
+  for (const role of ['admin', 'ub_jastasma', 'pengadaan']) {
     const labels = buildActions(role).map((item) => item.label)
     assert.deepEqual(labels.slice(-2), ['Rekap Sergab', 'Rekap Pengolahan'], `role ${role}`)
+  }
+})
+
+// Gudang & Operasi tidak punya tahap di alur SerGab, jadi Rekap Sergab-nya pasti kosong.
+test('gudang & operasi hanya dapat Rekap Pengolahan', () => {
+  for (const role of ['gudang', 'operasi']) {
+    const labels = buildActions(role).map((item) => item.label)
+    assert.equal(labels.at(-1), 'Rekap Pengolahan', `role ${role}`)
+    assert.ok(!labels.includes('Rekap Sergab'), `role ${role} tidak perlu rekap sergab`)
   }
 })
 

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import api from '../lib/api'
@@ -115,7 +115,12 @@ function dataUntukTahap(transaksi: PengolahanItem, tahap: TahapPengolahan): Data
 export default function PengolahanDetailPage() {
   const { id } = useParams<{ id: string }>()
   const { user } = useAuth()
+  const navigate = useNavigate()
   const queryClient = useQueryClient()
+  // Simpan/Kirim/Tolak = pekerjaan selesai untuk baris ini; balik ke daftar supaya baris
+  // berikutnya langsung terlihat. Terima sengaja TIDAK ikut: setelah menerima, giliran mengisi
+  // tahap sendiri ada di halaman yang sama.
+  const kembaliKeDaftar = () => navigate('/pengolahan')
   const role = user?.role.nama_role ?? ''
   const { data: transaksi, isLoading, isError, error, refetch } = usePengolahanDetail(id)
   const { data: gudangOptions } = useGudangOptions()
@@ -313,6 +318,7 @@ export default function PengolahanDetailPage() {
       }
 
       toast.success(kirim ? 'Data dan dokumen dikirim.' : 'Draft dan dokumen disimpan.')
+      kembaliKeDaftar()
     } catch (err) {
       toast.error(pesanError(err))
     }
@@ -322,6 +328,7 @@ export default function PengolahanDetailPage() {
     tolak.mutate(catatan, {
       onSuccess: () => {
         toast.success('Data ditolak.')
+        kembaliKeDaftar()
       },
       onError: (err) => toast.error(pesanError(err)),
     })
@@ -363,6 +370,10 @@ export default function PengolahanDetailPage() {
           const tampilOperasiWorkspace = tahap === 'operasi' && aktif && dataDireview?.status === 'diterima'
           const mo = transaksi.mo_detail?.mo
           const tampilReviewMoOperasi = tahap === 'operasi' && transaksi.current_stage === 'pengadaan' && mo?.review_status === 'menunggu_review' && (role === 'pengadaan' || role === 'admin')
+          // Tahap yang datanya belum ada tidak punya detail untuk dilihat -- begitu tahap sebelumnya
+          // mengirim, kartu tahap berikutnya jadi aktif dan tombolnya dulu tetap muncul, membuka
+          // tabel berisi "-" semua. Tombolnya baru ada setelah tahap ini benar-benar terisi.
+          const adaIsi = tahap === 'gudang' || tahap === 'ub_jastasma' ? !!data : !!mo
 
           return (
             <li key={tahap} className="relative">
@@ -389,15 +400,19 @@ export default function PengolahanDetailPage() {
 
                 {!menunggu && (
                 <div className="px-4 py-4 sm:px-5">
-                  <button
-                    type="button"
-                    onClick={() => toggleTahap(tahap)}
-                    className="text-xs font-semibold text-primary hover:underline"
-                  >
-                    {terbuka ? 'Sembunyikan detail' : 'Lihat detail'}
-                  </button>
+                  {adaIsi ? (
+                    <button
+                      type="button"
+                      onClick={() => toggleTahap(tahap)}
+                      className="text-xs font-semibold text-primary hover:underline"
+                    >
+                      {terbuka ? 'Sembunyikan detail' : 'Lihat detail'}
+                    </button>
+                  ) : (
+                    <p className="text-xs text-muted">Belum ada data untuk tahap ini.</p>
+                  )}
 
-                  {terbuka && (
+                  {terbuka && adaIsi && (
                     <div className="mt-3">
                       <TahapSummary tahap={tahap} transaksi={transaksi} />
 

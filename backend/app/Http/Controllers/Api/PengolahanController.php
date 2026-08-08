@@ -10,6 +10,7 @@ use App\Services\Pengolahan\KerjaanPengolahan;
 use App\Services\Pengolahan\PengolahanStages;
 use App\Services\Pengolahan\PengolahanStageService;
 use App\Services\Transaksi\FotoAccessService;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
@@ -105,12 +106,41 @@ class PengolahanController extends Controller
     {
         $this->assertPembaca($request);
 
-        return response()->json([
-            'data' => TransaksiPengolahan::query()
-                ->with(['makloon:id,nama_maklon', 'dataGudang.gudang', 'dataLhpk.gudangTujuan', 'moDetail.mo'])
-                ->orderByDesc('created_at')
-                ->get(),
-        ]);
+        $query = TransaksiPengolahan::query()
+            ->with(['makloon:id,nama_maklon', 'dataGudang.gudang', 'dataLhpk.gudangTujuan', 'moDetail.mo'])
+            ->orderByDesc('created_at');
+
+        $this->terapkanFilterTerkunci($query, $request->user()->role->nama_role);
+
+        return response()->json(['data' => $query->get()]);
+    }
+
+    /**
+     * Hanya data terkunci yang masuk rekap -- aturan yang sama dengan rekap SerGab
+     * (TransaksiController::terapkanFilterTerkunci): baris baru muncul setelah data tahap milik
+     * role itu DITERIMA tahap berikutnya, bukan begitu disimpan atau dikirim. Selama masih draft
+     * atau menunggu review, angkanya belum final dan tidak layak direkap.
+     *
+     * Operasi terkunci saat MO-nya disetujui Pengadaan; Pengadaan saat Nomor OUT sudah terbit
+     * (status_keseluruhan 'selesai'). Admin memakai aturan paling longgar -- tahap pertama skema
+     * masing-masing -- karena justru admin yang membereskan baris bermasalah di tahap lanjut.
+     */
+    private function terapkanFilterTerkunci(Builder $query, string $role): void
+    {
+        match ($role) {
+            'gudang' => $query->whereHas('dataGudang', fn (Builder $q) => $q->where('status', 'diterima')),
+            'ub_jastasma' => $query->whereHas('dataLhpk', fn (Builder $q) => $q->where('status', 'diterima')),
+            'operasi' => $query->whereHas('moDetail.mo', fn (Builder $q) => $q->where('review_status', 'diterima')),
+            'pengadaan' => $query->where('status_keseluruhan', 'selesai'),
+            // Tahap pertama tiap skema: Gudang untuk GDG, UB Jastasma untuk UBJ.
+            'admin' => $query->where(function (Builder $q) {
+                $q->where(fn (Builder $t) => $t->where('skema', 'GDG')
+                    ->whereHas('dataGudang', fn (Builder $g) => $g->where('status', 'diterima')))
+                    ->orWhere(fn (Builder $t) => $t->where('skema', 'UBJ')
+                        ->whereHas('dataLhpk', fn (Builder $l) => $l->where('status', 'diterima')));
+            }),
+            default => null,
+        };
     }
 
     public function show(Request $request, TransaksiPengolahan $pengolahan)

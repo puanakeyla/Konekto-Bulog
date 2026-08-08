@@ -40,8 +40,8 @@ const ROLE_SUBTITLE: Record<string, string> = {
   ub_jastasma: 'Tinjau UB & jastasma tiap transaksi sebelum masuk tahap pengadaan.',
   pengadaan: 'Tinjau transaksi masuk dan terbitkan PO untuk melanjutkan proses serap.',
   keuangan: 'Proses pembayaran PO tepat waktu agar rantai serap terus berjalan.',
-  operasi: 'Catat data operasi lapangan supaya progres tiap transaksi selalu terpantau.',
-  gudang: 'Konfirmasi penerimaan gabah di gudang sebagai penutup alur serap.',
+  operasi: 'Gabungkan LHPK yang sudah diterima menjadi MO, lalu kirim ke Pengadaan.',
+  gudang: 'Catat gabah masuk gudang dan cek data LHPK pada alur pengolahan.',
   admin: 'Pantau seluruh alur TJP dan MPP dari input awal sampai penerimaan gudang.',
   makloon: 'Kelola bongkar dan proses gabah dari mitra dengan rapi dan tepat waktu.',
 }

@@ -36,9 +36,13 @@ export function buildActions(role: string): NavAction[] {
     push(rekap, { to: '/rekap', label: 'Rekap Sergab' })
   }
 
+  // Rekap Sergab TIDAK ditambahkan di sini: Gudang & Operasi tidak punya tahap di alur SerGab,
+  // jadi rekapnya selalu kosong buat mereka. ub_jastasma & pengadaan tetap dapat lewat blok di atas.
   if (ROLE_PENGOLAHAN.includes(role)) {
-    push(rekap, { to: '/rekap', label: 'Rekap Sergab' })
     push(actions, { to: '/pengolahan', label: 'Pengolahan' })
+    // Baca-saja: mereka memilih gudang saat mengisi, jadi perlu bisa melihat daftarnya
+    // tanpa harus menunggu form terbuka. Yang mengubah isinya tetap Admin.
+    push(actions, { to: '/gudang', label: 'Daftar Gudang' })
     push(rekap, { to: '/rekap-pengolahan', label: 'Rekap Pengolahan' })
   }
 
