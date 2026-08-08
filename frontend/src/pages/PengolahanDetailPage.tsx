@@ -179,6 +179,25 @@ export default function PengolahanDetailPage() {
   const [form, setForm] = useState<FormNilai>({})
   const [gudangId, setGudangId] = useState('')
   const [fotoPilihan, setFotoPilihan] = useState<Partial<Record<TahapPengolahan, File>>>({})
+  const [tahapTerbuka, setTahapTerbuka] = useState<Set<TahapPengolahan>>(new Set())
+
+  const toggleTahap = (tahap: TahapPengolahan) =>
+    setTahapTerbuka((prev) => {
+      const next = new Set(prev)
+      if (next.has(tahap)) next.delete(tahap)
+      else next.add(tahap)
+      return next
+    })
+
+  // Tahap yang sedang direview dibuka otomatis -- sisanya tertutup, biar reviewer tidak
+  // harus klik dulu sebelum bisa Terima/Tolak.
+  useEffect(() => {
+    if (!transaksi) return
+    const urutan = URUTAN_TAHAP[transaksi.skema]
+    const sebelum = urutan[urutan.indexOf(transaksi.current_stage) - 1]
+    if (!sebelum || dataUntukTahap(transaksi, sebelum)?.status !== 'menunggu_review') return
+    setTahapTerbuka((prev) => (prev.has(sebelum) ? prev : new Set(prev).add(sebelum)))
+  }, [transaksi])
 
   useEffect(() => {
     if (!transaksi) return
@@ -320,6 +339,7 @@ export default function PengolahanDetailPage() {
           const aktif = index === indexAktif && transaksi.status_keseluruhan === 'berjalan'
           const lewat = index < indexAktif || transaksi.status_keseluruhan === 'selesai'
           const menunggu = index > indexAktif && transaksi.status_keseluruhan === 'berjalan'
+          const terbuka = tahapTerbuka.has(tahap)
           const tahapBisaDiisi = bolehIsi(tahap) && (tahap === 'gudang' || tahap === 'ub_jastasma')
           const tampilReviewDiTahapAktif = aktif && !!tahapDireview && dataDireview?.status === 'menunggu_review' && (role === transaksi.current_stage || role === 'admin')
           const tampilOperasiWorkspace = tahap === 'operasi' && aktif && dataDireview?.status === 'diterima'
@@ -339,7 +359,7 @@ export default function PengolahanDetailPage() {
               </span>
 
               <section className={`panel overflow-hidden ${aktif ? 'border-accent/70' : ''} ${menunggu ? 'opacity-80' : ''}`}>
-                <div className="border-b border-border bg-white px-4 py-3 sm:px-5">
+                <div className={`bg-white px-4 py-3 sm:px-5 ${menunggu ? '' : 'border-b border-border'}`}>
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
                       <h2 className="text-sm font-extrabold text-primary-dark">{LABEL_TAHAP[tahap]}</h2>
@@ -349,15 +369,28 @@ export default function PengolahanDetailPage() {
                   </div>
                 </div>
 
+                {!menunggu && (
                 <div className="px-4 py-4 sm:px-5">
-                  <TahapSummary tahap={tahap} transaksi={transaksi} />
+                  <button
+                    type="button"
+                    onClick={() => toggleTahap(tahap)}
+                    className="text-xs font-semibold text-primary hover:underline"
+                  >
+                    {terbuka ? 'Sembunyikan detail' : 'Lihat detail'}
+                  </button>
 
-                  {(tahap === 'gudang' || tahap === 'ub_jastasma') && (
-                    <FotoPengolahan
-                      id={transaksi.id_pengolahan}
-                      jenisFoto={tahap === 'gudang' ? 'foto_notim' : 'foto_lhpk'}
-                      enabled={!!data}
-                    />
+                  {terbuka && (
+                    <div className="mt-3">
+                      <TahapSummary tahap={tahap} transaksi={transaksi} />
+
+                      {(tahap === 'gudang' || tahap === 'ub_jastasma') && (
+                        <FotoPengolahan
+                          id={transaksi.id_pengolahan}
+                          jenisFoto={tahap === 'gudang' ? 'foto_notim' : 'foto_lhpk'}
+                          enabled={!!data}
+                        />
+                      )}
+                    </div>
                   )}
 
                   {data?.status === 'ditolak' && data.catatan_penolakan && (
@@ -423,6 +456,7 @@ export default function PengolahanDetailPage() {
                     />
                   )}
                 </div>
+                )}
               </section>
             </li>
           )
