@@ -41,3 +41,19 @@ export function useFotoUrl(transaksiId: string | undefined, jenisFoto: string, e
     retry: false,
   })
 }
+
+export function useFotoPengolahanUrl(pengolahanId: string | undefined, jenisFoto: string, enabled: boolean, conversion?: 'thumb') {
+  return useQuery({
+    queryKey: ['foto-pengolahan-url', pengolahanId, jenisFoto, conversion ?? 'asli'],
+    queryFn: async () => {
+      const { data } = await api.get<{ url: string }>(
+        `/api/pengolahan/${encodeURIComponent(pengolahanId!)}/foto/${jenisFoto}`,
+        { params: conversion ? { conversion } : undefined },
+      )
+      return data.url
+    },
+    enabled: enabled && !!pengolahanId,
+    staleTime: 4 * 60 * 1000,
+    retry: false,
+  })
+}

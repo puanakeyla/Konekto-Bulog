@@ -12,6 +12,8 @@ export const FOTO_LABELS: Record<string, string> = {
   foto_surat_jalan_paraf: 'Surat Jalan Diparaf',
   foto_nota_timbang: 'Foto Nota Timbang',
   foto_lhpk_hpk: 'Foto LHPK/HPK',
+  foto_notim: 'Foto Nota Timbang',
+  foto_lhpk: 'Foto LHPK',
 }
 
 export function labelFoto(jenis: string): string {

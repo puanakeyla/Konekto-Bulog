@@ -54,7 +54,18 @@ export type PengolahanItem = {
   data_lhpk?: DataLhpk | null
   mo_detail?: {
     id: number
-    mo?: { id: number; no_mo: string; no_out: string | null; tanggal_out: string | null; status: string } | null
+    mo?: {
+      id: number
+      no_mo: string
+      no_tm_ada: string | null
+      no_tm_gudang: string | null
+      total_kuantum_hgl: string | null
+      total_kuantum_gabah_diolah: string | null
+      no_out: string | null
+      tanggal_out: string | null
+      status: string
+      review_status: 'draft' | 'menunggu_review' | 'diterima' | 'ditolak'
+    } | null
   } | null
   riwayat_penolakan?: { id: number; tahap: string; catatan: string; ditolak_pada: string; penolak?: { name?: string } | null }[]
 }

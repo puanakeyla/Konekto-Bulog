@@ -8,6 +8,12 @@ export type Gudang = {
   aktif: boolean
 }
 
+export type GudangImportResult = {
+  created: number
+  updated: number
+  errors: { baris: number; pesan: string }[]
+}
+
 /** Opsi dropdown: hanya gudang aktif. Dipakai form Gudang & UB Jastasma. */
 export function useGudangOptions() {
   return useQuery({
@@ -54,5 +60,15 @@ export function useGudangMutations() {
     onSuccess: invalidate,
   })
 
-  return { simpan, hapus }
+  const importGudang = useMutation({
+    mutationFn: async (file: File) => {
+      const body = new FormData()
+      body.append('file', file)
+      const { data } = await api.post<{ data: GudangImportResult }>('/api/admin/gudang/import', body)
+      return data.data
+    },
+    onSuccess: invalidate,
+  })
+
+  return { simpan, hapus, importGudang }
 }
