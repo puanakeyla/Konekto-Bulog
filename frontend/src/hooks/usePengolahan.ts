@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import api from '../lib/api'
 import type { Gudang } from './useGudang'
+import type { KerjaanId } from '../lib/kerjaanTransaksi'
 
 export type SkemaPengolahan = 'GDG' | 'UBJ'
 export type TahapPengolahan = 'gudang' | 'ub_jastasma' | 'operasi' | 'pengadaan'
@@ -48,6 +49,8 @@ export type PengolahanItem = {
   makloon_user_id: number
   makloon?: { id: number; nama_maklon: string | null } | null
   current_stage: TahapPengolahan
+  /** Klasifikasi antrean dari server (KerjaanPengolahan), ikut tiap baris daftar. */
+  kerjaan?: KerjaanId
   status_keseluruhan: 'berjalan' | 'selesai'
   created_at: string
   data_gudang?: DataGudang | null
@@ -83,13 +86,24 @@ export const LABEL_TAHAP: Record<TahapPengolahan, string> = {
   pengadaan: 'Pengadaan',
 }
 
-type Halaman = { data: PengolahanItem[]; current_page: number; last_page: number; total: number; from: number | null; to: number | null }
+type Halaman = {
+  data: PengolahanItem[]
+  current_page: number
+  last_page: number
+  total: number
+  from: number | null
+  to: number | null
+  /** Jumlah per kategori untuk SELURUH daftar, bukan halaman yang kebetulan terbuka. */
+  kerjaan_hitung: Record<KerjaanId | 'total', number>
+}
 
-export function usePengolahanList(params: { page?: number; skema?: SkemaPengolahan | 'semua'; antrean?: boolean; search?: string } = {}) {
-  const { page = 1, skema = 'semua', antrean = false, search = '' } = params
+export function usePengolahanList(
+  params: { page?: number; skema?: SkemaPengolahan | 'semua'; antrean?: boolean; search?: string; kerjaan?: KerjaanId | 'semua' } = {},
+) {
+  const { page = 1, skema = 'semua', antrean = false, search = '', kerjaan = 'semua' } = params
 
   return useQuery({
-    queryKey: ['pengolahan-list', page, skema, antrean, search],
+    queryKey: ['pengolahan-list', page, skema, antrean, search, kerjaan],
     queryFn: async () => {
       const { data } = await api.get<Halaman>('/api/pengolahan', {
         params: {
@@ -97,6 +111,7 @@ export function usePengolahanList(params: { page?: number; skema?: SkemaPengolah
           ...(skema !== 'semua' ? { skema } : {}),
           ...(antrean ? { antrean: 1 } : {}),
           ...(search ? { search } : {}),
+          ...(kerjaan !== 'semua' ? { kerjaan } : {}),
         },
       })
       return data

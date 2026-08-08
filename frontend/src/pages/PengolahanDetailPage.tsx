@@ -22,14 +22,17 @@ import { bukaTabBaru } from '../lib/bukaTabBaru'
 import { labelFoto } from '../lib/fotoDokumen'
 import { pesanError } from '../lib/pesanError'
 import { apiErrorMessage } from '../lib/apiError'
+import AngkaInput from '../components/AngkaInput'
 import ConfirmDialog from '../components/ConfirmDialog'
+import FotoPicker from '../components/FotoPicker'
 
 type FormNilai = Record<string, string>
-type FieldDef = { key: string; label: string; type?: string; readOnly?: boolean }
+/** `ribuan` = kuantum (kg) yang selalu bulat -- dirender AngkaInput agar berpemisah ribuan. */
+type FieldDef = { key: string; label: string; type?: string; readOnly?: boolean; ribuan?: boolean }
 
 const FIELD_GUDANG: FieldDef[] = [
   { key: 'tanggal_masuk_gudang', label: 'Tanggal masuk gudang', type: 'date' },
-  { key: 'kuantum_hgl', label: 'Kuantum HGL (kg)', type: 'number' },
+  { key: 'kuantum_hgl', label: 'Kuantum HGL (kg)', ribuan: true },
   { key: 'plat_mobil', label: 'Plat mobil' },
   { key: 'supir', label: 'Supir' },
 ]
@@ -37,9 +40,9 @@ const FIELD_GUDANG: FieldDef[] = [
 const FIELD_LHPK: FieldDef[] = [
   { key: 'no_lhpk', label: 'Nomor LHPK' },
   { key: 'tanggal_lhpk', label: 'Tanggal LHPK', type: 'date' },
-  { key: 'kuantum_stok_gudang', label: 'Kuantum stok gudang otomatis (kg)', type: 'number', readOnly: true },
-  { key: 'kuantum_gabah_diolah', label: 'Kuantum gabah yang sudah diolah (kg)', type: 'number' },
-  { key: 'kuantum_beras_hgl', label: 'Kuantum beras HGL (kg)', type: 'number' },
+  { key: 'kuantum_stok_gudang', label: 'Kuantum stok gudang otomatis (kg)', readOnly: true, ribuan: true },
+  { key: 'kuantum_gabah_diolah', label: 'Kuantum gabah yang sudah diolah (kg)', ribuan: true },
+  { key: 'kuantum_beras_hgl', label: 'Kuantum beras HGL (kg)', ribuan: true },
   { key: 'kualitas', label: 'Kualitas' },
   { key: 'broken', label: 'Broken (%)', type: 'number' },
   { key: 'menir', label: 'Menir (%)', type: 'number' },
@@ -95,6 +98,12 @@ function labelPengadaanMo(status: string | null | undefined, selesai: boolean) {
 
 function tanggal(value: string | null | undefined) {
   return value ? value.slice(0, 10) : '-'
+}
+
+/** Nilai tampil satu field; stok gudang jatuh ke kuantum HGL milik Gudang selama belum diisi. */
+function nilaiField(field: FieldDef, form: FormNilai, transaksi: PengolahanItem): string {
+  if (field.key === 'kuantum_stok_gudang') return String(form[field.key] || transaksi.data_gudang?.kuantum_hgl || '')
+  return form[field.key] ?? ''
 }
 
 function dataUntukTahap(transaksi: PengolahanItem, tahap: TahapPengolahan): DataGudang | DataLhpk | null {
@@ -246,8 +255,15 @@ export default function PengolahanDetailPage() {
   const indexAktif = urutan.indexOf(transaksi.current_stage)
   const tahapDireview = indexAktif > 0 ? urutan[indexAktif - 1] : null
   const dataDireview = tahapDireview ? dataUntukTahap(transaksi, tahapDireview) : null
+  // Selama data tahap sebelumnya masih menunggu dicek, tahap ini BELUM boleh diisi -- server
+  // sudah menolaknya (PengolahanStageService::recordUntukDiisi), jadi menampilkan formnya hanya
+  // memancing user mengetik sesuatu yang pasti gagal.
+  const adaYangHarusDicek = dataDireview?.status === 'menunggu_review'
   const bolehIsi = (tahap: TahapPengolahan) =>
-    transaksi.current_stage === tahap && (role === tahap || role === 'admin') && transaksi.status_keseluruhan === 'berjalan'
+    transaksi.current_stage === tahap
+    && (role === tahap || role === 'admin')
+    && transaksi.status_keseluruhan === 'berjalan'
+    && !adaYangHarusDicek
 
   const kirimTahap = async (kirim: boolean) => {
     const tahap = transaksi.current_stage
@@ -341,7 +357,9 @@ export default function PengolahanDetailPage() {
           const menunggu = index > indexAktif && transaksi.status_keseluruhan === 'berjalan'
           const terbuka = tahapTerbuka.has(tahap)
           const tahapBisaDiisi = bolehIsi(tahap) && (tahap === 'gudang' || tahap === 'ub_jastasma')
-          const tampilReviewDiTahapAktif = aktif && !!tahapDireview && dataDireview?.status === 'menunggu_review' && (role === transaksi.current_stage || role === 'admin')
+          // Panel Terima/Tolak menempel di kartu tahap PENGIRIM, bukan kartu tahap saya: yang
+          // sedang dinilai adalah datanya, jadi tombolnya harus duduk di sebelah datanya.
+          const tampilReview = tahap === tahapDireview && adaYangHarusDicek && (role === transaksi.current_stage || role === 'admin')
           const tampilOperasiWorkspace = tahap === 'operasi' && aktif && dataDireview?.status === 'diterima'
           const mo = transaksi.mo_detail?.mo
           const tampilReviewMoOperasi = tahap === 'operasi' && transaksi.current_stage === 'pengadaan' && mo?.review_status === 'menunggu_review' && (role === 'pengadaan' || role === 'admin')
@@ -397,7 +415,13 @@ export default function PengolahanDetailPage() {
                     <p className="alert-danger mt-4">Catatan penolakan: {data.catatan_penolakan}</p>
                   )}
 
-                  {tampilReviewDiTahapAktif && tahap === transaksi.current_stage && (
+                  {aktif && adaYangHarusDicek && tahapDireview && (role === transaksi.current_stage || role === 'admin') && (
+                    <p className="mt-4 rounded-lg border border-border bg-surface px-3 py-2 text-sm text-muted">
+                      Cek dulu data {LABEL_TAHAP[tahapDireview]} di kartu di atas. Form tahap ini terbuka setelah data itu Anda terima.
+                    </p>
+                  )}
+
+                  {tampilReview && tahapDireview && (
                     <ReviewPanel
                       tahap={tahapDireview}
                       transaksi={transaksi}
@@ -1004,6 +1028,37 @@ function FormTahap({
       ? (Number(form.kuantum_beras_hgl || 0) / Number(form.kuantum_gabah_diolah)) * 100
       : null
 
+  const jenisFoto = tahap === 'gudang' ? 'foto_notim' : 'foto_lhpk'
+  const { data: fotoTersimpan } = useFotoPengolahanUrl(
+    transaksi.id_pengolahan,
+    jenisFoto,
+    !!dataUntukTahap(transaksi, tahap),
+    'thumb',
+  )
+
+  const [warning, setWarning] = useState<string | null>(null)
+
+  const kurang = [
+    ...(gudangId ? [] : [tahap === 'gudang' ? 'Gudang' : 'Gudang tujuan']),
+    ...fields.filter((field) => !nilaiField(field, form, transaksi).trim()).map((field) => field.label),
+  ]
+
+  /**
+   * Simpan menuntut seluruh field terisi, Kirim menuntut field + dokumen. Tombol sengaja tidak
+   * di-disable: user perlu bisa menekannya dan diberi tahu APA yang kurang -- pola yang sama
+   * dipakai form-form alur SerGab.
+   */
+  const simpan = (kirim: boolean) => {
+    const blokir = [...kurang, ...(kirim && !fotoPilihan && !fotoTersimpan ? ['dokumen foto'] : [])]
+    if (blokir.length > 0) {
+      setWarning(`Belum lengkap: ${blokir.join(', ')}.`)
+      return
+    }
+
+    setWarning(null)
+    kirimTahap(kirim)
+  }
+
   return (
     <div className="mt-5 rounded-xl border border-primary/20 bg-primary-tint/60 p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -1029,25 +1084,39 @@ function FormTahap({
           </select>
         </div>
 
-        {fields.map((field) => (
-          <div key={field.key}>
-            <label className="label" htmlFor={field.key}>
-              {field.key === 'kuantum_stok_gudang' && transaksi.skema !== 'GDG'
-                ? 'Kuantum stok gudang (kg)'
-                : field.label}
-            </label>
-            <input
-              id={field.key}
-              className={`input bg-white ${field.readOnly && transaksi.skema === 'GDG' ? 'text-muted' : ''}`}
-              type={field.type ?? 'text'}
-              step={field.type === 'number' ? '0.01' : undefined}
-              value={field.key === 'kuantum_stok_gudang' ? (form[field.key] || transaksi.data_gudang?.kuantum_hgl || '') : (form[field.key] ?? '')}
-              readOnly={field.readOnly && transaksi.skema === 'GDG'}
-              onChange={(e) => setForm({ ...form, [field.key]: e.target.value })}
-              placeholder={field.key === 'no_lhpk' ? 'LHPK/00832/02/2026/ADA08001' : undefined}
-            />
-          </div>
-        ))}
+        {fields.map((field) => {
+          const terkunci = !!field.readOnly && transaksi.skema === 'GDG'
+          const nilai = nilaiField(field, form, transaksi)
+
+          return (
+            <div key={field.key}>
+              <label className="label" htmlFor={field.key}>
+                {field.key === 'kuantum_stok_gudang' && transaksi.skema !== 'GDG'
+                  ? 'Kuantum stok gudang (kg)'
+                  : field.label}
+              </label>
+              {field.ribuan ? (
+                <AngkaInput
+                  className={`input bg-white ${terkunci ? 'text-muted' : ''}`}
+                  value={nilai}
+                  readOnly={terkunci}
+                  onChange={(raw) => setForm({ ...form, [field.key]: raw })}
+                />
+              ) : (
+                <input
+                  id={field.key}
+                  className={`input bg-white ${terkunci ? 'text-muted' : ''}`}
+                  type={field.type ?? 'text'}
+                  step={field.type === 'number' ? '0.01' : undefined}
+                  value={nilai}
+                  readOnly={terkunci}
+                  onChange={(e) => setForm({ ...form, [field.key]: e.target.value })}
+                  placeholder={field.key === 'no_lhpk' ? 'LHPK/00832/02/2026/ADA08001' : undefined}
+                />
+              )}
+            </div>
+          )
+        })}
       </div>
 
       {tahap === 'ub_jastasma' && (
@@ -1058,59 +1127,23 @@ function FormTahap({
       )}
 
       <div className="mt-4">
-        <label className="label" htmlFor="foto">
-          {tahap === 'gudang' ? 'Upload nota timbang' : 'Upload LHPK'}
-        </label>
-        <input
-          id="foto"
-          type="file"
-          accept="image/jpeg,image/png"
-          className="input bg-white"
-          onChange={(e) => {
-            const file = e.target.files?.[0]
-            setFotoPilihan(file ?? null)
-          }}
+        <FotoPicker
+          label={tahap === 'gudang' ? 'Foto Nota Timbang' : 'Foto LHPK/HPK'}
+          file={fotoPilihan}
+          onChange={setFotoPilihan}
+          savedSrc={fotoTersimpan}
         />
         <p className="page-subtitle mt-1">Dokumen ikut tersimpan saat draft disimpan atau data dikirim.</p>
-        {fotoPilihan && <FotoPilihanPreview file={fotoPilihan} label={tahap === 'gudang' ? 'Foto Nota Timbang' : 'Foto LHPK'} />}
       </div>
 
+      {warning && <p className="alert-danger mt-4">{warning}</p>}
+
       <div className="mt-5 flex flex-wrap justify-end gap-2">
-        <button type="button" className="btn btn-ghost" disabled={isSaving} onClick={() => kirimTahap(false)}>Simpan draft</button>
-        <button type="button" className="btn btn-primary" disabled={isSaving} onClick={() => kirimTahap(true)}>
+        <button type="button" className="btn btn-ghost" disabled={isSaving} onClick={() => simpan(false)}>Simpan draft</button>
+        <button type="button" className="btn btn-primary" disabled={isSaving} onClick={() => simpan(true)}>
           {isSaving ? 'Menyimpan...' : 'Kirim ke tahap berikutnya'}
         </button>
       </div>
-    </div>
-  )
-}
-
-function FotoPilihanPreview({ file, label }: { file: File; label: string }) {
-  const [url, setUrl] = useState('')
-
-  useEffect(() => {
-    const nextUrl = URL.createObjectURL(file)
-    setUrl(nextUrl)
-
-    return () => URL.revokeObjectURL(nextUrl)
-  }, [file])
-
-  if (!url) return null
-
-  return (
-    <div className="mt-3">
-      <p className="mb-2 text-[0.68rem] font-bold uppercase tracking-[0.06em] text-muted">Dokumen dipilih</p>
-      <button
-        type="button"
-        onClick={() => window.open(url, '_blank', 'noopener,noreferrer')}
-        className="group w-24 text-left"
-        title={`Preview ${label}`}
-      >
-        <span className="block h-24 w-24 overflow-hidden rounded-lg border border-border bg-white">
-          <img src={url} alt={label} className="h-24 w-24 object-cover transition-transform group-hover:scale-105" />
-        </span>
-        <span className="mt-1 block truncate text-[0.65rem] text-gray-500">{file.name}</span>
-      </button>
     </div>
   )
 }

@@ -351,6 +351,50 @@ class AlurPengolahanTest extends TestCase
             ->assertJsonCount(0, 'data');
     }
 
+    /**
+     * Chip antrean di daftar pengolahan bersumber dari satu ekspresi SQL (KerjaanPengolahan).
+     * Kalau klasifikasinya melenceng, angka chip dan badge baris ikut melenceng bersama-sama --
+     * karena itu keempat kategori diuji sekaligus, bukan satu per satu.
+     */
+    public function test_klasifikasi_kerjaan_daftar_pengolahan(): void
+    {
+        $belumDiisi = $this->buat('GDG');
+
+        $draft = $this->buat('GDG');
+        $this->isiGudang($draft, kirim: false)->assertOk();
+
+        $perluDicek = $this->buat('GDG');
+        $this->isiGudang($perluDicek)->assertOk();
+
+        $ditolak = $this->buat('GDG');
+        $this->isiGudang($ditolak)->assertOk();
+        $this->actingAs($this->user['ub_jastasma'])
+            ->postJson('/api/pengolahan/'.$ditolak.'/tolak', ['catatan' => 'Kuantum tidak cocok'])
+            ->assertOk();
+
+        $response = $this->actingAs($this->user['admin'])->getJson('/api/pengolahan')->assertOk();
+
+        $kerjaan = collect($response->json('data'))->pluck('kerjaan', 'id_pengolahan');
+        $this->assertSame('isi', $kerjaan[$belumDiisi]);
+        $this->assertSame('draft', $kerjaan[$draft]);
+        $this->assertSame('periksa', $kerjaan[$perluDicek]);
+        $this->assertSame('ditolak', $kerjaan[$ditolak]);
+
+        $response->assertJsonPath('kerjaan_hitung.isi', 1)
+            ->assertJsonPath('kerjaan_hitung.draft', 1)
+            ->assertJsonPath('kerjaan_hitung.periksa', 1)
+            ->assertJsonPath('kerjaan_hitung.ditolak', 1)
+            ->assertJsonPath('kerjaan_hitung.total', 4);
+
+        // Filter menyaring di server; hitungannya tetap memuat seluruh kategori.
+        $this->actingAs($this->user['admin'])
+            ->getJson('/api/pengolahan?kerjaan=periksa')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.id_pengolahan', $perluDicek)
+            ->assertJsonPath('kerjaan_hitung.total', 4);
+    }
+
     public function test_id_pengolahan_berformat_dan_berurut_per_skema(): void
     {
         $this->assertSame('00001/08/2026/GDG', $this->buat('GDG'));

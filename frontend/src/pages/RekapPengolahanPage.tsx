@@ -76,7 +76,7 @@ export default function RekapPengolahanPage() {
           <div>
             <p className="text-[0.68rem] font-bold uppercase tracking-[0.18em] text-accent">Rekap</p>
             <h1 className="section-title mt-1">Rekap Pengolahan</h1>
-            <p className="page-subtitle">Data dipisah per skema GDG dan UBJ agar mudah dicek seperti Rekap Data.</p>
+            <p className="page-subtitle">Data dipisah per skema GDG dan UBJ agar mudah dicek seperti Rekap Sergab.</p>
           </div>
           <span className="badge">{rows.length} baris</span>
         </div>

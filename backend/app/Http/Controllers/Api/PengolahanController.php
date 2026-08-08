@@ -6,10 +6,12 @@ use App\Http\Controllers\Controller;
 use App\Models\Role;
 use App\Models\TransaksiPengolahan;
 use App\Models\User;
+use App\Services\Pengolahan\KerjaanPengolahan;
 use App\Services\Pengolahan\PengolahanStages;
 use App\Services\Pengolahan\PengolahanStageService;
 use App\Services\Transaksi\FotoAccessService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 
 class PengolahanController extends Controller
@@ -30,13 +32,14 @@ class PengolahanController extends Controller
         $validated = $request->validate([
             'skema' => ['sometimes', Rule::in(PengolahanStages::SKEMA)],
             'antrean' => ['sometimes', 'boolean'],
+            'kerjaan' => ['sometimes', Rule::in(KerjaanPengolahan::SEMUA)],
             'search' => ['sometimes', 'string', 'max:100'],
             'per_page' => ['sometimes', 'integer', 'min:1', 'max:100'],
         ]);
 
         $role = $request->user()->role->nama_role;
 
-        $query = TransaksiPengolahan::query()
+        $daftar = TransaksiPengolahan::query()
             ->with(['makloon:id,nama_maklon', 'dataGudang.gudang', 'dataLhpk.gudangTujuan', 'moDetail.mo'])
             ->when(isset($validated['skema']), fn ($q) => $q->where('skema', $validated['skema']))
             // Antrean hanya bermakna untuk role yang memegang tahap; admin melihat semuanya.
@@ -48,10 +51,27 @@ class PengolahanController extends Controller
                         ->orWhereHas('makloon', fn ($m) => $m->where('nama_maklon', 'like', "%{$cari}%"))
                         ->orWhereHas('dataLhpk', fn ($l) => $l->where('no_lhpk', 'like', "%{$cari}%"));
                 });
-            })
-            ->orderByDesc('created_at');
+            });
 
-        return response()->json($query->paginate($validated['per_page'] ?? 25));
+        // Hitung SEBELUM filter kerjaan dipasang: chip harus menunjukkan isi tiap kategori,
+        // termasuk kategori yang sedang tidak dipilih.
+        $hitung = KerjaanPengolahan::hitung(clone $daftar);
+
+        // select() eksplisit wajib setelah join -- tanpa itu kolom kp_* (id, status, ...) ikut
+        // terbaca dan menimpa atribut model.
+        $query = KerjaanPengolahan::joinTahap($daftar)
+            ->select('transaksi_pengolahan.*')
+            ->addSelect(DB::raw(KerjaanPengolahan::ekspresi().' as kerjaan'))
+            ->orderByDesc('transaksi_pengolahan.created_at');
+
+        if (isset($validated['kerjaan'])) {
+            KerjaanPengolahan::filter($query, $validated['kerjaan']);
+        }
+
+        return response()->json([
+            ...$query->paginate($validated['per_page'] ?? 25)->toArray(),
+            'kerjaan_hitung' => $hitung,
+        ]);
     }
 
     /**

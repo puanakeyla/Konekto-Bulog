@@ -6,37 +6,41 @@ const ROLE_PENGOLAHAN = ['gudang', 'ub_jastasma', 'operasi', 'pengadaan']
 
 // Sub-menu utama per role. Dipakai header global agar akses antar bab konsisten
 // di semua halaman, bukan hanya muncul sebagai tombol besar di dashboard.
+//
+// Dua menu rekap SELALU berdampingan di ujung kanan, apa pun rolenya: letaknya jadi sama di
+// semua akun sehingga tidak perlu dicari ulang tiap ganti login.
 export function buildActions(role: string): NavAction[] {
-  const actions: NavAction[] = []
-  const pushAction = (action: NavAction) => {
-    if (!actions.some((item) => item.to === action.to)) actions.push(action)
-  }
-
   if (role === 'admin') {
     return [
       { to: '/admin/users', label: 'Kelola User' },
       { to: '/admin/gudang', label: 'Master Gudang' },
       { to: '/monitoring', label: 'Monitoring' },
-      { to: '/rekap', label: 'Rekap Data' },
       { to: '/pengolahan', label: 'Pengolahan' },
       { to: '/mo', label: 'MO' },
-      { to: '/rekap-pengolahan', label: 'Rekap Pengolahan' },
       { to: '/admin/audit-logs', label: 'Audit Log' },
+      { to: '/rekap', label: 'Rekap Sergab' },
+      { to: '/rekap-pengolahan', label: 'Rekap Pengolahan' },
     ]
   }
 
-  if (role === 'jemput_pangan') pushAction({ to: '/transaksi/baru', label: 'Buat Transaksi' })
-  if (role === 'makloon') pushAction({ to: '/transaksi/baru-mpp', label: 'Buat MPP' })
+  const actions: NavAction[] = []
+  const rekap: NavAction[] = []
+  const push = (list: NavAction[], action: NavAction) => {
+    if (!list.some((item) => item.to === action.to)) list.push(action)
+  }
+
+  if (role === 'jemput_pangan') push(actions, { to: '/transaksi/baru', label: 'Buat Transaksi' })
+  if (role === 'makloon') push(actions, { to: '/transaksi/baru-mpp', label: 'Buat MPP' })
 
   if (['jemput_pangan', 'makloon', 'ub_jastasma', 'pengadaan', 'keuangan'].includes(role)) {
-    pushAction({ to: '/rekap', label: 'Rekap Data' })
+    push(rekap, { to: '/rekap', label: 'Rekap Sergab' })
   }
 
   if (ROLE_PENGOLAHAN.includes(role)) {
-    pushAction({ to: '/rekap', label: 'Rekap Data' })
-    pushAction({ to: '/pengolahan', label: 'Pengolahan' })
-    pushAction({ to: '/rekap-pengolahan', label: 'Rekap Pengolahan' })
+    push(rekap, { to: '/rekap', label: 'Rekap Sergab' })
+    push(actions, { to: '/pengolahan', label: 'Pengolahan' })
+    push(rekap, { to: '/rekap-pengolahan', label: 'Rekap Pengolahan' })
   }
 
-  return actions
+  return [...actions, ...rekap]
 }
