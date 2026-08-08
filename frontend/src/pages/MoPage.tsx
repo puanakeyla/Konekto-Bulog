@@ -12,6 +12,16 @@ function angka(value: string | null | undefined) {
   return new Intl.NumberFormat('id-ID', { maximumFractionDigits: 2 }).format(n)
 }
 
+function labelReviewMo(status: MoItem['review_status']) {
+  const label: Record<MoItem['review_status'], string> = {
+    draft: 'Diproses di Operasi',
+    menunggu_review: 'Menunggu review Pengadaan',
+    diterima: 'Disetujui Pengadaan',
+    ditolak: 'Ditolak Pengadaan',
+  }
+  return label[status]
+}
+
 function StatusMoBadge({ mo }: { mo: MoItem }) {
   if (mo.status === 'dibatalkan') return <span className="badge badge-danger">Dibatalkan</span>
   if (mo.status === 'lengkap') return <span className="badge badge-success">Selesai</span>
@@ -21,13 +31,7 @@ function StatusMoBadge({ mo }: { mo: MoItem }) {
     diterima: 'badge badge-success',
     ditolak: 'badge badge-danger',
   }
-  const label: Record<string, string> = {
-    draft: 'Draft di Operasi',
-    menunggu_review: 'Menunggu Pengadaan',
-    diterima: 'Diterima, isi OUT',
-    ditolak: 'Ditolak Pengadaan',
-  }
-  return <span className={map[mo.review_status]}>{label[mo.review_status]}</span>
+  return <span className={map[mo.review_status]}>{labelReviewMo(mo.review_status)}</span>
 }
 
 export default function MoPage() {

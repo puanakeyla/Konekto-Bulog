@@ -2,7 +2,6 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { toast } from 'sonner'
 import { useAuth } from '../hooks/useAuth'
-import { useMakloonOptions } from '../hooks/useMakloonOptions'
 import {
   LABEL_TAHAP,
   usePengolahanList,
@@ -12,6 +11,7 @@ import {
 } from '../hooks/usePengolahan'
 import { pesanError } from '../lib/pesanError'
 import { SkeletonTable } from '../components/Skeleton'
+import MakloonCombobox from '../components/MakloonCombobox'
 
 /** Role yang boleh memulai rantai, beserta skema yang jadi tanggung jawabnya. */
 const SKEMA_PEMBUAT: Record<string, SkemaPengolahan> = { gudang: 'GDG', ub_jastasma: 'UBJ' }
@@ -43,10 +43,9 @@ export default function PengolahanListPage() {
   const [skema, setSkema] = useState<SkemaPengolahan | 'semua'>('semua')
   const [antrean, setAntrean] = useState(role !== 'admin')
   const [search, setSearch] = useState('')
-  const [makloonBaru, setMakloonBaru] = useState('')
+  const [makloonBaru, setMakloonBaru] = useState<number | null>(null)
 
   const { data, isLoading } = usePengolahanList({ page, skema, antrean, search })
-  const { data: makloonOptions } = useMakloonOptions()
   const { buat } = usePengolahanMutations()
 
   const skemaSaya = SKEMA_PEMBUAT[role]
@@ -55,14 +54,16 @@ export default function PengolahanListPage() {
 
   const buatBaru = (e: React.FormEvent) => {
     e.preventDefault()
+    if (!makloonBaru) return
+
     const skemaDipakai = skemaSaya ?? 'GDG'
 
     buat.mutate(
-      { skema: skemaDipakai, makloon_user_id: Number(makloonBaru) },
+      { skema: skemaDipakai, makloon_user_id: makloonBaru },
       {
         onSuccess: (item) => {
           toast.success(`Pengolahan ${item.id_pengolahan} dibuat.`)
-          setMakloonBaru('')
+          setMakloonBaru(null)
         },
         onError: (err) => toast.error(pesanError(err)),
       },
@@ -84,18 +85,7 @@ export default function PengolahanListPage() {
             <label className="label" htmlFor="makloon">
               Makloon {skemaSaya && <span className="text-muted">— skema {skemaSaya}</span>}
             </label>
-            <select
-              id="makloon"
-              className="input"
-              value={makloonBaru}
-              onChange={(e) => setMakloonBaru(e.target.value)}
-              required
-            >
-              <option value="">Pilih makloon...</option>
-              {(makloonOptions ?? []).map((item) => (
-                <option key={item.id} value={item.id}>{item.nama_maklon}</option>
-              ))}
-            </select>
+            <MakloonCombobox value={makloonBaru} onChange={setMakloonBaru} reserveSpaceWhenOpen />
           </div>
           <button type="submit" className="btn btn-primary" disabled={buat.isPending || !makloonBaru}>
             Mulai pengolahan
