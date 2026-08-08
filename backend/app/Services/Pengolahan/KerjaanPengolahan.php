@@ -59,12 +59,42 @@ class KerjaanPengolahan
     }
 
     /**
-     * Batasi hasil ke satu kategori. WHERE, bukan HAVING -- ekspresinya tidak memuat agregat, dan
-     * HAVING kacau ketika paginate() membungkus query jadi COUNT.
+     * Tulis ulang kolom cache `transaksi_pengolahan.kerjaan` untuk SATU transaksi.
+     *
+     * Wajib dipanggil setiap kali sesuatu yang dibaca ekspresi berubah: status tahap,
+     * current_stage, atau review_status MO. Nilainya diambil dari ekspresi() yang sama, jadi
+     * kolomnya tidak mungkin punya definisi sendiri yang lama-lama melenceng.
+     *
+     * Dua query (baca lalu tulis) alih-alih satu UPDATE ... JOIN, karena SQLite -- yang dipakai
+     * test suite -- tidak mendukung UPDATE ber-JOIN.
+     */
+    public static function segarkan(string $idPengolahan): void
+    {
+        $baris = self::joinTahap(DB::table('transaksi_pengolahan'))
+            ->where('transaksi_pengolahan.id_pengolahan', $idPengolahan)
+            ->selectRaw(self::ekspresi().' as kerjaan')
+            ->first();
+
+        DB::table('transaksi_pengolahan')
+            ->where('id_pengolahan', $idPengolahan)
+            ->update(['kerjaan' => $baris?->kerjaan]);
+    }
+
+    /** @param iterable<string> $ids */
+    public static function segarkanBanyak(iterable $ids): void
+    {
+        foreach ($ids as $id) {
+            self::segarkan($id);
+        }
+    }
+
+    /**
+     * Batasi hasil ke satu kategori. Membaca kolom cache (ber-indeks), bukan menghitung ulang
+     * ekspresinya -- filter lewat whereRaw memaksa scan seluruh tabel.
      */
     public static function filter(Builder|QueryBuilder $query, string $kerjaan): Builder|QueryBuilder
     {
-        return $query->whereRaw(self::ekspresi().' = ?', [$kerjaan]);
+        return $query->where('transaksi_pengolahan.kerjaan', $kerjaan);
     }
 
     /**
@@ -75,19 +105,16 @@ class KerjaanPengolahan
      */
     public static function hitung(Builder|QueryBuilder $query): array
     {
-        $sub = self::joinTahap(clone $query)
-            ->select([DB::raw(self::ekspresi().' as kerjaan')])
-            ->reorder();
-
-        $hasil = DB::query()
-            ->fromSub($sub, 'k')
-            ->select('kerjaan', DB::raw('count(*) as total'))
-            ->groupBy('kerjaan')
-            ->pluck('total', 'kerjaan');
+        $hasil = (clone $query)
+            ->reorder()
+            ->groupBy('transaksi_pengolahan.kerjaan')
+            ->pluck(DB::raw('count(*)'), 'transaksi_pengolahan.kerjaan');
 
         $hitung = array_fill_keys(self::SEMUA, 0);
         foreach ($hasil as $kerjaan => $total) {
-            $hitung[$kerjaan] = (int) $total;
+            if (isset($hitung[$kerjaan])) {
+                $hitung[$kerjaan] = (int) $total;
+            }
         }
         $hitung['total'] = array_sum($hitung);
 

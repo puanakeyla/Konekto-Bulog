@@ -150,20 +150,35 @@ export function usePengolahanDetail(id: string | undefined) {
   })
 }
 
-export function usePengolahanRekap() {
+export type RekapHalaman = Halaman & { ringkasan: { baris: number; beras_hgl: number } }
+
+/**
+ * Rekap dipaginasi per skema. `ringkasan` datang dari server untuk SELURUH himpunan skema itu,
+ * bukan dari halaman yang kebetulan terbuka -- kartu total tetap benar di halaman berapa pun.
+ */
+export function usePengolahanRekap(skema: SkemaPengolahan, page = 1, perPage = 200) {
   return useQuery({
-    queryKey: ['pengolahan-rekap'],
+    queryKey: ['pengolahan-rekap', skema, page, perPage],
     queryFn: async () => {
-      const { data } = await api.get<{ data: PengolahanItem[] }>('/api/pengolahan/rekap')
-      return data.data
+      const { data } = await api.get<RekapHalaman>('/api/pengolahan/rekap', {
+        params: { skema, page, per_page: perPage },
+      })
+      return data
     },
   })
 }
 
-/** Kandidat penggabungan MO: sudah lolos review Operasi & belum masuk MO mana pun. */
-export function useKandidatMo(makloonUserId?: number) {
+/**
+ * Kandidat penggabungan MO: sudah lolos review Operasi & belum masuk MO mana pun.
+ *
+ * `enabled` wajib dimatikan untuk role selain Operasi/Admin -- endpointnya 403 buat mereka, dan
+ * React Query akan mengulanginya tiga kali sebelum menyerah.
+ */
+export function useKandidatMo(makloonUserId?: number | null, enabled = true) {
   return useQuery({
     queryKey: ['pengolahan-kandidat-mo', makloonUserId ?? null],
+    enabled,
+    retry: false,
     queryFn: async () => {
       const { data } = await api.get<{ data: PengolahanItem[] }>('/api/pengolahan/kandidat-mo', {
         params: makloonUserId ? { makloon_user_id: makloonUserId } : {},
@@ -212,6 +227,12 @@ export function usePengolahanMutations(id?: string) {
     onSuccess: invalidate,
   })
 
+  /** Membatalkan pengolahan yang belum berisi apa pun -- server menolak yang sudah ada datanya. */
+  const batalkan = useMutation({
+    mutationFn: async () => (await api.delete(path(''))).data,
+    onSuccess: invalidate,
+  })
+
   const unggahFoto = useMutation({
     mutationFn: async ({ jenisFoto, file }: { jenisFoto: string; file: File }) => {
       const form = new FormData()
@@ -222,5 +243,5 @@ export function usePengolahanMutations(id?: string) {
     onSuccess: invalidate,
   })
 
-  return { buat, simpanGudang, simpanLhpk, terima, tolak, unggahFoto }
+  return { buat, simpanGudang, simpanLhpk, terima, tolak, batalkan, unggahFoto }
 }

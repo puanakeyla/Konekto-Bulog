@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import { useAuth } from '../hooks/useAuth'
 import {
@@ -13,6 +13,7 @@ import { pesanError } from '../lib/pesanError'
 import { KERJAAN_KETERANGAN, KERJAAN_LABEL, KERJAAN_URUT, type KerjaanId } from '../lib/kerjaanTransaksi'
 import { SkeletonTable } from '../components/Skeleton'
 import { useGudangOptions } from '../hooks/useGudang'
+import { useDebounced } from '../hooks/useDebounced'
 
 /** Role yang boleh memulai rantai, beserta skema yang jadi tanggung jawabnya. */
 const SKEMA_PEMBUAT: Record<string, SkemaPengolahan> = { gudang: 'GDG', ub_jastasma: 'UBJ' }
@@ -97,6 +98,7 @@ function StatusBadge({ row }: { row: PengolahanItem }) {
 export default function PengolahanListPage() {
   const { user } = useAuth()
   const role = user?.role.nama_role ?? ''
+  const navigate = useNavigate()
   const [page, setPage] = useState(1)
   const [skema, setSkema] = useState<SkemaPengolahan | 'semua'>('semua')
   const [antrean, setAntrean] = useState(role !== 'admin')
@@ -104,7 +106,8 @@ export default function PengolahanListPage() {
   const [kerjaanFilter, setKerjaanFilter] = useState<KerjaanId | 'semua'>('semua')
   const [gudangBaru, setGudangBaru] = useState('')
 
-  const { data, isLoading } = usePengolahanList({ page, skema, antrean, search, kerjaan: kerjaanFilter })
+  // Pencarian menyaring di server; tanpa jeda, tiap huruf yang diketik memicu satu scan tabel.
+  const { data, isLoading } = usePengolahanList({ page, skema, antrean, search: useDebounced(search), kerjaan: kerjaanFilter })
   const { data: gudangOptions = [] } = useGudangOptions()
   const { buat } = usePengolahanMutations()
 
@@ -124,9 +127,11 @@ export default function PengolahanListPage() {
     buat.mutate(
       { skema: skemaDipakai, gudang_id: Number(gudangBaru) },
       {
+        // Langsung ke formnya: "Mulai pengolahan" itu satu gerakan, bukan menaruh baris kosong
+        // di antrean "Perlu diisi" lalu menyuruh user mencarinya sendiri.
         onSuccess: (item) => {
-          toast.success(`Pengolahan ${item.id_pengolahan} dibuat.`)
           setGudangBaru('')
+          navigate(`/pengolahan/${encodeURIComponent(item.id_pengolahan)}`)
         },
         onError: (err) => toast.error(pesanError(err)),
       },
@@ -145,8 +150,10 @@ export default function PengolahanListPage() {
       {/* Yang dipilih di awal adalah GUDANG-nya: satu pengolahan = mengisi satu gudang.
           Makloon asalnya ditetapkan oleh pengisi tahap pertama, karena di skema UBJ ia baru
           diketahui saat LHPK ditulis. */}
+      {/* Keterangan makloon sengaja di baris sendiri (col-span penuh): kalau ia ikut di kolom
+          select, kolomnya jadi lebih tinggi dan tombol tidak lagi sejajar dengan kotak pilihan. */}
       {bolehBuat && (
-        <form onSubmit={buatBaru} className="panel panel-pad mb-6 grid gap-4 sm:grid-cols-[1fr_auto] sm:items-end">
+        <form onSubmit={buatBaru} className="panel panel-pad mb-6 grid gap-x-4 gap-y-1.5 sm:grid-cols-[1fr_auto] sm:items-end">
           <div>
             <label className="label" htmlFor="gudang-baru">
               Gudang {skemaSaya && <span className="text-muted">— skema {skemaSaya}</span>}
@@ -162,11 +169,11 @@ export default function PengolahanListPage() {
                 <option key={item.id} value={item.id}>{item.kode} - {item.nama}</option>
               ))}
             </select>
-            <p className="page-subtitle mt-1">Makloon asalnya diisi pada tahap pertama.</p>
           </div>
           <button type="submit" className="btn btn-primary" disabled={buat.isPending || !gudangBaru}>
             Mulai pengolahan
           </button>
+          <p className="page-subtitle sm:col-span-2">Makloon asalnya diisi pada tahap pertama.</p>
         </form>
       )}
 

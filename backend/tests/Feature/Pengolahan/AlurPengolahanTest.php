@@ -8,8 +8,10 @@ use App\Models\PengolahanMo;
 use App\Models\Role;
 use App\Models\TransaksiPengolahan;
 use App\Models\User;
+use App\Services\Pengolahan\KerjaanPengolahan;
 use Database\Seeders\RoleSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 class AlurPengolahanTest extends TestCase
@@ -364,7 +366,13 @@ class AlurPengolahanTest extends TestCase
      */
     public function test_klasifikasi_kerjaan_daftar_pengolahan(): void
     {
-        $belumDiisi = $this->buat('GDG');
+        // Baru dibuat, belum diisi apa pun -- tidak dihitung sebagai transaksi sama sekali.
+        $belumJadiTransaksi = $this->buat('GDG');
+
+        // 'isi' yang sebenarnya: tahap pertama sudah diterima, tahap kedua menunggu giliran.
+        $perluDiisi = $this->buat('GDG');
+        $this->isiGudang($perluDiisi)->assertOk();
+        $this->terima($perluDiisi, 'ub_jastasma')->assertOk();
 
         $draft = $this->buat('GDG');
         $this->isiGudang($draft, kirim: false)->assertOk();
@@ -381,7 +389,8 @@ class AlurPengolahanTest extends TestCase
         $response = $this->actingAs($this->user['admin'])->getJson('/api/pengolahan')->assertOk();
 
         $kerjaan = collect($response->json('data'))->pluck('kerjaan', 'id_pengolahan');
-        $this->assertSame('isi', $kerjaan[$belumDiisi]);
+        $this->assertArrayNotHasKey($belumJadiTransaksi, $kerjaan->all());
+        $this->assertSame('isi', $kerjaan[$perluDiisi]);
         $this->assertSame('draft', $kerjaan[$draft]);
         $this->assertSame('periksa', $kerjaan[$perluDicek]);
         $this->assertSame('ditolak', $kerjaan[$ditolak]);
@@ -489,6 +498,113 @@ class AlurPengolahanTest extends TestCase
         $this->makloonTahapPertama = $makloonLain;
         $this->isiLhpk($id)->assertOk();
         $this->assertSame($this->makloon->id, TransaksiPengolahan::find($id)->makloon_user_id);
+    }
+
+    /**
+     * Membuat pengolahan cuma memesan nomor + gudang. Selama belum ada data tahap yang disimpan
+     * ia belum jadi transaksi: tidak muncul di daftar siapa pun, dan boleh dibatalkan.
+     */
+    public function test_pengolahan_kosong_belum_jadi_transaksi_dan_bisa_dibatalkan(): void
+    {
+        $kosong = $this->buat('GDG');
+
+        $this->actingAs($this->user['admin'])
+            ->getJson('/api/pengolahan')
+            ->assertOk()
+            ->assertJsonCount(0, 'data')
+            ->assertJsonPath('kerjaan_hitung.total', 0);
+
+        // Detailnya tetap bisa dibuka -- pembuatnya sedang mengisi formnya.
+        $this->actingAs($this->user['gudang'])->getJson('/api/pengolahan/'.$kosong)->assertOk();
+
+        $this->actingAs($this->user['gudang'])->deleteJson('/api/pengolahan/'.$kosong)->assertNoContent();
+        $this->assertDatabaseMissing('transaksi_pengolahan', ['id_pengolahan' => $kosong]);
+    }
+
+    /**
+     * Membatalkan pengolahan kosong TIDAK boleh menyisakan lubang penomoran: nomor itu tidak
+     * pernah menempel pada data apa pun, jadi ia dipakai ulang. (Beda dengan alur SerGab, yang
+     * sengaja tidak memakai ulang nomor karena transaksinya bisa dihapus setelah berisi.)
+     */
+    public function test_nomor_dipakai_ulang_setelah_pengolahan_kosong_dibatalkan(): void
+    {
+        $pertama = $this->buat('GDG');
+        $this->isiGudang($pertama, kirim: false)->assertOk();
+
+        $dibatalkan = $this->buat('GDG');
+        $this->assertSame('00002/08/2026/GDG', $dibatalkan);
+
+        $this->actingAs($this->user['gudang'])->deleteJson('/api/pengolahan/'.$dibatalkan)->assertNoContent();
+
+        // Tanpa lubang: pembuatan berikutnya kembali memakai 00002.
+        $this->assertSame('00002/08/2026/GDG', $this->buat('GDG'));
+    }
+
+    public function test_pengolahan_yang_sudah_berisi_tidak_bisa_dibatalkan(): void
+    {
+        $id = $this->buat('GDG');
+        $this->isiGudang($id, kirim: false)->assertOk();
+
+        $this->actingAs($this->user['gudang'])->deleteJson('/api/pengolahan/'.$id)->assertStatus(422);
+        $this->assertDatabaseHas('transaksi_pengolahan', ['id_pengolahan' => $id]);
+    }
+
+    /**
+     * Kolom `kerjaan` adalah CACHE dari KerjaanPengolahan::ekspresi(). Bahaya satu-satunya adalah
+     * ada titik mutasi yang lupa memanggil segarkan(), dan gejalanya diam: angka chip melenceng
+     * tanpa error. Karena itu tiap langkah alur dicek ulang terhadap ekspresi hidupnya.
+     */
+    public function test_kolom_kerjaan_selalu_sama_dengan_ekspresinya(): void
+    {
+        $cocok = function (string $konteks) {
+            $melenceng = KerjaanPengolahan::joinTahap(DB::table('transaksi_pengolahan'))
+                ->selectRaw('transaksi_pengolahan.id_pengolahan, transaksi_pengolahan.kerjaan as tersimpan, '
+                    .KerjaanPengolahan::ekspresi().' as hidup')
+                ->get()
+                ->filter(fn ($b) => $b->tersimpan !== $b->hidup);
+
+            $this->assertCount(0, $melenceng, "kerjaan melenceng setelah {$konteks}: ".$melenceng->toJson());
+        };
+
+        $id = $this->buat('GDG');
+        $cocok('buat');
+
+        $this->isiGudang($id, kirim: false)->assertOk();
+        $cocok('simpan draft');
+
+        $this->isiGudang($id)->assertOk();
+        $cocok('kirim tahap');
+
+        $this->actingAs($this->user['ub_jastasma'])
+            ->postJson('/api/pengolahan/'.$id.'/tolak', ['catatan' => 'salah'])->assertOk();
+        $cocok('tolak tahap');
+
+        $this->isiGudang($id)->assertOk();
+        $this->terima($id, 'ub_jastasma')->assertOk();
+        $cocok('terima tahap');
+
+        $this->isiLhpk($id, 'LHPK/K1')->assertOk();
+        $this->terima($id, 'operasi')->assertOk();
+        $cocok('tahap kedua diterima');
+
+        $moId = $this->actingAs($this->user['operasi'])
+            ->postJson('/api/mo/gabungkan', ['pengolahan_ids' => [$id], 'no_mo' => 'MO/K1', 'no_tm_ada' => 'TMA/K1', 'no_tm_gudang' => 'TMG/K1'])
+            ->assertStatus(201)->json('data.id');
+        $cocok('gabung MO');
+
+        $this->actingAs($this->user['operasi'])->postJson("/api/mo/{$moId}/kirim")->assertOk();
+        $cocok('kirim MO');
+
+        $this->actingAs($this->user['pengadaan'])->postJson("/api/mo/{$moId}/tolak", ['catatan' => 'ulang'])->assertOk();
+        $cocok('tolak MO');
+
+        $this->actingAs($this->user['operasi'])->postJson("/api/mo/{$moId}/kirim")->assertOk();
+        $this->actingAs($this->user['pengadaan'])->postJson("/api/mo/{$moId}/terima")->assertOk();
+        $cocok('terima MO');
+
+        $this->actingAs($this->user['pengadaan'])
+            ->patchJson("/api/mo/{$moId}/out", ['no_out' => 'OUT/K1', 'tanggal_out' => '2026-08-12'])->assertOk();
+        $cocok('terbitkan OUT');
     }
 
     public function test_id_pengolahan_berformat_dan_berurut_per_skema(): void

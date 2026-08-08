@@ -20,7 +20,9 @@ export type MoItem = {
   review_status: ReviewStatusMo
   catatan_penolakan: string | null
   created_at: string
+  /** Hanya terisi pada GET /api/mo/{mo}; daftar mengirim `mo_detail_count` saja. */
   mo_detail?: { id: number; transaksi_pengolahan?: PengolahanItem | null }[]
+  mo_detail_count?: number
 }
 
 type Halaman = { data: MoItem[]; current_page: number; last_page: number; total: number; from: number | null; to: number | null }

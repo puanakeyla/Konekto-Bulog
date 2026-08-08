@@ -117,6 +117,9 @@ Route::middleware(['auth:sanctum', 'user.aktif'])->group(function () {
     Route::get('/pengolahan/{pengolahan}/foto/{jenisFoto}', [PengolahanController::class, 'fotoLink']);
     Route::post('/pengolahan/{pengolahan}/foto', [PengolahanController::class, 'fotoUpload'])
         ->middleware('throttle:40,1');
+    // Hanya untuk membatalkan pengolahan yang belum berisi apa pun -- lihat destroy().
+    Route::delete('/pengolahan/{pengolahan}', [PengolahanController::class, 'destroy'])
+        ->middleware('role:gudang|ub_jastasma|admin');
     Route::get('/pengolahan/{pengolahan}', [PengolahanController::class, 'show']);
 
     Route::post('/mo/gabungkan', [MoController::class, 'gabungkan'])

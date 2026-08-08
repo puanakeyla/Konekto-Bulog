@@ -114,6 +114,23 @@ class TransaksiPengolahan extends Model
             ->whereIn('transaksi_pengolahan.current_stage', $stageRoles ?: [$role]);
     }
 
+    /**
+     * Baris yang sudah punya isi. Membuat pengolahan hanya memesan nomor + gudangnya; selama
+     * belum ada satu pun data tahap yang disimpan, ia BELUM jadi transaksi dan tidak boleh
+     * muncul di daftar/antrean siapa pun -- kalau tidak, tiap kali seseorang membuka form lalu
+     * membatalkannya, antrean "Perlu diisi" ketambahan baris kosong.
+     */
+    public function scopeSudahDiisi(Builder $query): Builder
+    {
+        return $query->where(fn (Builder $q) => $q->whereHas('dataGudang')->orWhereHas('dataLhpk'));
+    }
+
+    /** Belum berisi apa pun -- boleh dibuang tanpa kehilangan data. */
+    public function masihKosong(): bool
+    {
+        return $this->dataGudang === null && $this->dataLhpk === null;
+    }
+
     /** Data tahap yang diisi lebih dulu pada skema ini, beserta yang menyusul. */
     public function dataTahap(string $role): ?Model
     {

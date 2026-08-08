@@ -43,6 +43,10 @@ class MoReviewService
                 "MO {$mo->no_mo} diterima Pengadaan.", $ids->first(),
                 ['modul' => 'pengolahan', 'pengolahan_mo_id' => $mo->id, 'no_mo' => $mo->no_mo]);
 
+            // Baris tidak berpindah tahap di sini, tapi klasifikasinya berubah: 'periksa' hanya
+            // berlaku selama MO-nya masih menunggu review.
+            KerjaanPengolahan::segarkanBanyak($ids);
+
             return $mo->fresh('moDetail');
         });
     }
@@ -72,6 +76,7 @@ class MoReviewService
 
             // Anggota mundur ke Operasi supaya MO-nya bisa diperbaiki lalu dikirim ulang.
             TransaksiPengolahan::whereIn('id_pengolahan', $ids)->update(['current_stage' => 'operasi']);
+            KerjaanPengolahan::segarkanBanyak($ids);
 
             $this->auditLog->logManyPengolahan($actor, 'tolak_mo', $ids, [
                 'pengolahan_mo_id' => $mo->id,
@@ -109,6 +114,7 @@ class MoReviewService
 
             $ids = $mo->moDetail()->pluck('transaksi_pengolahan_id');
             TransaksiPengolahan::whereIn('id_pengolahan', $ids)->update(['status_keseluruhan' => 'selesai']);
+            KerjaanPengolahan::segarkanBanyak($ids);
 
             $this->auditLog->logManyPengolahan($actor, 'isi_out_mo', $ids, [
                 'pengolahan_mo_id' => $mo->id,

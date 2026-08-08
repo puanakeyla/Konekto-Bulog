@@ -2,6 +2,7 @@
 
 namespace App\Services\Pengolahan;
 
+use App\Models\PengolahanGudang;
 use App\Models\PengolahanLhpk;
 use App\Models\PengolahanMo;
 use App\Models\PengolahanMoDetail;
@@ -59,6 +60,8 @@ class MoGroupingService
                 'no_mo' => $mo->no_mo,
             ]);
 
+            KerjaanPengolahan::segarkanBanyak(array_keys($rows['anggota']));
+
             return $mo->load('moDetail');
         });
     }
@@ -77,6 +80,9 @@ class MoGroupingService
         return DB::transaction(function () use ($mo, $ids, $actor) {
             $mo = PengolahanMo::whereKey($mo->id)->lockForUpdate()->firstOrFail();
             $rows = $this->validasiAnggota($ids, $mo->id);
+
+            // Yang DIKELUARKAN dari MO juga berubah klasifikasinya, jadi id lamanya dicatat dulu.
+            $sebelum = $mo->moDetail()->pluck('transaksi_pengolahan_id')->all();
 
             $mo->moDetail()->whereNotIn('transaksi_pengolahan_id', $ids)->delete();
 
@@ -100,6 +106,8 @@ class MoGroupingService
                 'pengolahan_mo_id' => $mo->id,
                 'no_mo' => $mo->no_mo,
             ]);
+
+            KerjaanPengolahan::segarkanBanyak(array_unique([...$sebelum, ...$ids]));
 
             return $mo->fresh('moDetail');
         });
@@ -130,6 +138,7 @@ class MoGroupingService
 
             $ids = $mo->moDetail()->pluck('transaksi_pengolahan_id');
             TransaksiPengolahan::whereIn('id_pengolahan', $ids)->update(['current_stage' => 'pengadaan']);
+            KerjaanPengolahan::segarkanBanyak($ids);
 
             $this->auditLog->logManyPengolahan($actor, 'kirim_mo', $ids, [
                 'pengolahan_mo_id' => $mo->id,
@@ -171,6 +180,7 @@ class MoGroupingService
             $mo->save();
 
             TransaksiPengolahan::whereIn('id_pengolahan', $ids)->update(['current_stage' => 'operasi']);
+            KerjaanPengolahan::segarkanBanyak($ids);
 
             $this->auditLog->logManyPengolahan($actor, 'batalkan_mo', $ids, [
                 'pengolahan_mo_id' => $mo->id,
@@ -198,6 +208,15 @@ class MoGroupingService
             abort(422, 'Salah satu LHPK tidak ditemukan.');
         }
 
+        // Semua tabel pendamping ditarik SEKALI untuk seluruh id. Sebelumnya tiap id memicu tiga
+        // query sendiri di dalam loop, jadi menggabungkan 200 baris berarti 600 query bolak-balik.
+        $gudangList = PengolahanGudang::whereIn('transaksi_pengolahan_id', $ids)->get()->keyBy('transaksi_pengolahan_id');
+        $lhpkList = PengolahanLhpk::whereIn('transaksi_pengolahan_id', $ids)->get()->keyBy('transaksi_pengolahan_id');
+        $sudahDiMoLain = PengolahanMoDetail::whereIn('transaksi_pengolahan_id', $ids)
+            ->when($moIdSaatIni, fn ($q) => $q->where('pengolahan_mo_id', '!=', $moIdSaatIni))
+            ->pluck('transaksi_pengolahan_id')
+            ->flip();
+
         $makloonId = null;
         $anggota = [];
 
@@ -209,17 +228,16 @@ class MoGroupingService
             }
 
             $tahapTerakhir = PengolahanStages::tahapDataTerakhir($transaksi->skema);
-            $record = $tahapTerakhir['model']::where('transaksi_pengolahan_id', $id)->first();
+            $record = $tahapTerakhir['model'] === PengolahanGudang::class
+                ? ($gudangList[$id] ?? null)
+                : ($lhpkList[$id] ?? null);
             if (! $record || $record->status !== 'diterima') {
                 abort(422, "Data {$tahapTerakhir['role']} pengolahan {$id} belum diterima Operasi.");
             }
 
             // Indeks unik pada mo_detail sudah menjamin ini, tapi cek eksplisit memberi pesan
             // yang bisa dibaca orang alih-alih error integritas dari driver.
-            $adaDiMoLain = PengolahanMoDetail::where('transaksi_pengolahan_id', $id)
-                ->when($moIdSaatIni, fn ($q) => $q->where('pengolahan_mo_id', '!=', $moIdSaatIni))
-                ->exists();
-            if ($adaDiMoLain) {
+            if ($sudahDiMoLain->has($id)) {
                 abort(422, "Pengolahan {$id} sudah tergabung di MO lain.");
             }
 
@@ -229,7 +247,7 @@ class MoGroupingService
                 abort(422, 'LHPK yang dipilih bukan dari makloon yang sama.');
             }
 
-            $lhpk = PengolahanLhpk::where('transaksi_pengolahan_id', $id)->first();
+            $lhpk = $lhpkList[$id] ?? null;
 
             $anggota[$id] = [
                 'hgl' => (float) ($lhpk->kuantum_beras_hgl ?? 0),

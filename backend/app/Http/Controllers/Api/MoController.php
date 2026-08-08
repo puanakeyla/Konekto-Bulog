@@ -25,8 +25,13 @@ class MoController extends Controller
             'per_page' => ['sometimes', 'integer', 'min:1', 'max:100'],
         ]);
 
+        // Daftar hanya butuh JUMLAH anggotanya, bukan isinya. Dulu ia memuat seluruh anggota
+        // beserta LHPK-nya untuk tiap MO di halaman -- satu MO gemuk saja sudah cukup membuat
+        // daftar ini menarik ribuan baris yang tidak pernah ditampilkan. Anggota lengkapnya
+        // diambil lewat GET /api/mo/{mo} saat sebuah MO benar-benar dibuka.
         $query = PengolahanMo::query()
-            ->with(['makloon:id,nama_maklon', 'moDetail.transaksiPengolahan.dataLhpk'])
+            ->with(['makloon:id,nama_maklon'])
+            ->withCount('moDetail')
             ->when(isset($validated['status']), fn ($q) => $q->where('status', $validated['status']))
             ->when(isset($validated['search']), function ($q) use ($validated) {
                 $cari = $validated['search'];
@@ -48,6 +53,7 @@ class MoController extends Controller
             'data' => $mo->load([
                 'makloon:id,nama_maklon',
                 'reviewer:id,username,nama_maklon',
+                'moDetail.transaksiPengolahan.gudang',
                 'moDetail.transaksiPengolahan.dataLhpk',
                 'moDetail.transaksiPengolahan.dataGudang',
             ]),

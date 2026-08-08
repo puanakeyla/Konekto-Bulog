@@ -56,6 +56,8 @@ class PengolahanStageService
                 'gudang_id' => $gudangId,
             ]);
 
+            KerjaanPengolahan::segarkan($transaksi->id_pengolahan);
+
             return $transaksi;
         });
     }
@@ -101,6 +103,8 @@ class PengolahanStageService
                 'skema' => $transaksi->skema,
             ]);
 
+            KerjaanPengolahan::segarkan($transaksi->id_pengolahan);
+
             return $record;
         });
     }
@@ -139,6 +143,8 @@ class PengolahanStageService
                 );
             }
 
+            KerjaanPengolahan::segarkan($transaksi->id_pengolahan);
+
             return $record;
         });
     }
@@ -167,6 +173,8 @@ class PengolahanStageService
                 $transaksi,
                 ['stage' => $prevStage['role']],
             );
+
+            KerjaanPengolahan::segarkan($transaksi->id_pengolahan);
 
             return $record;
         });
@@ -207,6 +215,8 @@ class PengolahanStageService
 
             $transaksi->current_stage = $prevStage['role'];
             $transaksi->save();
+
+            KerjaanPengolahan::segarkan($transaksi->id_pengolahan);
 
             return $record;
         });
@@ -325,16 +335,22 @@ class PengolahanStageService
             ->lockForUpdate()
             ->first();
 
-        if ($counter->urut === 0) {
-            $suffix = sprintf('/%02d/%04d/%s', $month, $year, $skema);
-            $terakhir = TransaksiPengolahan::where('id_pengolahan', 'like', '%'.$suffix)
-                ->orderByDesc('id_pengolahan')
-                ->value('id_pengolahan');
+        // Nomor diturunkan dari id TERBESAR yang benar-benar ada, bukan dari nilai counter yang
+        // terus naik. Baris counter tetap dipakai -- tapi sebagai KUNCI, supaya dua permintaan
+        // bersamaan tidak membaca angka yang sama (yang kedua menunggu transaksi pertama commit,
+        // lalu membaca MAX yang sudah memuat baris baru itu).
+        //
+        // Bedanya dengan alur SerGab (yang sengaja TIDAK memakai ulang nomor): di sini yang boleh
+        // dihapus hanyalah pengolahan yang masih KOSONG -- lihat PengolahanController::destroy().
+        // Tidak ada data, dokumen, atau MO yang pernah menunjuk nomor itu, jadi memakainya ulang
+        // tidak menimpa jejak apa pun. Tanpa ini, tiap kali seseorang membuka form lalu
+        // membatalkannya, penomoran bulan itu meninggalkan lubang permanen.
+        $suffix = sprintf('/%02d/%04d/%s', $month, $year, $skema);
+        $terakhir = TransaksiPengolahan::where('id_pengolahan', 'like', '%'.$suffix)
+            ->orderByDesc('id_pengolahan')
+            ->value('id_pengolahan');
 
-            $counter->urut = $terakhir ? (int) substr($terakhir, 0, 5) : 0;
-        }
-
-        $counter->urut += 1;
+        $counter->urut = ($terakhir ? (int) substr($terakhir, 0, 5) : 0) + 1;
         $counter->save();
 
         return sprintf('%05d/%02d/%04d/%s', $counter->urut, $month, $year, $skema);

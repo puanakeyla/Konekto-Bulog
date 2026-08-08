@@ -21,6 +21,9 @@ class PengolahanController extends Controller
     /** Role yang boleh melihat rantai pengolahan sama sekali. Makloon sengaja tidak termasuk. */
     private const ROLE_PEMBACA = ['gudang', 'ub_jastasma', 'operasi', 'pengadaan', 'admin'];
 
+    /** Batas baris kandidat MO. Layar Operasi memilih dari daftar, bukan membaca laporan. */
+    private const BATAS_KANDIDAT = 200;
+
     public function __construct(
         private PengolahanStageService $service,
         private FotoAccessService $fotoAccess,
@@ -43,15 +46,28 @@ class PengolahanController extends Controller
 
         $daftar = TransaksiPengolahan::query()
             ->with(['gudang', 'makloon:id,nama_maklon', 'dataGudang.gudang', 'dataLhpk.gudangTujuan', 'moDetail.mo'])
+            ->sudahDiisi()
             ->when(isset($validated['skema']), fn ($q) => $q->where('skema', $validated['skema']))
             // Antrean hanya bermakna untuk role yang memegang tahap; admin melihat semuanya.
             ->when(($validated['antrean'] ?? false) && $role !== 'admin', fn ($q) => $q->antreanRole($role))
+            // Pencarian sengaja TIDAK memakai whereHas: keduanya menghasilkan EXISTS berkorelasi
+            // yang dijalankan ulang untuk tiap baris tabel. Dua-duanya diganti himpunan id yang
+            // dihitung SEKALI -- makloon lewat pluck (jumlahnya puluhan), no_lhpk lewat subquery
+            // tak berkorelasi di atas indeks unik no_lhpk.
             ->when(isset($validated['search']), function ($q) use ($validated) {
                 $cari = $validated['search'];
-                $q->where(function ($sub) use ($cari) {
-                    $sub->where('id_pengolahan', 'like', "%{$cari}%")
-                        ->orWhereHas('makloon', fn ($m) => $m->where('nama_maklon', 'like', "%{$cari}%"))
-                        ->orWhereHas('dataLhpk', fn ($l) => $l->where('no_lhpk', 'like', "%{$cari}%"));
+                $makloonIds = User::where('nama_maklon', 'like', "%{$cari}%")->pluck('id');
+
+                $q->where(function ($sub) use ($cari, $makloonIds) {
+                    $sub->where('transaksi_pengolahan.id_pengolahan', 'like', "%{$cari}%")
+                        ->orWhereIn('transaksi_pengolahan.id_pengolahan', fn ($s) => $s
+                            ->select('transaksi_pengolahan_id')
+                            ->from('pengolahan_lhpk')
+                            ->where('no_lhpk', 'like', "%{$cari}%"));
+
+                    if ($makloonIds->isNotEmpty()) {
+                        $sub->orWhereIn('transaksi_pengolahan.makloon_user_id', $makloonIds);
+                    }
                 });
             });
 
@@ -59,12 +75,9 @@ class PengolahanController extends Controller
         // termasuk kategori yang sedang tidak dipilih.
         $hitung = KerjaanPengolahan::hitung(clone $daftar);
 
-        // select() eksplisit wajib setelah join -- tanpa itu kolom kp_* (id, status, ...) ikut
-        // terbaca dan menimpa atribut model.
-        $query = KerjaanPengolahan::joinTahap($daftar)
-            ->select('transaksi_pengolahan.*')
-            ->addSelect(DB::raw(KerjaanPengolahan::ekspresi().' as kerjaan'))
-            ->orderByDesc('transaksi_pengolahan.created_at');
+        // Tidak ada join tahap lagi: klasifikasinya sudah tersimpan di kolom `kerjaan` dan ikut
+        // terbaca sebagai atribut model biasa.
+        $query = $daftar->orderByDesc('transaksi_pengolahan.created_at');
 
         if (isset($validated['kerjaan'])) {
             KerjaanPengolahan::filter($query, $validated['kerjaan']);
@@ -86,34 +99,73 @@ class PengolahanController extends Controller
 
         $validated = $request->validate([
             'makloon_user_id' => ['sometimes', 'integer'],
+            'search' => ['sometimes', 'string', 'max:100'],
         ]);
 
         $rows = TransaksiPengolahan::query()
-            ->with(['makloon:id,nama_maklon', 'dataLhpk'])
+            ->with(['makloon:id,nama_maklon', 'gudang', 'dataLhpk'])
             ->where('current_stage', 'operasi')
             ->where('status_keseluruhan', 'berjalan')
             ->whereDoesntHave('moDetail')
-            ->when(isset($validated['makloon_user_id']), fn ($q) => $q->where('makloon_user_id', $validated['makloon_user_id']))
-            ->get()
             // Hanya yang datanya benar-benar sudah diterima Operasi yang layak digabung; sisanya
             // masih menunggu review dan kuantumnya belum final.
-            ->filter(fn (TransaksiPengolahan $t) => $t->dataLhpk?->status === 'diterima')
-            ->values();
+            //
+            // Dulu penyaringan ini dilakukan di PHP SETELAH ->get(): seluruh baris yang berdiri
+            // di tahap Operasi ditarik ke memori lebih dulu. Pada 30k baris itu 6,5 MB JSON dan
+            // ~19 detik per permintaan -- dan layar Operasi memanggilnya tiap kali dibuka.
+            ->whereHas('dataLhpk', fn ($q) => $q->where('status', 'diterima'))
+            ->when(isset($validated['makloon_user_id']), fn ($q) => $q->where('makloon_user_id', $validated['makloon_user_id']))
+            ->when(isset($validated['search']), fn ($q) => $q->whereHas(
+                'dataLhpk',
+                fn ($l) => $l->where('no_lhpk', 'like', '%'.$validated['search'].'%'),
+            ))
+            ->orderByDesc('created_at')
+            // Ini kotak PILIHAN, bukan laporan: batas keras supaya satu makloon dengan ribuan
+            // LHPK menganggur tidak pernah bisa merobohkan layarnya.
+            ->limit(self::BATAS_KANDIDAT)
+            ->get();
 
         return response()->json(['data' => $rows]);
     }
 
+    /**
+     * Rekap dipaginasi -- dulu ia `->get()` seluruh baris beserta 5 relasinya sekaligus, dan pada
+     * 30k pengolahan permintaan itu menghabiskan memori PHP (fatal 512 MB) sebelum sempat
+     * menjawab. Angka ringkasannya TIDAK dihitung dari halaman yang kebetulan terbuka melainkan
+     * dari seluruh himpunan, jadi kartu totalnya tetap benar di halaman berapa pun.
+     */
     public function rekap(Request $request)
     {
         $this->assertPembaca($request);
 
+        $validated = $request->validate([
+            'skema' => ['sometimes', Rule::in(PengolahanStages::SKEMA)],
+            'per_page' => ['sometimes', 'integer', 'min:1', 'max:500'],
+        ]);
+
         $query = TransaksiPengolahan::query()
-            ->with(['gudang', 'makloon:id,nama_maklon', 'dataGudang.gudang', 'dataLhpk.gudangTujuan', 'moDetail.mo'])
+            ->when(isset($validated['skema']), fn ($q) => $q->where('skema', $validated['skema']))
             ->orderByDesc('created_at');
 
         $this->terapkanFilterTerkunci($query, $request->user()->role->nama_role);
 
-        return response()->json(['data' => $query->get()]);
+        $ringkasan = (clone $query)
+            ->leftJoin('pengolahan_lhpk as rk_l', 'rk_l.transaksi_pengolahan_id', '=', 'transaksi_pengolahan.id_pengolahan')
+            ->reorder()
+            ->selectRaw('COUNT(*) as baris, COALESCE(SUM(rk_l.kuantum_beras_hgl), 0) as beras_hgl')
+            ->first();
+
+        $halaman = $query
+            ->with(['gudang', 'makloon:id,nama_maklon', 'dataGudang.gudang', 'dataLhpk.gudangTujuan', 'moDetail.mo'])
+            ->paginate($validated['per_page'] ?? 200);
+
+        return response()->json([
+            ...$halaman->toArray(),
+            'ringkasan' => [
+                'baris' => (int) $ringkasan->baris,
+                'beras_hgl' => (float) $ringkasan->beras_hgl,
+            ],
+        ]);
     }
 
     /**
@@ -185,6 +237,28 @@ class PengolahanController extends Controller
         );
 
         return response()->json(['data' => $transaksi->load('gudang')], 201);
+    }
+
+    /**
+     * Membatalkan pengolahan yang belum berisi apa pun. Yang sudah punya data tahap TIDAK boleh
+     * lewat sini -- membatalkan pekerjaan orang lain bukan urusan tombol batal, itu jalurnya
+     * penolakan tahap.
+     */
+    public function destroy(Request $request, TransaksiPengolahan $pengolahan)
+    {
+        $user = $request->user();
+
+        abort_unless(
+            $pengolahan->created_by === $user->id || $user->role->nama_role === 'admin',
+            403,
+            'Hanya pembuatnya yang bisa membatalkan pengolahan ini.',
+        );
+
+        abort_unless($pengolahan->masihKosong(), 422, 'Pengolahan ini sudah berisi data dan tidak bisa dibatalkan.');
+
+        $pengolahan->delete();
+
+        return response()->noContent();
     }
 
     public function gudang(Request $request, TransaksiPengolahan $pengolahan)

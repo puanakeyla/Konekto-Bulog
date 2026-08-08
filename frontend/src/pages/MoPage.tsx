@@ -1,8 +1,9 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { useAuth } from '../hooks/useAuth'
 import { useKandidatMo, type PengolahanItem } from '../hooks/usePengolahan'
-import { useMoList, useMoMutations, type MoItem, type StatusMo } from '../hooks/useMo'
+import { useMoDetail, useMoList, useMoMutations, type MoItem, type StatusMo } from '../hooks/useMo'
+import { useDebounced } from '../hooks/useDebounced'
 import { pesanError } from '../lib/pesanError'
 
 const CONTOH_NOMOR = 'MO/00832/02/2026/ADA08001'
@@ -50,13 +51,19 @@ export default function MoPage() {
   const [outForm, setOutForm] = useState<Record<number, { no_out: string; tanggal_out: string }>>({})
   const [catatan, setCatatan] = useState<Record<number, string>>({})
 
+  const anggotaDimuatRef = useRef<number | null>(null)
   const { data: kandidat } = useKandidatMo()
-  const { data: daftar, isLoading } = useMoList({ status, search })
+  // Sama seperti daftar pengolahan: pencarian ini menyaring di server, jadi diberi jeda.
+  const { data: daftar, isLoading } = useMoList({ status, search: useDebounced(search) })
   const { gabungkan, ubahAnggota, kirim, batalkan, terima, tolak, isiOut } = useMoMutations()
 
   // Anggota MO yang sedang diedit ikut jadi kandidat -- tanpa ini baris yang sudah tergabung
   // hilang dari tabel dan mustahil dipertahankan saat menyimpan.
-  const moEdit = editId ? daftar?.data.find((m) => m.id === editId) : null
+  //
+  // Diambil lewat endpoint detail, bukan dari baris daftar: daftar sengaja tidak lagi memuat
+  // anggota tiap MO (lihat MoController::index), jadi anggota lengkapnya baru ditarik saat satu
+  // MO benar-benar dibuka untuk diedit.
+  const { data: moEdit } = useMoDetail(editId ?? undefined)
   const barisEdit = useMemo(
     () => (moEdit?.mo_detail ?? []).map((d) => d.transaksi_pengolahan).filter((t): t is PengolahanItem => !!t),
     [moEdit],
@@ -100,6 +107,7 @@ export default function MoPage() {
     )
 
   const resetPanel = () => {
+    anggotaDimuatRef.current = null
     setPilih([])
     setNomor({ no_mo: '', no_tm_ada: '', no_tm_gudang: '' })
     setEditId(null)
@@ -107,10 +115,17 @@ export default function MoPage() {
 
   const mulaiEdit = (mo: MoItem) => {
     setEditId(mo.id)
-    setPilih((mo.mo_detail ?? []).map((d) => d.transaksi_pengolahan?.id_pengolahan ?? '').filter(Boolean))
     setNomor({ no_mo: mo.no_mo, no_tm_ada: mo.no_tm_ada ?? '', no_tm_gudang: mo.no_tm_gudang ?? '' })
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
+
+  // Anggota awal diisi SEKALI per MO, saat detailnya selesai dimuat. Ref-nya mencegah refetch
+  // (mis. setelah mutasi lain) menimpa pilihan yang sedang disusun user.
+  useEffect(() => {
+    if (!moEdit || anggotaDimuatRef.current === moEdit.id) return
+    anggotaDimuatRef.current = moEdit.id
+    setPilih((moEdit.mo_detail ?? []).map((d) => d.transaksi_pengolahan?.id_pengolahan ?? '').filter(Boolean))
+  }, [moEdit])
 
   const simpanGabungan = (e: React.FormEvent) => {
     e.preventDefault()
@@ -302,7 +317,7 @@ export default function MoPage() {
               <div>
                 <h3 className="font-semibold text-primary-dark">{mo.no_mo}</h3>
                 <p className="page-subtitle">
-                  {mo.makloon?.nama_maklon ?? '-'} · {mo.mo_detail?.length ?? 0} LHPK · HGL {angka(mo.total_kuantum_hgl)} kg
+                  {mo.makloon?.nama_maklon ?? '-'} · {mo.mo_detail_count ?? 0} LHPK · HGL {angka(mo.total_kuantum_hgl)} kg
                 </p>
               </div>
               <StatusMoBadge mo={mo} />

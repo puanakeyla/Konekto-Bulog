@@ -26,6 +26,8 @@ import AngkaInput from '../components/AngkaInput'
 import ConfirmDialog from '../components/ConfirmDialog'
 import FotoPicker from '../components/FotoPicker'
 import MakloonCombobox from '../components/MakloonCombobox'
+import ModalPortal from '../components/ModalPortal'
+import { useMoDetail } from '../hooks/useMo'
 
 type FormNilai = Record<string, string>
 /** `ribuan` = kuantum (kg) yang selalu bulat -- dirender AngkaInput agar berpemisah ribuan. */
@@ -123,8 +125,11 @@ export default function PengolahanDetailPage() {
   const kembaliKeDaftar = () => navigate('/pengolahan')
   const role = user?.role.nama_role ?? ''
   const { data: transaksi, isLoading, isError, error, refetch } = usePengolahanDetail(id)
-  const { simpanGudang, simpanLhpk, terima, tolak, unggahFoto } = usePengolahanMutations(id)
-  const { data: kandidatMo = [] } = useKandidatMo()
+  const { simpanGudang, simpanLhpk, terima, tolak, batalkan, unggahFoto } = usePengolahanMutations(id)
+  // MO hanya boleh menggabungkan LHPK dari makloon YANG SAMA (MoGroupingService::validasiAnggota),
+  // jadi kandidatnya disaring di server sejak awal -- bukan menarik semua lalu memfilter di layar.
+  const bolehLihatKandidat = role === 'operasi' || role === 'admin'
+  const { data: kandidatMo = [] } = useKandidatMo(transaksi?.makloon_user_id, bolehLihatKandidat)
   const operasiWorkspace = useMutation({
     mutationFn: async ({ selectedIds, noMo, noTmAda, noTmGudang }: { selectedIds: string[]; noMo: string; noTmAda: string; noTmGudang: string }) => {
       const { data } = await api.post('/api/mo/gabungkan', {
@@ -141,6 +146,7 @@ export default function PengolahanDetailPage() {
       queryClient.invalidateQueries({ queryKey: ['pengolahan-list'] })
       queryClient.invalidateQueries({ queryKey: ['pengolahan-kandidat-mo'] })
       queryClient.invalidateQueries({ queryKey: ['mo-list'] })
+      queryClient.invalidateQueries({ queryKey: ['mo-detail'] })
       toast.success('MO dibuat dan dikirim ke Pengadaan.')
     },
     onError: (err) => toast.error(apiErrorMessage(err, 'Gagal menggabungkan LHPK menjadi MO.')),
@@ -152,6 +158,7 @@ export default function PengolahanDetailPage() {
       queryClient.invalidateQueries({ queryKey: ['pengolahan-list'] })
       queryClient.invalidateQueries({ queryKey: ['pengolahan-kandidat-mo'] })
       queryClient.invalidateQueries({ queryKey: ['mo-list'] })
+      queryClient.invalidateQueries({ queryKey: ['mo-detail'] })
       toast.success('MO dikirim ke Pengadaan.')
     },
     onError: (err) => toast.error(apiErrorMessage(err, 'Gagal mengirim MO ke Pengadaan.')),
@@ -162,6 +169,7 @@ export default function PengolahanDetailPage() {
       queryClient.invalidateQueries({ queryKey: ['pengolahan-detail', id] })
       queryClient.invalidateQueries({ queryKey: ['pengolahan-list'] })
       queryClient.invalidateQueries({ queryKey: ['mo-list'] })
+      queryClient.invalidateQueries({ queryKey: ['mo-detail'] })
       toast.success('MO disetujui Pengadaan. Lanjut isi Nomor OUT.')
     },
     onError: (err) => toast.error(apiErrorMessage(err, 'Gagal menyetujui MO.')),
@@ -172,6 +180,7 @@ export default function PengolahanDetailPage() {
       queryClient.invalidateQueries({ queryKey: ['pengolahan-detail', id] })
       queryClient.invalidateQueries({ queryKey: ['pengolahan-list'] })
       queryClient.invalidateQueries({ queryKey: ['mo-list'] })
+      queryClient.invalidateQueries({ queryKey: ['mo-detail'] })
       toast.success('MO ditolak dan dikembalikan ke Operasi.')
     },
     onError: (err) => toast.error(apiErrorMessage(err, 'Gagal menolak MO.')),
@@ -184,6 +193,7 @@ export default function PengolahanDetailPage() {
       queryClient.invalidateQueries({ queryKey: ['pengolahan-list'] })
       queryClient.invalidateQueries({ queryKey: ['pengolahan-rekap'] })
       queryClient.invalidateQueries({ queryKey: ['mo-list'] })
+      queryClient.invalidateQueries({ queryKey: ['mo-detail'] })
       toast.success('Nomor OUT diterbitkan; pengolahan selesai.')
     },
     onError: (err) => toast.error(apiErrorMessage(err, 'Gagal menerbitkan Nomor OUT.')),
@@ -248,11 +258,21 @@ export default function PengolahanDetailPage() {
   }
   if (!transaksi) return <div className="mx-auto max-w-5xl px-6 py-8 text-sm text-danger">Pengolahan tidak ditemukan.</div>
 
+  // Belum ada satu pun data tahap tersimpan -> belum jadi transaksi (server memakai aturan yang
+  // sama lewat scopeSudahDiisi, jadi baris ini juga belum muncul di daftar mana pun).
+  const masihKosong = !transaksi.data_gudang && !transaksi.data_lhpk
+
+  const batalkanPengolahan = () =>
+    batalkan.mutate(undefined, {
+      onSuccess: () => navigate('/pengolahan'),
+      onError: (err) => toast.error(pesanError(err)),
+    })
+
   const urutan = URUTAN_TAHAP[transaksi.skema]
-  // Sama seperti kolom Rekap: tiap role hanya melihat tahap sampai tahapnya sendiri, jadi
-  // Gudang tidak melihat MO/OUT dan UB Jastasma tidak melihat isi Operasi.
+  // Sama seperti kolom Rekap: tiap role hanya melihat ISI tahap sampai tahapnya sendiri, jadi
+  // Gudang tidak membuka MO/OUT. Kartunya sendiri tetap dirender -- timeline harus tetap
+  // menunjukkan rantai lengkapnya.
   const terlihat = tahapTerlihat(role, transaksi.skema)
-  const tahapDitampilkan = urutan.filter((tahap) => terlihat.includes(tahap))
   // Makloon ditetapkan pengisi tahap PERTAMA; tahap kedua mencocokkan saja (server ikut menjaga).
   const tahapPertama = urutan[0]
   const indexAktif = urutan.indexOf(transaksi.current_stage)
@@ -331,9 +351,28 @@ export default function PengolahanDetailPage() {
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6">
-      <Link to="/pengolahan" className="text-sm font-medium text-primary hover:underline">&larr; Daftar pengolahan</Link>
+      {/* Selama belum ada satu pun data tersimpan, pengolahan ini belum jadi transaksi: keluar
+          dari sini artinya membatalkannya, bukan menyimpannya sebagai baris kosong. */}
+      {masihKosong ? (
+        <button
+          type="button"
+          onClick={batalkanPengolahan}
+          disabled={batalkan.isPending}
+          className="text-sm font-medium text-danger hover:underline"
+        >
+          &larr; Batalkan &amp; kembali ke daftar
+        </button>
+      ) : (
+        <Link to="/pengolahan" className="text-sm font-medium text-primary hover:underline">&larr; Daftar pengolahan</Link>
+      )}
 
       <section className="panel panel-pad mb-6 mt-3">
+        {masihKosong && (
+          <p className="alert-warning mb-4">
+            Belum ada data tersimpan. Pengolahan ini baru menjadi transaksi setelah Anda menekan
+            <strong> Simpan draft</strong> atau <strong>Kirim</strong> — sebelum itu ia tidak muncul di daftar siapa pun.
+          </p>
+        )}
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <p className="text-[0.68rem] font-bold uppercase tracking-[0.18em] text-accent">Pengolahan alur {transaksi.skema}</p>
@@ -354,8 +393,9 @@ export default function PengolahanDetailPage() {
       </section>
 
       <ol className="relative ml-3 space-y-4 border-l border-border pl-6 sm:ml-5 sm:pl-8">
-        {tahapDitampilkan.map((tahap) => {
-          const index = urutan.indexOf(tahap)
+        {urutan.map((tahap, index) => {
+          // SELURUH tahap tetap dirender supaya timeline menunjukkan ada berapa langkah dan
+          // sisanya apa. Yang dibatasi hanya ISI kartu (lihat bolehLihatIsi di bawah).
           const data = dataUntukTahap(transaksi, tahap)
           const aktif = index === indexAktif && transaksi.status_keseluruhan === 'berjalan'
           const lewat = index < indexAktif || transaksi.status_keseluruhan === 'selesai'
@@ -372,6 +412,12 @@ export default function PengolahanDetailPage() {
           // mengirim, kartu tahap berikutnya jadi aktif dan tombolnya dulu tetap muncul, membuka
           // tabel berisi "-" semua. Tombolnya baru ada setelah tahap ini benar-benar terisi.
           const adaIsi = tahap === 'gudang' || tahap === 'ub_jastasma' ? !!data : !!mo
+          // Detail hanya sampai tahap milik role ini -- Gudang tidak membuka isi MO/OUT.
+          const bolehLihatIsi = terlihat.includes(tahap)
+          // Tahap Pengadaan baru terbuka setelah MO-nya DISETUJUI. Selama masih direview, satu-
+          // satunya pekerjaan Pengadaan adalah menilai MO di kartu Operasi; membuka form OUT di
+          // bawahnya cuma menawarkan langkah yang belum boleh dikerjakan.
+          const pengadaanTerkunci = tahap === 'pengadaan' && mo?.review_status !== 'diterima'
 
           return (
             <li key={tahap} className="relative">
@@ -382,7 +428,11 @@ export default function PengolahanDetailPage() {
                     ? 'border-accent bg-warning-bg text-warning'
                     : 'border-border bg-white text-muted'
               }`}>
-                {lewat ? 'OK' : index + 1}
+                {lewat ? (
+                  <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" className="h-3.5 w-3.5">
+                    <path d="M4 10.5l4 4 8-9" />
+                  </svg>
+                ) : index + 1}
               </span>
 
               <section className={`panel overflow-hidden ${aktif ? 'border-accent/70' : ''} ${menunggu ? 'opacity-80' : ''}`}>
@@ -396,7 +446,19 @@ export default function PengolahanDetailPage() {
                   </div>
                 </div>
 
-                {!menunggu && (
+                {!menunggu && !bolehLihatIsi && (
+                  <div className="px-4 py-3 text-xs text-muted sm:px-5">
+                    Detail tahap ini di luar jangkauan role Anda.
+                  </div>
+                )}
+
+                {!menunggu && bolehLihatIsi && pengadaanTerkunci && (
+                  <div className="px-4 py-3 text-xs text-muted sm:px-5">
+                    Terbuka setelah MO disetujui lewat <strong>Terima &amp; Lanjutkan</strong> di kartu Operasi.
+                  </div>
+                )}
+
+                {!menunggu && bolehLihatIsi && !pengadaanTerkunci && (
                 <div className="px-4 py-4 sm:px-5">
                   {adaIsi ? (
                     <button
@@ -438,6 +500,7 @@ export default function PengolahanDetailPage() {
                     <ReviewPanel
                       tahap={tahapDireview}
                       transaksi={transaksi}
+                      role={role}
                       onTolak={handleTolak}
                       onTerima={() => terima.mutate(undefined, {
                         onSuccess: () => toast.success('Data diterima.'),
@@ -467,6 +530,7 @@ export default function PengolahanDetailPage() {
                   {tampilOperasiWorkspace && (
                     <OperasiWorkspace
                       transaksi={transaksi}
+                      role={role}
                       kandidat={kandidatMo}
                       onGabungkan={(payload) => operasiWorkspace.mutate(payload)}
                       isPending={operasiWorkspace.isPending}
@@ -478,6 +542,9 @@ export default function PengolahanDetailPage() {
                   {tampilReviewMoOperasi && (
                     <MoReviewActions
                       noMo={mo.no_mo}
+                      moId={mo.id}
+                      idPengolahan={transaksi.id_pengolahan}
+                      role={role}
                       onTerima={() => terimaMoPengadaan.mutate(mo.id)}
                       onTolak={(catatan) => tolakMoPengadaan.mutate({ moId: mo.id, catatan })}
                       isTerimaPending={terimaMoPengadaan.isPending}
@@ -488,6 +555,7 @@ export default function PengolahanDetailPage() {
                   {tahap === 'pengadaan' && (
                     <PengadaanWorkspace
                       transaksi={transaksi}
+                      role={role}
                       onIsiOut={(moId, noOut, tanggalOut) => isiOutMo.mutate({ moId, noOut, tanggalOut })}
                       isOutPending={isiOutMo.isPending}
                     />
@@ -586,7 +654,6 @@ function TahapSummary({ tahap, transaksi }: { tahap: TahapPengolahan; transaksi:
           ['No. TM Gudang', mo?.no_tm_gudang ?? '-'],
           ['Total beras HGL', fmt(mo?.total_kuantum_hgl, ' kg')],
           ['Total gabah diolah', fmt(mo?.total_kuantum_gabah_diolah, ' kg')],
-          ['Status review', labelReviewMo(mo?.review_status)],
         ]}
       />
     )
@@ -597,14 +664,152 @@ function TahapSummary({ tahap, transaksi }: { tahap: TahapPengolahan; transaksi:
       rows={[
         ['Nomor OUT', mo?.no_out ?? '-'],
         ['Tanggal OUT', tanggal(mo?.tanggal_out)],
-        ['Status akhir', transaksi.status_keseluruhan === 'selesai' ? 'Selesai' : 'Belum selesai'],
       ]}
     />
   )
 }
 
+/**
+ * Pop-up detail satu pengolahan. Datanya ditarik dari endpoint detail yang sama dengan halaman
+ * ini -- baris kandidat MO cuma membawa LHPK, sedangkan yang mau dilihat peninjau adalah seluruh
+ * tahapnya. Karena kuncinya sama, membuka pop-up untuk transaksi yang sedang dibuka tidak
+ * menambah request sama sekali (dilayani cache React Query).
+ *
+ * Isinya ikut aturan yang sama dengan timeline & rekap: hanya tahap sampai milik role ini.
+ */
+function DetailPengolahanModal({ id, role, onClose }: { id: string; role: string; onClose: () => void }) {
+  const { data: transaksi, isLoading, isError, error } = usePengolahanDetail(id)
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
+
+  return (
+    <ModalPortal>
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-sm" onClick={onClose}>
+        <div
+          className="flex max-h-[92vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-white/40 bg-white shadow-2xl"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="flex items-start justify-between gap-3 border-b border-border bg-gradient-to-r from-primary-dark via-primary to-primary-dark px-6 py-5 text-white">
+            <div>
+              <p className="text-[0.68rem] font-bold uppercase tracking-[0.2em] text-accent">Detail Pengolahan</p>
+              <h2 className="mt-1 text-2xl font-extrabold">{id}</h2>
+              {transaksi && (
+                <p className="mt-1 text-sm text-white/70">
+                  {transaksi.gudang?.nama ?? '-'} · {transaksi.makloon?.nama_maklon ?? 'Makloon belum diisi'}
+                </p>
+              )}
+            </div>
+            <button type="button" onClick={onClose} className="rounded-lg border border-white/15 bg-white/10 px-3 py-1.5 text-sm font-bold transition-colors hover:bg-white/20">
+              Tutup
+            </button>
+          </div>
+
+          <div className="space-y-4 overflow-y-auto bg-surface px-6 py-5">
+            {isLoading && <div className="panel px-4 py-3 text-sm text-muted">Memuat detail...</div>}
+            {isError && <div className="alert-danger">{pesanError(error)}</div>}
+
+            {transaksi && tahapTerlihat(role, transaksi.skema).map((tahap) => (
+              <section key={tahap} className="panel panel-pad">
+                <h3 className="mb-3 text-sm font-extrabold text-primary-dark">{LABEL_TAHAP[tahap]}</h3>
+                <TahapSummary tahap={tahap} transaksi={transaksi} />
+
+                {/* Dokumen ikut di sini: yang dicek peninjau bukan cuma angkanya, tapi nota
+                    timbang & LHPK-nya. Tanpa ini pop-up masih menyuruh buka halaman lain. */}
+                {(tahap === 'gudang' || tahap === 'ub_jastasma') && (
+                  <FotoPengolahan
+                    id={transaksi.id_pengolahan}
+                    jenisFoto={tahap === 'gudang' ? 'foto_notim' : 'foto_lhpk'}
+                    enabled={!!dataUntukTahap(transaksi, tahap)}
+                  />
+                )}
+              </section>
+            ))}
+          </div>
+        </div>
+      </div>
+    </ModalPortal>
+  )
+}
+
+/**
+ * Baris-baris LHPK yang tergabung dalam satu MO, tiap baris membuka pop-up detailnya.
+ *
+ * Padanan tabel di layar Operasi, tapi untuk Pengadaan: yang dinilai Pengadaan (saat Terima/Tolak
+ * MO maupun saat menerbitkan Nomor OUT) adalah gabungan baris-baris ini, jadi ia harus bisa
+ * membuka satu per satu tanpa pindah halaman. Anggotanya diambil dari endpoint MO -- payload
+ * pengolahan hanya membawa MO-nya, bukan saudara-saudaranya.
+ */
+function TabelAnggotaMo({ moId, role, sorotId }: { moId: number; role: string; sorotId?: string }) {
+  const { data: mo, isLoading } = useMoDetail(moId)
+  const [detailId, setDetailId] = useState<string | null>(null)
+  const anggota = (mo?.mo_detail ?? []).map((item) => item.transaksi_pengolahan).filter((item) => !!item)
+
+  return (
+    <div className="mt-4">
+      <p className="mb-2 text-[0.68rem] font-bold uppercase tracking-[0.06em] text-muted">
+        Baris yang digabungkan ({anggota.length}) — klik untuk lihat detail
+      </p>
+      <div className="overflow-x-auto rounded-lg border border-border">
+        <table className="w-full text-sm">
+          <thead className="bg-primary-tint text-left text-primary-dark">
+            <tr>
+              <th className="px-3 py-2">No. LHPK</th>
+              <th className="px-3 py-2">Gudang</th>
+              <th className="px-3 py-2 text-right">Gabah Diolah</th>
+              <th className="px-3 py-2 text-right">Kuantum HGL</th>
+            </tr>
+          </thead>
+          <tbody>
+            {isLoading && <tr><td colSpan={4} className="px-3 py-6 text-center text-gray-400">Memuat anggota MO...</td></tr>}
+            {!isLoading && anggota.length === 0 && (
+              <tr><td colSpan={4} className="px-3 py-6 text-center text-gray-400">MO ini belum punya anggota.</td></tr>
+            )}
+            {anggota.map((item) => (
+              <tr
+                key={item.id_pengolahan}
+                onClick={() => setDetailId(item.id_pengolahan)}
+                title="Klik untuk lihat detail pengolahan ini"
+                className={`cursor-pointer border-t border-border transition-colors hover:bg-primary-tint/40 ${
+                  item.id_pengolahan === sorotId ? 'bg-warning-bg/30' : ''
+                }`}
+              >
+                <td className="px-3 py-2 font-medium text-primary-dark underline decoration-dotted underline-offset-4">
+                  {item.data_lhpk?.no_lhpk ?? item.id_pengolahan}
+                </td>
+                <td className="px-3 py-2 text-gray-600">{item.gudang?.nama ?? '-'}</td>
+                <td className="px-3 py-2 text-right">{fmt(item.data_lhpk?.kuantum_gabah_diolah, '')}</td>
+                <td className="px-3 py-2 text-right">{fmt(item.data_lhpk?.kuantum_beras_hgl, '')}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {detailId && <DetailPengolahanModal id={detailId} role={role} onClose={() => setDetailId(null)} />}
+    </div>
+  )
+}
+
+/** Tombol seragam pembuka pop-up detail, dipakai panel review, Operasi, dan Pengadaan. */
+function TombolDetail({ onClick, label = 'Lihat detail lengkap' }: { onClick: () => void; label?: string }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="rounded-lg border border-border bg-white px-3 py-1.5 text-xs font-bold text-primary-dark transition-colors hover:border-primary hover:bg-primary-tint"
+    >
+      {label}
+    </button>
+  )
+}
+
 function OperasiWorkspace({
   transaksi,
+  role,
   kandidat,
   onGabungkan,
   isPending,
@@ -612,34 +817,30 @@ function OperasiWorkspace({
   isKirimPending,
 }: {
   transaksi: PengolahanItem
+  role: string
   kandidat: PengolahanItem[]
   onGabungkan: (payload: { selectedIds: string[]; noMo: string; noTmAda: string; noTmGudang: string }) => void
   isPending: boolean
   onKirimMo: (moId: number) => void
   isKirimPending: boolean
 }) {
+  const [detailId, setDetailId] = useState<string | null>(null)
   const [selected, setSelected] = useState<Set<string>>(() => new Set([transaksi.id_pengolahan]))
   const [noMo, setNoMo] = useState('')
   const [noTmAda, setNoTmAda] = useState('')
   const [noTmGudang, setNoTmGudang] = useState('')
   const [cari, setCari] = useState('')
-  const [filterMakloon, setFilterMakloon] = useState<string>(() => String(transaksi.makloon_user_id))
 
   useEffect(() => {
     setSelected((prev) => new Set([...prev, transaksi.id_pengolahan]))
   }, [transaksi.id_pengolahan])
 
+  // Server sudah membatasi kandidat ke makloon transaksi ini -- MO memang cuma boleh menggabungkan
+  // LHPK dari makloon yang sama (MoGroupingService::validasiAnggota), jadi pilihan "semua makloon"
+  // dulu hanya menawarkan baris yang pasti ditolak saat disimpan.
   const rows = useMemo(
-    () => kandidat.filter((item) => {
-      if (filterMakloon !== 'semua' && String(item.makloon_user_id) !== filterMakloon) return false
-      if (cari && !(item.data_lhpk?.no_lhpk ?? '').toLowerCase().includes(cari.toLowerCase())) return false
-      return true
-    }),
-    [kandidat, cari, filterMakloon],
-  )
-  const makloonOptions = useMemo(
-    () => Array.from(new Map(kandidat.map((item) => [String(item.makloon_user_id), item.makloon?.nama_maklon ?? '-'])).entries()),
-    [kandidat],
+    () => kandidat.filter((item) => !cari || (item.data_lhpk?.no_lhpk ?? '').toLowerCase().includes(cari.toLowerCase())),
+    [kandidat, cari],
   )
 
   const selectedRows = rows.filter((item) => selected.has(item.id_pengolahan))
@@ -669,16 +870,13 @@ function OperasiWorkspace({
       <div className="toolbar-card mb-4">
         <div>
           <h3 className="section-title">Gabungkan LHPK jadi MO</h3>
-          <p className="page-subtitle">Pilih baris dari makloon yang sama, lalu isi nomor MO dan TM.</p>
+          <p className="page-subtitle">Pilih baris dari makloon yang sama, lalu isi nomor MO dan TM. Klik barisnya untuk melihat detail.</p>
         </div>
         <span className="badge">Dipilih: {selectedRows.length}</span>
       </div>
 
-      <div className="mb-4 flex flex-wrap gap-3">
-        <select className="input max-w-xs bg-white" value={filterMakloon} onChange={(e) => setFilterMakloon(e.target.value)}>
-          <option value="semua">Semua makloon</option>
-          {makloonOptions.map(([id, nama]) => <option key={id} value={id}>{nama}</option>)}
-        </select>
+      <div className="mb-4 flex flex-wrap items-center gap-3">
+        <span className="badge">Makloon: {transaksi.makloon?.nama_maklon ?? '-'}</span>
         <input className="input max-w-xs bg-white" value={cari} onChange={(e) => setCari(e.target.value)} placeholder="Cari No. LHPK" />
       </div>
 
@@ -701,8 +899,16 @@ function OperasiWorkspace({
               const checked = selected.has(item.id_pengolahan)
               const isCurrent = item.id_pengolahan === transaksi.id_pengolahan
               return (
-                <tr key={item.id_pengolahan} className={`border-t border-border ${isCurrent ? 'bg-warning-bg/30' : ''}`}>
-                  <td className="px-3 py-2">
+                // Baris diklik = buka detailnya. Yang digabung ke MO adalah angka-angka baris ini,
+                // jadi peninjau harus bisa mengeceknya tanpa meninggalkan halaman penggabungan.
+                <tr
+                  key={item.id_pengolahan}
+                  onClick={() => setDetailId(item.id_pengolahan)}
+                  title="Klik untuk lihat detail pengolahan ini"
+                  className={`cursor-pointer border-t border-border transition-colors hover:bg-primary-tint/40 ${isCurrent ? 'bg-warning-bg/30' : ''}`}
+                >
+                  {/* Sel centang menelan kliknya sendiri supaya memilih baris tidak ikut membuka pop-up. */}
+                  <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
                     <input
                       type="checkbox"
                       checked={checked}
@@ -718,7 +924,9 @@ function OperasiWorkspace({
                       }
                     />
                   </td>
-                  <td className="px-3 py-2 font-medium text-primary-dark">{item.data_lhpk?.no_lhpk ?? item.id_pengolahan}</td>
+                  <td className="px-3 py-2 font-medium text-primary-dark underline decoration-dotted underline-offset-4">
+                    {item.data_lhpk?.no_lhpk ?? item.id_pengolahan}
+                  </td>
                   <td className="px-3 py-2 text-gray-600">{item.makloon?.nama_maklon ?? '-'}</td>
                   <td className="px-3 py-2 text-right">{fmt(item.data_lhpk?.kuantum_gabah_diolah, '')}</td>
                   <td className="px-3 py-2 text-right">{fmt(item.data_lhpk?.kuantum_beras_hgl, '')}</td>
@@ -762,16 +970,20 @@ function OperasiWorkspace({
           {isPending ? 'Memproses...' : 'Buat & Kirim ke Pengadaan'}
         </button>
       </div>
+
+      {detailId && <DetailPengolahanModal id={detailId} role={role} onClose={() => setDetailId(null)} />}
     </div>
   )
 }
 
 function PengadaanWorkspace({
   transaksi,
+  role,
   onIsiOut,
   isOutPending,
 }: {
   transaksi: PengolahanItem
+  role: string
   onIsiOut: (moId: number, noOut: string, tanggalOut: string) => void
   isOutPending: boolean
 }) {
@@ -796,15 +1008,8 @@ function PengadaanWorkspace({
         </div>
         <span className="badge">{labelPengadaanMo(mo.review_status, sudahSelesai)}</span>
       </div>
-      <DataGrid
-        rows={[
-          ['Nomor MO', mo.no_mo],
-          ['No. TM ADA', mo.no_tm_ada ?? '-'],
-          ['No. TM Gudang', mo.no_tm_gudang ?? '-'],
-          ['Status review', labelPengadaanMo(mo.review_status, sudahSelesai)],
-          ['No. OUT', mo.no_out ?? '-'],
-        ]}
-      />
+      {/* Nomor OUT diterbitkan ATAS baris-baris ini, jadi daftarnya duduk tepat di atas formnya. */}
+      <TabelAnggotaMo moId={mo.id} role={role} sorotId={transaksi.id_pengolahan} />
 
       {mo.review_status === 'diterima' && !sudahSelesai && (
         <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
@@ -832,12 +1037,18 @@ function PengadaanWorkspace({
 
 function MoReviewActions({
   noMo,
+  moId,
+  idPengolahan,
+  role,
   onTerima,
   onTolak,
   isTerimaPending,
   isTolakPending,
 }: {
   noMo: string
+  moId: number
+  idPengolahan: string
+  role: string
   onTerima: () => void
   onTolak: (catatan: string) => void
   isTerimaPending: boolean
@@ -857,7 +1068,11 @@ function MoReviewActions({
         <span className="badge badge-warning">Menunggu review Pengadaan</span>
       </div>
 
-      <div className="flex flex-wrap justify-end gap-3">
+      {/* Yang diterima/ditolak adalah gabungan baris-baris ini -- peninjau harus bisa membuka
+          tiap barisnya sebelum memutuskan. */}
+      <TabelAnggotaMo moId={moId} role={role} sorotId={idPengolahan} />
+
+      <div className="mt-4 flex flex-wrap justify-end gap-3">
         <button type="button" className="btn btn-outline-danger" disabled={isTolakPending} onClick={() => setDialogTolak(true)}>
           Tolak
         </button>
@@ -949,6 +1164,7 @@ function FotoPengolahan({ id, jenisFoto, enabled }: { id: string; jenisFoto: str
 function ReviewPanel({
   tahap,
   transaksi,
+  role,
   onTolak,
   onTerima,
   isTolakPending,
@@ -956,6 +1172,7 @@ function ReviewPanel({
 }: {
   tahap: TahapPengolahan
   transaksi: PengolahanItem
+  role: string
   onTolak: (catatan: string) => void
   onTerima: () => void
   isTolakPending: boolean
@@ -963,6 +1180,7 @@ function ReviewPanel({
 }) {
   const [dialogTolak, setDialogTolak] = useState(false)
   const [catatan, setCatatan] = useState('')
+  const [detailTerbuka, setDetailTerbuka] = useState(false)
 
   return (
     <div className="mt-5 rounded-xl border border-warning/40 bg-warning-bg/50 p-4">
@@ -973,14 +1191,23 @@ function ReviewPanel({
         </div>
         <span className="badge badge-warning">Giliran {LABEL_TAHAP[transaksi.current_stage]}</span>
       </div>
-      <div className="mt-4 flex flex-wrap justify-end gap-3">
-        <button type="button" className="btn btn-outline-danger" disabled={isTolakPending} onClick={() => setDialogTolak(true)}>
-          Tolak
-        </button>
-        <button type="button" className="btn btn-primary" disabled={isTerimaPending} onClick={onTerima}>
-          Terima
-        </button>
+      {/* Tombol detail duduk di sisi kiri, terpisah dari Terima/Tolak: memeriksa dulu baru
+          memutuskan, bukan tiga tombol sederajat yang gampang salah tekan. */}
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+        <TombolDetail onClick={() => setDetailTerbuka(true)} />
+        <div className="flex flex-wrap justify-end gap-3">
+          <button type="button" className="btn btn-outline-danger" disabled={isTolakPending} onClick={() => setDialogTolak(true)}>
+            Tolak
+          </button>
+          <button type="button" className="btn btn-primary" disabled={isTerimaPending} onClick={onTerima}>
+            Terima
+          </button>
+        </div>
       </div>
+
+      {detailTerbuka && (
+        <DetailPengolahanModal id={transaksi.id_pengolahan} role={role} onClose={() => setDetailTerbuka(false)} />
+      )}
 
       <ConfirmDialog
         open={dialogTolak}

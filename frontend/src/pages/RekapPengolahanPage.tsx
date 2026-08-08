@@ -95,18 +95,91 @@ function kolomUntukRole(role: string, skema: SkemaPengolahan): Kolom[] {
   return [...COLS_UMUM, ...stageCols, ...(lengkap ? [COL_SUSUT] : [])]
 }
 
+/**
+ * Satu tabel per skema, masing-masing dipaginasi SENDIRI oleh server. Angka totalnya datang dari
+ * `ringkasan` (dihitung server atas seluruh himpunan), bukan dari baris halaman ini -- kalau
+ * dijumlah dari `rows`, totalnya ikut mengecil begitu datanya lewat satu halaman.
+ */
+function TabelSkema({
+  skema,
+  role,
+  onDokumen,
+}: {
+  skema: SkemaPengolahan
+  role: string
+  onDokumen: (row: PengolahanItem) => void
+}) {
+  const [page, setPage] = useState(1)
+  const { data, isLoading, isError, error } = usePengolahanRekap(skema, page)
+
+  const rows = data?.data ?? []
+  const columns = kolomUntukRole(role, skema)
+  const errorMessage = (error as { response?: { data?: { message?: string } } } | null)?.response?.data?.message ?? null
+
+  const aksiBaris = (row: PengolahanItem) => (
+    <div className="flex justify-center">
+      <button
+        type="button"
+        onClick={() => onDokumen(row)}
+        className="rounded-lg border border-border bg-white px-3 py-1.5 text-xs font-bold text-primary-dark transition-colors hover:border-primary hover:bg-primary-tint"
+      >
+        Dokumen
+      </button>
+    </div>
+  )
+
+  return (
+    <section className="panel panel-pad mb-6">
+      <div className="toolbar-card mb-4">
+        <div>
+          <h2 className="section-title">Tabel Rekap Pengolahan - {skema}</h2>
+          <p className="page-subtitle">
+            Satu baris = satu pengolahan {skema} - {columns.length} kolom - {data?.ringkasan.baris ?? 0} baris
+          </p>
+        </div>
+        <span className="badge">Beras HGL: {fmt(data?.ringkasan.beras_hgl ?? 0)} kg</span>
+      </div>
+
+      <DataSpreadsheet
+        rows={rows}
+        columns={columns}
+        rowKey={(row) => row.id_pengolahan}
+        namaFile={`rekap-pengolahan-${role || 'semua'}-${skema.toLowerCase()}-hal${page}`}
+        isLoading={isLoading}
+        isError={isError}
+        errorMessage={errorMessage}
+        renderRowActions={aksiBaris}
+        emptyTitle={`Belum ada pengolahan ${skema}`}
+        emptyCopy={`Data muncul setelah data tahap Anda pada alur ${skema} diterima tahap berikutnya.`}
+      />
+
+      {/* Pencarian & filter di dalam tabel bekerja atas HALAMAN INI -- sama seperti Rekap Sergab. */}
+      {data && data.last_page > 1 && (
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm text-muted">
+          <span>Menampilkan {data.from ?? 0}-{data.to ?? 0} dari {data.total}</span>
+          <div className="flex gap-2">
+            <button className="btn btn-ghost" disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>Sebelumnya</button>
+            <span className="badge">Halaman {data.current_page}/{data.last_page}</span>
+            <button className="btn btn-ghost" disabled={page >= data.last_page} onClick={() => setPage((p) => p + 1)}>Berikutnya</button>
+          </div>
+        </div>
+      )}
+    </section>
+  )
+}
+
 export default function RekapPengolahanPage() {
   const { user } = useAuth()
   const role = user?.role.nama_role ?? ''
-  const { data, isLoading, isError, error } = usePengolahanRekap()
   const [dokumenRow, setDokumenRow] = useState<PengolahanItem | null>(null)
 
-  const rows = data ?? []
-  const rowsGdg = rows.filter((row) => row.skema === 'GDG')
-  const rowsUbj = rows.filter((row) => row.skema === 'UBJ')
-  const totalHglGdg = rowsGdg.reduce((sum, row) => sum + num(row.data_lhpk?.kuantum_beras_hgl), 0)
-  const totalHglUbj = rowsUbj.reduce((sum, row) => sum + num(row.data_lhpk?.kuantum_beras_hgl), 0)
-  const errorMessage = (error as { response?: { data?: { message?: string } } } | null)?.response?.data?.message ?? null
+  // Hanya untuk kartu ringkasan di kepala halaman: satu permintaan ringan per skema (per_page 1),
+  // yang dibaca cuma `ringkasan`-nya.
+  const gdg = usePengolahanRekap('GDG', 1, 1)
+  const ubj = usePengolahanRekap('UBJ', 1, 1)
+  const barisGdg = gdg.data?.ringkasan.baris ?? 0
+  const barisUbj = ubj.data?.ringkasan.baris ?? 0
+  const totalHgl = (gdg.data?.ringkasan.beras_hgl ?? 0) + (ubj.data?.ringkasan.beras_hgl ?? 0)
 
   // Slot foto ikut aturan kolom: hanya tahap yang boleh dilihat role ini yang punya kartu.
   const slotDokumen = (row: PengolahanItem): SlotDokumen[] => {
@@ -121,46 +194,6 @@ export default function RekapPengolahanPage() {
     return slots
   }
 
-  const aksiBaris = (row: PengolahanItem) => (
-    <div className="flex justify-center">
-      <button
-        type="button"
-        onClick={() => setDokumenRow(row)}
-        className="rounded-lg border border-border bg-white px-3 py-1.5 text-xs font-bold text-primary-dark transition-colors hover:border-primary hover:bg-primary-tint"
-      >
-        Dokumen
-      </button>
-    </div>
-  )
-
-  const tabel = (skema: SkemaPengolahan, rowsSkema: PengolahanItem[], total: number) => {
-    const columns = kolomUntukRole(role, skema)
-
-    return (
-      <section className="panel panel-pad mb-6" key={skema}>
-        <div className="toolbar-card mb-4">
-          <div>
-            <h2 className="section-title">Tabel Rekap Pengolahan - {skema}</h2>
-            <p className="page-subtitle">Satu baris = satu pengolahan {skema} - {columns.length} kolom - {rowsSkema.length} baris</p>
-          </div>
-          <span className="badge">Beras HGL: {fmt(total)} kg</span>
-        </div>
-        <DataSpreadsheet
-          rows={rowsSkema}
-          columns={columns}
-          rowKey={(row) => row.id_pengolahan}
-          namaFile={`rekap-pengolahan-${role || 'semua'}-${skema.toLowerCase()}`}
-          isLoading={isLoading}
-          isError={isError}
-          errorMessage={errorMessage}
-          renderRowActions={aksiBaris}
-          emptyTitle={`Belum ada pengolahan ${skema}`}
-          emptyCopy={`Data muncul setelah data tahap Anda pada alur ${skema} diterima tahap berikutnya.`}
-        />
-      </section>
-    )
-  }
-
   return (
     <div className="mx-auto max-w-[96rem] px-4 py-8 sm:px-6 2xl:max-w-[104rem]">
       <section className="panel panel-pad mb-6">
@@ -173,27 +206,27 @@ export default function RekapPengolahanPage() {
               dan sebuah baris baru masuk rekap setelah data tahap Anda <strong>diterima</strong>.
             </p>
           </div>
-          <span className="badge">{rows.length} baris</span>
+          <span className="badge">{barisGdg + barisUbj} baris</span>
         </div>
 
         <div className="grid gap-3 sm:grid-cols-3">
           <div className="rounded-lg border border-border bg-surface px-4 py-3">
             <div className="text-[0.68rem] font-bold uppercase tracking-[0.14em] text-slate-500">Total GDG</div>
-            <div className="mt-1 text-2xl font-extrabold text-primary-dark">{rowsGdg.length}</div>
+            <div className="mt-1 text-2xl font-extrabold text-primary-dark">{barisGdg}</div>
           </div>
           <div className="rounded-lg border border-border bg-surface px-4 py-3">
             <div className="text-[0.68rem] font-bold uppercase tracking-[0.14em] text-slate-500">Total UBJ</div>
-            <div className="mt-1 text-2xl font-extrabold text-primary-dark">{rowsUbj.length}</div>
+            <div className="mt-1 text-2xl font-extrabold text-primary-dark">{barisUbj}</div>
           </div>
           <div className="rounded-lg border border-border bg-surface px-4 py-3">
             <div className="text-[0.68rem] font-bold uppercase tracking-[0.14em] text-slate-500">Total Beras HGL</div>
-            <div className="mt-1 text-2xl font-extrabold text-primary-dark">{fmt(totalHglGdg + totalHglUbj)} kg</div>
+            <div className="mt-1 text-2xl font-extrabold text-primary-dark">{fmt(totalHgl)} kg</div>
           </div>
         </div>
       </section>
 
-      {tabel('GDG', rowsGdg, totalHglGdg)}
-      {tabel('UBJ', rowsUbj, totalHglUbj)}
+      <TabelSkema skema="GDG" role={role} onDokumen={setDokumenRow} />
+      <TabelSkema skema="UBJ" role={role} onDokumen={setDokumenRow} />
 
       {dokumenRow && (
         <DokumenPengolahanModal
