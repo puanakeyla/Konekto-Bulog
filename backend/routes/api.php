@@ -59,6 +59,7 @@ Route::middleware(['auth:sanctum', 'user.aktif'])->group(function () {
         Route::patch('/users/{user}/akses-edit', [AdminUserController::class, 'aksesEdit']);
         Route::apiResource('users', AdminUserController::class);
         // Gudang A/B/C/D adalah data master, bukan akun user -- lihat GudangOptionController.
+        Route::post('/gudang/import', [GudangController::class, 'import']);
         Route::apiResource('gudang', GudangController::class)->except(['show']);
     });
 

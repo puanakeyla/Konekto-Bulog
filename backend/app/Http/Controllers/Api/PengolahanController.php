@@ -100,11 +100,11 @@ class PengolahanController extends Controller
         return response()->json([
             'data' => $pengolahan->load([
                 'makloon:id,nama_maklon',
-                'creator:id,name',
+                'creator:id,username,nama_maklon',
                 'dataGudang.gudang',
                 'dataLhpk.gudangTujuan',
                 'moDetail.mo',
-                'riwayatPenolakan.penolak:id,name',
+                'riwayatPenolakan.penolak:id,username,nama_maklon',
             ]),
         ]);
     }
@@ -212,6 +212,11 @@ class PengolahanController extends Controller
 
     public function fotoLink(Request $request, TransaksiPengolahan $pengolahan, string $jenisFoto)
     {
+        $validated = $request->validate([
+            'conversion' => ['sometimes', Rule::in(['thumb'])],
+            'download' => ['sometimes', 'boolean'],
+        ]);
+
         $this->assertPembaca($request);
 
         $model = $this->modelFoto($pengolahan, $jenisFoto);
@@ -221,7 +226,11 @@ class PengolahanController extends Controller
             abort(404, 'Foto tidak ditemukan.');
         }
 
-        return response()->json(['url' => $this->fotoAccess->signedUrl($media)]);
+        return response()->json(['url' => $this->fotoAccess->signedUrl(
+            $media,
+            $validated['conversion'] ?? null,
+            $validated['download'] ?? false,
+        )]);
     }
 
     private function modelFoto(TransaksiPengolahan $pengolahan, string $jenisFoto)
