@@ -64,29 +64,78 @@ const columns: SheetColumn<PengolahanItem>[] = [
 export default function RekapPengolahanPage() {
   const { data, isLoading, isError, error } = usePengolahanRekap()
   const rows = data ?? []
+  const rowsGdg = rows.filter((row) => row.skema === 'GDG')
+  const rowsUbj = rows.filter((row) => row.skema === 'UBJ')
+  const totalHglGdg = rowsGdg.reduce((sum, row) => sum + num(row.data_lhpk?.kuantum_beras_hgl), 0)
+  const totalHglUbj = rowsUbj.reduce((sum, row) => sum + num(row.data_lhpk?.kuantum_beras_hgl), 0)
 
   return (
     <div className="mx-auto max-w-[96rem] px-4 py-8 sm:px-6 2xl:max-w-[104rem]">
-      <section className="panel panel-pad">
+      <section className="panel panel-pad mb-6">
         <div className="toolbar-card mb-4">
           <div>
             <p className="text-[0.68rem] font-bold uppercase tracking-[0.18em] text-accent">Rekap</p>
             <h1 className="section-title mt-1">Rekap Pengolahan</h1>
-            <p className="page-subtitle">Satu baris = satu pengolahan - {columns.length} kolom</p>
+            <p className="page-subtitle">Data dipisah per skema GDG dan UBJ agar mudah dicek seperti Rekap Data.</p>
           </div>
           <span className="badge">{rows.length} baris</span>
         </div>
 
+        <div className="grid gap-3 sm:grid-cols-3">
+          <div className="rounded-lg border border-border bg-surface px-4 py-3">
+            <div className="text-[0.68rem] font-bold uppercase tracking-[0.14em] text-slate-500">Total GDG</div>
+            <div className="mt-1 text-2xl font-extrabold text-primary-dark">{rowsGdg.length}</div>
+          </div>
+          <div className="rounded-lg border border-border bg-surface px-4 py-3">
+            <div className="text-[0.68rem] font-bold uppercase tracking-[0.14em] text-slate-500">Total UBJ</div>
+            <div className="mt-1 text-2xl font-extrabold text-primary-dark">{rowsUbj.length}</div>
+          </div>
+          <div className="rounded-lg border border-border bg-surface px-4 py-3">
+            <div className="text-[0.68rem] font-bold uppercase tracking-[0.14em] text-slate-500">Total Beras HGL</div>
+            <div className="mt-1 text-2xl font-extrabold text-primary-dark">{fmt(totalHglGdg + totalHglUbj)} kg</div>
+          </div>
+        </div>
+      </section>
+
+      <section className="panel panel-pad mb-6">
+        <div className="toolbar-card mb-4">
+          <div>
+            <h2 className="section-title">Tabel Rekap Pengolahan - GDG</h2>
+            <p className="page-subtitle">Satu baris = satu pengolahan GDG - {columns.length} kolom - {rowsGdg.length} baris</p>
+          </div>
+          <span className="badge">Beras HGL: {fmt(totalHglGdg)} kg</span>
+        </div>
         <DataSpreadsheet
-          rows={rows}
+          rows={rowsGdg}
           columns={columns}
           rowKey={(row) => row.id_pengolahan}
-          namaFile="rekap-pengolahan"
+          namaFile="rekap-pengolahan-gdg"
           isLoading={isLoading}
           isError={isError}
           errorMessage={(error as { response?: { data?: { message?: string } } } | null)?.response?.data?.message ?? null}
-          emptyTitle="Belum ada data pengolahan"
-          emptyCopy="Data muncul setelah Gudang atau UB Jastasma memulai alur pengolahan."
+          emptyTitle="Belum ada pengolahan GDG"
+          emptyCopy="Data muncul setelah Gudang memulai alur pengolahan GDG."
+        />
+      </section>
+
+      <section className="panel panel-pad">
+        <div className="toolbar-card mb-4">
+          <div>
+            <h2 className="section-title">Tabel Rekap Pengolahan - UBJ</h2>
+            <p className="page-subtitle">Satu baris = satu pengolahan UBJ - {columns.length} kolom - {rowsUbj.length} baris</p>
+          </div>
+          <span className="badge">Beras HGL: {fmt(totalHglUbj)} kg</span>
+        </div>
+        <DataSpreadsheet
+          rows={rowsUbj}
+          columns={columns}
+          rowKey={(row) => row.id_pengolahan}
+          namaFile="rekap-pengolahan-ubj"
+          isLoading={isLoading}
+          isError={isError}
+          errorMessage={(error as { response?: { data?: { message?: string } } } | null)?.response?.data?.message ?? null}
+          emptyTitle="Belum ada pengolahan UBJ"
+          emptyCopy="Data muncul setelah UB Jastasma memulai alur pengolahan UBJ."
         />
       </section>
     </div>
