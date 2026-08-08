@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Navigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import { useAuth } from '../hooks/useAuth'
-import { useGudangList, useGudangMutations, type Gudang } from '../hooks/useGudang'
+import { useGudangList, useGudangMutations, type Gudang, type GudangImportResult } from '../hooks/useGudang'
 import { pesanError } from '../lib/pesanError'
 
 const KOSONG = { kode: '', nama: '', aktif: true }
@@ -14,8 +14,11 @@ const KOSONG = { kode: '', nama: '', aktif: true }
 export default function AdminGudangPage() {
   const { user } = useAuth()
   const { data: daftar, isLoading } = useGudangList()
-  const { simpan, hapus } = useGudangMutations()
+  const { simpan, hapus, importGudang } = useGudangMutations()
   const [form, setForm] = useState<typeof KOSONG & { id?: number }>(KOSONG)
+  const [importFile, setImportFile] = useState<File | null>(null)
+  const [importInputKey, setImportInputKey] = useState(0)
+  const [importResult, setImportResult] = useState<GudangImportResult | null>(null)
 
   if (user?.role.nama_role !== 'admin') return <Navigate to="/" replace />
 
@@ -37,6 +40,21 @@ export default function AdminGudangPage() {
       onSuccess: () => toast.success('Gudang dihapus.'),
       // Gudang yang sudah dipakai ditolak server dengan saran menonaktifkan -- pesan itu
       // yang ditampilkan, bukan kalimat generik.
+      onError: (err) => toast.error(pesanError(err)),
+    })
+  }
+
+  const importMassal = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!importFile) return
+
+    importGudang.mutate(importFile, {
+      onSuccess: (result) => {
+        setImportResult(result)
+        setImportFile(null)
+        setImportInputKey((prev) => prev + 1)
+        toast.success(`Import selesai: ${result.created} baru, ${result.updated} diperbarui.`)
+      },
       onError: (err) => toast.error(pesanError(err)),
     })
   }
@@ -83,6 +101,50 @@ export default function AdminGudangPage() {
         </div>
       </form>
 
+      <section className="panel panel-pad mb-6">
+        <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="section-title">Import Gudang</h2>
+            <p className="page-subtitle">Upload CSV atau Excel .xlsx dengan kolom kode dan nama. Kolom aktif boleh diisi opsional.</p>
+          </div>
+          <span className="badge">CSV / XLSX</span>
+        </div>
+
+        {importResult && (
+          <div className="alert-warning mb-4">
+            Import terakhir: {importResult.created} gudang baru, {importResult.updated} gudang diperbarui.
+            {importResult.errors.length > 0 && (
+              <ul className="mt-2 list-disc space-y-1 pl-5">
+                {importResult.errors.slice(0, 5).map((item) => (
+                  <li key={`${item.baris}-${item.pesan}`}>Baris {item.baris}: {item.pesan}</li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
+
+        <form onSubmit={importMassal} className="grid gap-4 sm:grid-cols-[1fr_auto] sm:items-end">
+          <div>
+            <label className="label" htmlFor="import-gudang">File CSV/Excel Gudang</label>
+            <input
+              key={importInputKey}
+              id="import-gudang"
+              className="input"
+              type="file"
+              accept=".csv,.xlsx,text/csv,text/plain,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+              onChange={(e) => setImportFile(e.target.files?.[0] ?? null)}
+            />
+          </div>
+          <button type="submit" className="btn btn-primary" disabled={importGudang.isPending || !importFile}>
+            {importGudang.isPending ? 'Mengimport...' : 'Import File'}
+          </button>
+        </form>
+
+        <div className="mt-4 rounded-lg border border-border bg-primary-tint/30 p-3 text-xs text-slate-600">
+          Contoh CSV: kode,nama,aktif lalu ADA08001,Gudang A,aktif.
+        </div>
+      </section>
+
       <div className="panel overflow-hidden">
         <table className="w-full text-sm">
           <thead className="bg-primary-tint text-left text-primary-dark">
@@ -114,14 +176,7 @@ export default function AdminGudangPage() {
                       className="btn btn-ghost px-3 py-1 text-xs"
                       onClick={() => setForm({ id: item.id, kode: item.kode, nama: item.nama, aktif: item.aktif })}
                     >
-                      Ubah
-                    </button>
-                    <button
-                      type="button"
-                      className="btn btn-ghost px-3 py-1 text-xs"
-                      onClick={() => simpan.mutate({ id: item.id, aktif: !item.aktif })}
-                    >
-                      {item.aktif ? 'Nonaktifkan' : 'Aktifkan'}
+                      Edit
                     </button>
                     <button
                       type="button"

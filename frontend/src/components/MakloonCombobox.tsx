@@ -4,9 +4,10 @@ import { useMakloonOptions } from '../hooks/useMakloonOptions'
 type Props = {
   value: number | null
   onChange: (id: number | null) => void
+  reserveSpaceWhenOpen?: boolean
 }
 
-export default function MakloonCombobox({ value, onChange }: Props) {
+export default function MakloonCombobox({ value, onChange, reserveSpaceWhenOpen = false }: Props) {
   const { data: options, isLoading } = useMakloonOptions()
   const [query, setQuery] = useState('')
   const [open, setOpen] = useState(false)
@@ -21,7 +22,7 @@ export default function MakloonCombobox({ value, onChange }: Props) {
   }, [options, query])
 
   return (
-    <div className="relative">
+    <div className={`relative ${open && reserveSpaceWhenOpen ? 'pb-56' : ''}`}>
       <div className="relative">
         <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-400">
           Q
@@ -40,7 +41,7 @@ export default function MakloonCombobox({ value, onChange }: Props) {
         />
       </div>
       {open && (
-        <ul className="absolute z-10 mt-1 w-full max-h-56 overflow-auto rounded-md border border-border bg-white shadow-lg">
+        <ul className="absolute z-50 mt-1 w-full max-h-56 overflow-auto rounded-md border border-border bg-white shadow-lg">
           {filtered.length === 0 && (
             <li className="px-3 py-2 text-sm text-gray-400">Tidak ditemukan</li>
           )}
