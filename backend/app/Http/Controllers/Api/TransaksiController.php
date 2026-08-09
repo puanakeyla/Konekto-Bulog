@@ -595,6 +595,8 @@ class TransaksiController extends Controller
         }
         unset($data['aksi']);
 
+        $this->pastikanKapasitasJaminanMakloon($request, $transaksi, $data);
+
         $stage = $transaksi->skema === 'MPP' ? 'makloon_kirim' : 'makloon';
         if ($aksi === 'draft') {
             $record = $this->service->saveDraft($transaksi, $request->user(), $stage, $model, $data);
@@ -689,6 +691,10 @@ class TransaksiController extends Controller
                 ]);
                 $mpp = DataMakloonMpp::where('transaksi_id', $transaksi->id_transaksi)->first();
                 if ($mpp) {
+                    $this->pastikanKapasitasJaminanMakloon($request, $transaksi, [
+                        'tanggal_bongkar' => $mpp->tanggal_bongkar,
+                        'kuantum_bongkar' => $validated['kuantum_bongkar'],
+                    ]);
                     $mpp->kuantum_bongkar = $validated['kuantum_bongkar'];
                     $mpp->save();
                 }
@@ -709,5 +715,35 @@ class TransaksiController extends Controller
         $record = $this->service->tolak($transaksi, $request->user(), $validated['catatan']);
 
         return response()->json(['data' => $record, 'transaksi' => $transaksi->fresh()]);
+    }
+
+    private function pastikanKapasitasJaminanMakloon(Request $request, Transaksi $transaksi, array $data): void
+    {
+        $kuantum = $transaksi->skema === 'TJP'
+            ? ($data['kuantum_bongkar'] ?? null)
+            : ($data['kuantum_bongkar'] ?? $data['kuantum'] ?? null);
+
+        if ($kuantum === null || $kuantum === '') {
+            return;
+        }
+
+        $tanggalBongkar = $data['tanggal_bongkar'] ?? null;
+        if ($transaksi->skema === 'TJP') {
+            $transaksi->loadMissing('dataJemputPangan.makloon');
+            $makloon = $transaksi->dataJemputPangan?->makloon;
+        } else {
+            $makloon = $request->user();
+        }
+
+        if (! $makloon) {
+            return;
+        }
+
+        JaminanMakloonController::pastikanKapasitasMakloon(
+            $makloon,
+            (float) $kuantum,
+            $tanggalBongkar,
+            $transaksi->id_transaksi,
+        );
     }
 }
