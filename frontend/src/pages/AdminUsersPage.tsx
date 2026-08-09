@@ -47,7 +47,7 @@ function errorMessage(error: unknown) {
 export default function AdminUsersPage() {
   const { user } = useAuth()
   const [page, setPage] = useState(1)
-  const { data: usersResult, isLoading: loadingUsers } = useAdminUsers(page)
+  const { data: usersResult, isLoading: loadingUsers } = useAdminUsers(page, 10)
   const { data: roles, isLoading: loadingRoles } = useAdminRoles()
   const queryClient = useQueryClient()
   const users = usersResult?.items ?? []
@@ -465,9 +465,9 @@ export default function AdminUsersPage() {
             <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border bg-white px-5 py-4 text-sm text-muted">
               <span>Menampilkan {meta.from ?? 0}-{meta.to ?? 0} dari {meta.total} user</span>
               <div className="flex items-center gap-2">
-                <button className="btn btn-ghost" disabled={page <= 1} onClick={() => setPage((prev) => Math.max(1, prev - 1))}>Preview</button>
+                <button className="btn btn-ghost" disabled={page <= 1} onClick={() => setPage((prev) => Math.max(1, prev - 1))}>Sebelumnya</button>
                 <span className="badge">Halaman {meta.current_page}/{meta.last_page}</span>
-                <button className="btn btn-ghost" disabled={page >= meta.last_page} onClick={() => setPage((prev) => prev + 1)}>Next</button>
+                <button className="btn btn-ghost" disabled={page >= meta.last_page} onClick={() => setPage((prev) => prev + 1)}>Berikutnya</button>
               </div>
             </div>
           )}
