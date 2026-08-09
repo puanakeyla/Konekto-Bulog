@@ -6,6 +6,7 @@ import { useGudangList, useGudangMutations, useGudangOptions, type Gudang, type 
 import { pesanError } from '../lib/pesanError'
 
 const KOSONG = { kode: '', nama: '', aktif: true }
+const PER_HALAMAN = 10
 
 /** Role rantai pengolahan boleh MELIHAT daftarnya -- mereka yang memilih gudang saat mengisi. */
 const ROLE_PEMBACA = ['gudang', 'ub_jastasma', 'operasi', 'pengadaan']
@@ -27,6 +28,7 @@ export default function AdminGudangPage() {
   const [importFile, setImportFile] = useState<File | null>(null)
   const [importInputKey, setImportInputKey] = useState(0)
   const [importResult, setImportResult] = useState<GudangImportResult | null>(null)
+  const [page, setPage] = useState(1)
 
   if (!isAdmin && !ROLE_PEMBACA.includes(user?.role.nama_role ?? '')) return <Navigate to="/" replace />
 
@@ -36,6 +38,10 @@ export default function AdminGudangPage() {
     ? daftarAdmin ?? []
     : (daftarAktif ?? []).map((item) => ({ ...item, aktif: true }))
   const isLoading = isAdmin ? isLoadingAdmin : isLoadingAktif
+  const totalHalaman = Math.max(1, Math.ceil(daftar.length / PER_HALAMAN))
+  const halamanAktif = Math.min(page, totalHalaman)
+  const awal = (halamanAktif - 1) * PER_HALAMAN
+  const daftarHalaman = daftar.slice(awal, awal + PER_HALAMAN)
   const reset = () => setForm(KOSONG)
 
   const kirim = (e: React.FormEvent) => {
@@ -68,6 +74,7 @@ export default function AdminGudangPage() {
         setImportFile(null)
         setImportInputKey((prev) => prev + 1)
         toast.success(`Import selesai: ${result.created} baru, ${result.updated} diperbarui.`)
+        setPage(1)
       },
       onError: (err) => toast.error(pesanError(err)),
     })
@@ -85,7 +92,7 @@ export default function AdminGudangPage() {
       </div>
 
       {isAdmin && (
-      <form onSubmit={kirim} className="panel panel-pad mb-6 grid gap-4 sm:grid-cols-[10rem_1fr_auto] sm:items-end">
+      <form onSubmit={kirim} className={`panel panel-pad mb-6 grid gap-4 sm:items-end ${form.id ? 'sm:grid-cols-[10rem_1fr_10rem_auto]' : 'sm:grid-cols-[10rem_1fr_auto]'}`}>
         <div>
           <label className="label" htmlFor="kode">Kode</label>
           <input
@@ -108,6 +115,20 @@ export default function AdminGudangPage() {
             required
           />
         </div>
+        {form.id && (
+          <div>
+            <label className="label" htmlFor="aktif">Status</label>
+            <select
+              id="aktif"
+              className="input"
+              value={form.aktif ? 'aktif' : 'nonaktif'}
+              onChange={(e) => setForm({ ...form, aktif: e.target.value === 'aktif' })}
+            >
+              <option value="aktif">Aktif</option>
+              <option value="nonaktif">Nonaktif</option>
+            </select>
+          </div>
+        )}
         <div className="flex gap-2">
           <button type="submit" className="btn btn-primary" disabled={simpan.isPending}>
             {form.id ? 'Simpan' : 'Tambah'}
@@ -174,7 +195,7 @@ export default function AdminGudangPage() {
               {/* Tampilan baca-saja hanya berisi gudang aktif, jadi kolom Status & Aksi tidak
                   punya isi yang bermakna di sana. */}
               {isAdmin && <th className="px-4 py-2">Status</th>}
-              {isAdmin && <th className="px-4 py-2 text-right">Aksi</th>}
+              {isAdmin && <th className="w-40 px-4 py-2 text-center">Aksi</th>}
             </tr>
           </thead>
           <tbody>
@@ -182,7 +203,7 @@ export default function AdminGudangPage() {
             {!isLoading && daftar.length === 0 && (
               <tr><td colSpan={isAdmin ? 4 : 2} className="px-4 py-6 text-center text-gray-400">Belum ada gudang.</td></tr>
             )}
-            {daftar.map((item) => (
+            {daftarHalaman.map((item) => (
               <tr key={item.id} className="border-t border-border">
                 <td className="px-4 py-2 font-medium text-primary-dark">{item.kode}</td>
                 <td className="px-4 py-2">{item.nama}</td>
@@ -193,11 +214,11 @@ export default function AdminGudangPage() {
                         {item.aktif ? 'Aktif' : 'Nonaktif'}
                       </span>
                     </td>
-                    <td className="px-4 py-2">
-                      <div className="flex justify-end gap-2">
+                    <td className="px-4 py-2 text-center">
+                      <div className="flex justify-center gap-2">
                         <button
                           type="button"
-                          className="btn btn-ghost px-3 py-1 text-xs"
+                          className="rounded-lg border border-primary/20 bg-primary-tint px-3 py-1.5 text-xs font-bold text-primary transition-colors hover:border-primary hover:bg-primary hover:text-white"
                           onClick={() => setForm({ id: item.id, kode: item.kode, nama: item.nama, aktif: item.aktif })}
                         >
                           Edit
@@ -218,6 +239,16 @@ export default function AdminGudangPage() {
             ))}
           </tbody>
         </table>
+        {daftar.length > PER_HALAMAN && (
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border bg-white px-5 py-4 text-sm text-muted">
+            <span>Menampilkan {awal + 1}-{Math.min(awal + PER_HALAMAN, daftar.length)} dari {daftar.length} gudang</span>
+            <div className="flex items-center gap-2">
+              <button className="btn btn-ghost" disabled={halamanAktif <= 1} onClick={() => setPage(Math.max(1, halamanAktif - 1))}>Sebelumnya</button>
+              <span className="badge">Halaman {halamanAktif}/{totalHalaman}</span>
+              <button className="btn btn-ghost" disabled={halamanAktif >= totalHalaman} onClick={() => setPage(halamanAktif + 1)}>Berikutnya</button>
+            </div>
+          </div>
+        )}
       </div>
 
       {isAdmin && (
