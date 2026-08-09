@@ -3,9 +3,12 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import api from '../../lib/api'
 import { apiErrorMessage } from '../../lib/apiError'
+import { labelFoto } from '../../lib/fotoDokumen'
 import { formatMoney, formatNumber } from '../../lib/poFormat'
+import { ambilFotoPo, ambilFotoTransaksi, useDokumenPo, useDokumenTransaksi } from '../../hooks/useFotoTransaksi'
 import type { PoItem } from '../../hooks/usePoList'
 import ConfirmDialog from '../ConfirmDialog'
+import KartuFoto from '../KartuFoto'
 import PoProgressInfo from './PoProgressInfo'
 import PoTransaksiRows from './PoTransaksiRows'
 
@@ -16,6 +19,20 @@ const statusOptions: { value: PoItem['status']; label: string }[] = [
   { value: 'dibatalkan', label: 'Dibatalkan' },
 ]
 
+const fotoSergab = [
+  'foto_barang',
+  'foto_serah_terima',
+  'foto_bukti_pembayaran',
+  'foto_surat_pernyataan_usia_panen',
+] as const
+
+const fotoSergabTransaksi = [
+  { jenisFoto: 'foto_gabah', label: 'Foto Barang' },
+  { jenisFoto: 'foto_serah_terima', label: 'Foto Serah Terima' },
+  { jenisFoto: 'foto_pembayaran', label: 'Foto Bukti Pembayaran' },
+  { jenisFoto: 'foto_surat_pernyataan', label: 'Foto Surat Pernyataan' },
+] as const
+
 /**
  * Langkah PENUTUP Pengadaan. PO sudah dikirim ke Keuangan saat No. SPP disimpan, jadi di sini
  * tinggal menetapkan Status Sergab: 'lengkap' menandai seluruh transaksi anggota PO selesai.
@@ -23,7 +40,7 @@ const statusOptions: { value: PoItem['status']; label: string }[] = [
  * Tidak ada unggah foto di sini -- bukti foto sudah dikumpulkan di tahap-tahap transaksi
  * (Jemput Pangan / Makloon / UB Jastasma) dan bisa dilihat lewat baris transaksi di bawah.
  */
-export default function PoStatusSergabForm({ po, onChanged }: { po: PoItem; onChanged?: () => void }) {
+export default function PoStatusSergabForm({ po, transaksiIdDokumen, onChanged }: { po: PoItem; transaksiIdDokumen?: string; onChanged?: () => void }) {
   const queryClient = useQueryClient()
   const [statusPo, setStatusPo] = useState<PoItem['status']>(po.status === 'proses' ? 'lengkap' : po.status)
   const [confirmSimpan, setConfirmSimpan] = useState(false)
@@ -70,6 +87,8 @@ export default function PoStatusSergabForm({ po, onChanged }: { po: PoItem; onCh
       {errorMessage && <div className="alert-danger mb-3">{errorMessage}</div>}
       <PoTransaksiRows po={po} />
 
+      <PanelFotoSergab po={po} transaksiIdDokumen={transaksiIdDokumen} />
+
       <label className="block">
         <span className="label">Status Sergab</span>
         <select className="input" value={statusPo} onChange={(e) => setStatusPo(e.target.value as PoItem['status'])}>
@@ -97,5 +116,80 @@ export default function PoStatusSergabForm({ po, onChanged }: { po: PoItem; onCh
         onConfirm={() => mutation.mutate()}
       />
     </form>
+  )
+}
+
+function PanelFotoSergab({ po, transaksiIdDokumen }: { po: PoItem; transaksiIdDokumen?: string }) {
+  const queryClient = useQueryClient()
+  const { data: dokumenPo = [] } = useDokumenPo(po.id)
+  const { data: dokumenTransaksi = [] } = useDokumenTransaksi(transaksiIdDokumen)
+  const path = `/api/po/${po.id}/foto`
+  const thumbPoByJenis = new Map(dokumenPo.map((item) => [item.jenis_foto, item.thumb_url]))
+  const thumbTransaksiByJenis = new Map(dokumenTransaksi.map((item) => [item.jenis_foto, item.thumb_url]))
+  const segarkanPo = async () => {
+    await queryClient.invalidateQueries({ queryKey: ['dokumen-po', po.id] })
+    await queryClient.invalidateQueries({ queryKey: ['po-list'] })
+  }
+
+  const segarkanTransaksi = async () => {
+    await queryClient.invalidateQueries({ queryKey: ['dokumen-transaksi', transaksiIdDokumen] })
+    await queryClient.invalidateQueries({ queryKey: ['transaksi-detail', transaksiIdDokumen] })
+    await queryClient.invalidateQueries({ queryKey: ['po-list'] })
+  }
+
+  const memakaiDokumenTransaksi = !!transaksiIdDokumen
+
+  return (
+    <section className="my-4 border-y border-border py-4">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <h3 className="text-sm font-extrabold text-primary-dark">Foto Sergab</h3>
+          <p className="mt-1 text-xs text-slate-500">Lengkapi, ganti, atau hapus foto sebelum Status Sergab disimpan.</p>
+        </div>
+        <span className="rounded-full bg-primary-tint px-3 py-1 text-[0.68rem] font-bold text-primary">4 foto</span>
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2">
+        {memakaiDokumenTransaksi ? fotoSergabTransaksi.map(({ jenisFoto, label }) => (
+          <KartuFoto
+            key={jenisFoto}
+            label={label}
+            badge="Sergab"
+            thumbUrl={thumbTransaksiByJenis.get(jenisFoto) ?? null}
+            ambilAsli={(opts) => ambilFotoTransaksi(transaksiIdDokumen, jenisFoto, opts)}
+            onGanti={async (file) => {
+              const body = new FormData()
+              body.append('jenis_foto', jenisFoto)
+              body.append('role', 'makloon')
+              body.append('foto', file)
+              await api.post(`/api/transaksi/${encodeURIComponent(transaksiIdDokumen)}/foto`, body, { headers: { 'Content-Type': 'multipart/form-data' } })
+              await segarkanTransaksi()
+            }}
+            onHapus={async () => {
+              await api.delete(`/api/transaksi/${encodeURIComponent(transaksiIdDokumen)}/foto/${jenisFoto}`)
+              await segarkanTransaksi()
+            }}
+          />
+        )) : fotoSergab.map((jenisFoto) => (
+          <KartuFoto
+            key={jenisFoto}
+            label={labelFoto(jenisFoto)}
+            badge="Sergab"
+            thumbUrl={thumbPoByJenis.get(jenisFoto) ?? null}
+            ambilAsli={(opts) => ambilFotoPo(po.id, jenisFoto, opts)}
+            onGanti={async (file) => {
+              const body = new FormData()
+              body.append('jenis_foto', jenisFoto)
+              body.append('foto', file)
+              await api.post(path, body, { headers: { 'Content-Type': 'multipart/form-data' } })
+              await segarkanPo()
+            }}
+            onHapus={async () => {
+              await api.delete(`${path}/${jenisFoto}`)
+              await segarkanPo()
+            }}
+          />
+        ))}
+      </div>
+    </section>
   )
 }

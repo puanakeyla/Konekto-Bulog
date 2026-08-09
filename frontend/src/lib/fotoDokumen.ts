@@ -2,12 +2,15 @@
 // Nama jenis_foto mengikuti collection_name Spatie MediaLibrary di backend.
 
 export const FOTO_LABELS: Record<string, string> = {
+  foto_barang: 'Foto Barang',
   foto_petani: 'Foto Petani',
   foto_gabah: 'Foto Gabah',
   foto_serah_terima: 'Foto Serah Terima',
   foto_kwitansi: 'Foto Kwitansi',
   foto_pembayaran: 'Foto Pembayaran',
+  foto_bukti_pembayaran: 'Foto Bukti Pembayaran',
   foto_surat_pernyataan: 'Foto Surat Pernyataan',
+  foto_surat_pernyataan_usia_panen: 'Foto Surat Pernyataan',
   foto_surat_jalan: 'Foto Surat Jalan',
   foto_surat_jalan_paraf: 'Surat Jalan Diparaf',
   foto_nota_timbang: 'Foto Nota Timbang',

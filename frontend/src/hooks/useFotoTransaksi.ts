@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import api from '../lib/api'
 
 export type FotoTersimpan = { jenis_foto: string; role: string; thumb_url: string }
+export type FotoPoTersimpan = { jenis_foto: string; thumb_url: string }
 
 /**
  * Daftar foto yang benar-benar ada untuk transaksi ini, sudah disaring izin peminta di backend.
@@ -58,6 +59,26 @@ export async function ambilFotoTransaksi(transaksiId: string, jenisFoto: string,
 export async function ambilFotoPengolahan(pengolahanId: string, jenisFoto: string, opts: { download?: boolean } = {}) {
   const { data } = await api.get<{ url: string }>(
     `/api/pengolahan/${encodeURIComponent(pengolahanId)}/foto/${jenisFoto}`,
+    { params: opts.download ? { download: 1 } : undefined },
+  )
+  return data.url
+}
+
+export function useDokumenPo(poId: number | undefined) {
+  return useQuery({
+    queryKey: ['dokumen-po', poId],
+    queryFn: async () => {
+      const { data } = await api.get<{ data: FotoPoTersimpan[] }>(`/api/po/${poId}/foto`)
+      return data.data
+    },
+    enabled: !!poId,
+    staleTime: 4 * 60 * 1000,
+  })
+}
+
+export async function ambilFotoPo(poId: number, jenisFoto: string, opts: { download?: boolean } = {}) {
+  const { data } = await api.get<{ url: string }>(
+    `/api/po/${poId}/foto/${jenisFoto}`,
     { params: opts.download ? { download: 1 } : undefined },
   )
   return data.url

@@ -312,16 +312,32 @@ class PengadaanController extends Controller
         ]);
     }
 
+    public function fotoLink(Request $request, DataPengadaan $dataPengadaan, string $jenisFoto)
+    {
+        if (! in_array($jenisFoto, self::FOTO_SERGAB, true)) {
+            abort(404);
+        }
+
+        $media = $dataPengadaan->getFirstMedia($jenisFoto);
+        if (! $media) {
+            abort(404, 'Foto belum diunggah.');
+        }
+
+        return response()->json([
+            'url' => URL::temporarySignedRoute('foto.stream', now()->addMinutes(5), array_filter([
+                'media' => $media->id,
+                'conversion' => $request->query('conversion'),
+                'download' => $request->boolean('download') ? 1 : null,
+            ])),
+        ]);
+    }
+
     public function fotoUpload(Request $request, DataPengadaan $dataPengadaan)
     {
         $validated = $request->validate([
             'jenis_foto' => ['required', Rule::in(self::FOTO_SERGAB)],
             'foto' => ['required', 'file', 'mimes:jpeg,png', 'max:5120'],
         ]);
-
-        if ($dataPengadaan->review_status === 'diterima') {
-            abort(422, 'Data Pengadaan sudah diterima dan foto tidak dapat diubah.');
-        }
 
         if ($dataPengadaan->status === 'dibatalkan') {
             abort(422, 'PO sudah dibatalkan dan foto tidak dapat diubah.');
@@ -338,6 +354,26 @@ class PengadaanController extends Controller
             'size' => $media->size,
             'mime_type' => $media->mime_type,
         ]], 201);
+    }
+
+    public function fotoHapus(Request $request, DataPengadaan $dataPengadaan, string $jenisFoto)
+    {
+        if (! in_array($jenisFoto, self::FOTO_SERGAB, true)) {
+            abort(404);
+        }
+
+        if ($dataPengadaan->status === 'dibatalkan') {
+            abort(422, 'PO sudah dibatalkan dan foto tidak dapat diubah.');
+        }
+
+        $media = $dataPengadaan->getFirstMedia($jenisFoto);
+        if (! $media) {
+            abort(404, 'Foto belum diunggah.');
+        }
+
+        $media->delete();
+
+        return response()->json(['message' => 'Foto dihapus.']);
     }
 
     public function pembayaran(Request $request, DataPengadaan $dataPengadaan)

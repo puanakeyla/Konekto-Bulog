@@ -86,7 +86,7 @@ Route::middleware(['auth:sanctum', 'user.aktif'])->group(function () {
     Route::get('/transaksi/{transaksi}/foto', [FotoController::class, 'index']);
     Route::get('/transaksi/{transaksi}/foto/{jenisFoto}', [FotoController::class, 'link']);
     Route::delete('/transaksi/{transaksi}/foto/{jenisFoto}', [FotoController::class, 'destroy'])
-        ->middleware('role:admin');
+        ->middleware('role:pengadaan|admin');
     Route::get('/transaksi/{transaksi}', [TransaksiController::class, 'show']);
     Route::delete('/transaksi/{transaksi}', [TransaksiController::class, 'destroy'])
         ->middleware('role:admin');
@@ -174,7 +174,11 @@ Route::middleware(['auth:sanctum', 'user.aktif'])->group(function () {
         ->middleware('role:pengadaan|keuangan|operasi|gudang|admin');
     Route::get('/po/{dataPengadaan}/foto', [PengadaanController::class, 'fotoIndex'])
         ->middleware('role:pengadaan|keuangan|admin');
+    Route::get('/po/{dataPengadaan}/foto/{jenisFoto}', [PengadaanController::class, 'fotoLink'])
+        ->middleware('role:pengadaan|keuangan|admin');
     Route::post('/po/{dataPengadaan}/foto', [PengadaanController::class, 'fotoUpload'])
+        ->middleware('role:pengadaan|admin');
+    Route::delete('/po/{dataPengadaan}/foto/{jenisFoto}', [PengadaanController::class, 'fotoHapus'])
         ->middleware('role:pengadaan|admin');
     Route::patch('/po/{dataPengadaan}', [PengadaanController::class, 'update'])
         ->middleware('role:pengadaan|admin');

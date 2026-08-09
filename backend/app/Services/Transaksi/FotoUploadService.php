@@ -39,9 +39,14 @@ class FotoUploadService
         $role = $actor->role->nama_role;
 
         if ($roleOverride !== null) {
-            if ($role !== 'admin') {
-                abort(403, 'Hanya Admin yang boleh mengisi role secara eksplisit.');
+            if ($role !== 'admin' && $role !== 'pengadaan') {
+                abort(403, 'Hanya Admin atau Pengadaan yang boleh mengisi role secara eksplisit.');
             }
+
+            if ($role === 'pengadaan' && ! $this->bolehKoreksiFotoSergab($transaksi, $roleOverride, $jenisFoto)) {
+                abort(403, 'Pengadaan hanya boleh mengoreksi foto Sergab pada transaksi yang sudah masuk PO.');
+            }
+
             $role = $roleOverride;
         }
 
@@ -84,5 +89,23 @@ class FotoUploadService
             'ub_jastasma' => DataUbJastasma::where('transaksi_id', $transaksi->id_transaksi)->first(),
             default => null,
         };
+    }
+
+    private function bolehKoreksiFotoSergab(Transaksi $transaksi, string $roleOverride, string $jenisFoto): bool
+    {
+        if ($roleOverride !== 'makloon') {
+            return false;
+        }
+
+        if (! $transaksi->poDetail()->exists()) {
+            return false;
+        }
+
+        return in_array($jenisFoto, [
+            'foto_gabah',
+            'foto_serah_terima',
+            'foto_pembayaran',
+            'foto_surat_pernyataan',
+        ], true);
     }
 }
