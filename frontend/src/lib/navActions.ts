@@ -10,13 +10,14 @@ const ROLE_PENGOLAHAN = ['gudang', 'ub_jastasma', 'operasi', 'pengadaan']
 // Dua menu rekap SELALU berdampingan di ujung kanan, apa pun rolenya: letaknya jadi sama di
 // semua akun sehingga tidak perlu dicari ulang tiap ganti login.
 export function buildActions(role: string): NavAction[] {
+  // Admin tidak punya menu Pengolahan & MO: mengerjakan alurnya bukan pekerjaan admin
+  // (backend pun sudah mencabut haknya, lihat routes/api.php). Yang tersisa untuk admin
+  // adalah membaca & memperbaiki lewat Rekap Pengolahan.
   if (role === 'admin') {
     return [
       { to: '/admin/users', label: 'Kelola User' },
       { to: '/admin/gudang', label: 'Master Gudang' },
       { to: '/monitoring', label: 'Monitoring' },
-      { to: '/pengolahan', label: 'Pengolahan' },
-      { to: '/mo', label: 'MO' },
       { to: '/admin/audit-logs', label: 'Audit Log' },
       { to: '/rekap', label: 'Rekap Sergab' },
       { to: '/rekap-pengolahan', label: 'Rekap Pengolahan' },

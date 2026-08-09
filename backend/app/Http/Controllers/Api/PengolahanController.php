@@ -7,12 +7,14 @@ use App\Models\Gudang;
 use App\Models\Role;
 use App\Models\TransaksiPengolahan;
 use App\Models\User;
+use App\Services\AuditLogService;
 use App\Services\Pengolahan\KerjaanPengolahan;
 use App\Services\Pengolahan\PengolahanStages;
 use App\Services\Pengolahan\PengolahanStageService;
 use App\Services\Transaksi\FotoAccessService;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 
@@ -27,6 +29,7 @@ class PengolahanController extends Controller
     public function __construct(
         private PengolahanStageService $service,
         private FotoAccessService $fotoAccess,
+        private AuditLogService $auditLog,
     ) {
     }
 
@@ -144,11 +147,12 @@ class PengolahanController extends Controller
         ]);
 
         $query = TransaksiPengolahan::query()
-            ->when(isset($validated['skema']), fn ($q) => $q->where('skema', $validated['skema']))
-            ->orderByDesc('created_at');
+            ->when(isset($validated['skema']), fn ($q) => $q->where('skema', $validated['skema']));
 
         $this->terapkanFilterTerkunci($query, $request->user()->role->nama_role);
 
+        // Diklon SEBELUM join & select di bawah dipasang: `selectRaw` menambah, bukan mengganti,
+        // jadi `select('transaksi_pengolahan.*')` akan tercampur dengan COUNT(*) di sini.
         $ringkasan = (clone $query)
             ->leftJoin('pengolahan_lhpk as rk_l', 'rk_l.transaksi_pengolahan_id', '=', 'transaksi_pengolahan.id_pengolahan')
             ->reorder()
@@ -156,6 +160,21 @@ class PengolahanController extends Controller
             ->first();
 
         $halaman = $query
+            // Kolom No. MO/TM/OUT milik MO gabungan, bukan satu pengolahan, jadi tabel frontend
+            // menggabungkan selnya (mergeKey). Sel gabungan hanya benar kalau seluruh anggota satu
+            // MO BERDAMPINGAN, dan itu tugas urutan di sini -- persis prasyarat blok PO di
+            // TransaksiController::rekap(). Kunci grupnya created_at MO (sama untuk semua
+            // anggotanya), dengan pengolahan tanpa MO memakai created_at-nya sendiri lewat
+            // COALESCE sehingga tetap terurut kronologis di antara grup-grup itu. id MO menjadi
+            // pemisah kalau dua MO lahir pada detik yang sama. JANGAN dibalik ke orderByDesc
+            // ('created_at') saja -- itu membuat anggota satu MO terselip-selip dan sel gabungannya
+            // pecah jadi beberapa potong.
+            ->select('transaksi_pengolahan.*')
+            ->leftJoin('pengolahan_mo_detail as rk_md', 'rk_md.transaksi_pengolahan_id', '=', 'transaksi_pengolahan.id_pengolahan')
+            ->leftJoin('pengolahan_mo as rk_mo', 'rk_mo.id', '=', 'rk_md.pengolahan_mo_id')
+            ->orderByRaw('COALESCE(rk_mo.created_at, transaksi_pengolahan.created_at) DESC')
+            ->orderBy('rk_md.pengolahan_mo_id')
+            ->orderByDesc('transaksi_pengolahan.created_at')
             ->with(['gudang', 'makloon:id,nama_maklon', 'dataGudang.gudang', 'dataLhpk.gudangTujuan', 'moDetail.mo'])
             ->paginate($validated['per_page'] ?? 200);
 
@@ -194,6 +213,144 @@ class PengolahanController extends Controller
             }),
             default => null,
         };
+    }
+
+    /**
+     * Cermin TransaksiController::SCOPE_EDIT_REKAP untuk rantai pengolahan: blok yang boleh
+     * disentuh tiap role saat aksesnya dibuka admin. Operasi & Pengadaan tidak punya tabel
+     * tahap sendiri -- datanya hidup di MO gabungan, jadi bloknya `mo` dengan daftar kolom.
+     *
+     * Konsekuensi yang disengaja (sama seperti blok PO di rekap SerGab): mengubah nomor MO
+     * lewat satu baris ikut mengubahnya untuk seluruh anggota MO itu, karena memang satu
+     * nomor untuk satu gabungan.
+     */
+    private const SCOPE_EDIT_REKAP = [
+        'gudang' => ['data_gudang' => null],
+        'ub_jastasma' => ['data_lhpk' => null],
+        'operasi' => ['mo' => ['no_mo', 'no_tm_ada', 'no_tm_gudang']],
+        'pengadaan' => ['mo' => ['no_out', 'tanggal_out']],
+    ];
+
+    /**
+     * Koreksi data pengolahan yang sudah terkunci, padanan TransaksiController::adminUpdateRekap.
+     * Admin bebas seluruh blok; role lain hanya selama jatah editnya masih ada DAN hanya blok
+     * milik role-nya (SCOPE_EDIT_REKAP), lalu jatahnya berkurang satu.
+     *
+     * Tanpa padanan Transaksi::dimilikiOleh(): rantai pengolahan tidak punya kolom pemilik per
+     * baris sama sekali. Gudang, Operasi, dan Pengadaan masing-masing satu akun pusat, dan LHPK
+     * pun tidak mencatat petugas pemiliknya -- pembatasnya tinggal scope field di atas.
+     */
+    public function adminUpdateRekap(Request $request, TransaksiPengolahan $pengolahan)
+    {
+        $user = $request->user();
+        $role = $user->role->nama_role;
+
+        $this->assertPembaca($request);
+        abort_unless($user->bolehEditRekap(), 403, 'Akses edit rekap Anda belum dibuka Admin.');
+
+        $mo = $pengolahan->moDetail?->mo;
+
+        $validated = $request->validate([
+            'data_gudang' => ['sometimes', 'array'],
+            'data_gudang.tanggal_masuk_gudang' => ['nullable', 'date'],
+            'data_gudang.kuantum_hgl' => ['nullable', 'numeric', 'min:0', 'max:9999999999.99'],
+            'data_gudang.plat_mobil' => ['nullable', 'string', 'max:20'],
+            'data_gudang.supir' => ['nullable', 'string', 'max:100'],
+
+            'data_lhpk' => ['sometimes', 'array'],
+            'data_lhpk.no_lhpk' => ['nullable', 'string', 'max:100', Rule::unique('pengolahan_lhpk', 'no_lhpk')->ignore($pengolahan->dataLhpk?->id)],
+            'data_lhpk.tanggal_lhpk' => ['nullable', 'date'],
+            'data_lhpk.kuantum_gabah_diolah' => ['nullable', 'numeric', 'min:0', 'max:9999999999.99'],
+            'data_lhpk.kuantum_beras_hgl' => ['nullable', 'numeric', 'min:0', 'max:9999999999.99'],
+            'data_lhpk.kualitas' => ['nullable', 'string', 'max:50'],
+            'data_lhpk.broken' => ['nullable', 'numeric', 'min:0'],
+            'data_lhpk.menir' => ['nullable', 'numeric', 'min:0'],
+            'data_lhpk.katul' => ['nullable', 'numeric', 'min:0'],
+            'data_lhpk.ka1' => ['nullable', 'numeric', 'min:0'],
+            'data_lhpk.ka2' => ['nullable', 'numeric', 'min:0'],
+            'data_lhpk.ka3' => ['nullable', 'numeric', 'min:0'],
+            'data_lhpk.reject' => ['nullable', 'numeric', 'min:0'],
+
+            'mo' => ['sometimes', 'array'],
+            // `required` di dalam `sometimes`: kalau kunci no_mo dikirim ia tidak boleh kosong --
+            // MO tanpa nomor tidak pernah sah, tidak seperti No. OUT yang wajar belum terbit.
+            'mo.no_mo' => ['sometimes', 'required', 'string', 'max:100', Rule::unique('pengolahan_mo', 'no_mo')->ignore($mo?->id)],
+            'mo.no_tm_ada' => ['sometimes', 'nullable', 'string', 'max:100', Rule::unique('pengolahan_mo', 'no_tm_ada')->ignore($mo?->id)],
+            'mo.no_tm_gudang' => ['sometimes', 'nullable', 'string', 'max:100', Rule::unique('pengolahan_mo', 'no_tm_gudang')->ignore($mo?->id)],
+            'mo.no_out' => ['sometimes', 'nullable', 'string', 'max:100', Rule::unique('pengolahan_mo', 'no_out')->ignore($mo?->id)],
+            'mo.tanggal_out' => ['sometimes', 'nullable', 'date'],
+        ]);
+
+        // Penjaganya di sini, bukan di UI: payload yang dirakit manual pun disaring ke blok
+        // milik role pengirim lebih dulu.
+        if ($role !== 'admin') {
+            $validated = $this->batasiScopeRekap($validated, $role);
+            abort_if($validated === [], 403, 'Tidak ada data tahap Anda yang bisa diubah di pengolahan ini.');
+        }
+
+        return DB::transaction(function () use ($request, $user, $role, $pengolahan, $mo, $validated) {
+            $sebelum = $this->snapshotRekap($pengolahan);
+
+            if (array_key_exists('data_gudang', $validated) && $pengolahan->dataGudang) {
+                $pengolahan->dataGudang->update($validated['data_gudang']);
+            }
+
+            if (array_key_exists('data_lhpk', $validated) && $pengolahan->dataLhpk) {
+                $pengolahan->dataLhpk->update($validated['data_lhpk']);
+            }
+
+            // MO sengaja tidak dicek terkunci(): justru MO yang sudah final itulah yang tidak
+            // punya jalur perbaikan lain -- itu alasan halaman rekap ini ada.
+            if (array_key_exists('mo', $validated) && $mo) {
+                $mo->update($validated['mo']);
+            }
+
+            $this->auditLog->logPengolahan($request->user(), $role === 'admin' ? 'admin_rekap_pengolahan_update' : 'rekap_pengolahan_update_akses', $pengolahan->id_pengolahan, [
+                'before' => $sebelum,
+                'after' => $this->snapshotRekap($pengolahan->fresh()),
+                'role' => $role,
+            ]);
+
+            $user->pakaiJatahEdit();
+
+            return response()->json([
+                'data' => $pengolahan->fresh()->load(['gudang', 'makloon:id,nama_maklon', 'dataGudang.gudang', 'dataLhpk.gudangTujuan', 'moDetail.mo']),
+            ]);
+        });
+    }
+
+    /** @return array<string, mixed> */
+    private function batasiScopeRekap(array $validated, string $role): array
+    {
+        $hasil = [];
+
+        foreach (self::SCOPE_EDIT_REKAP[$role] ?? [] as $blok => $fields) {
+            if (! array_key_exists($blok, $validated)) {
+                continue;
+            }
+
+            $isi = $fields === null ? $validated[$blok] : Arr::only($validated[$blok], $fields);
+            if ($isi !== []) {
+                $hasil[$blok] = $isi;
+            }
+        }
+
+        return $hasil;
+    }
+
+    /** @return array<string, mixed> */
+    private function snapshotRekap(TransaksiPengolahan $pengolahan): array
+    {
+        $pengolahan->loadMissing(['dataGudang', 'dataLhpk', 'moDetail.mo']);
+
+        return [
+            'id_pengolahan' => $pengolahan->id_pengolahan,
+            'skema' => $pengolahan->skema,
+            'current_stage' => $pengolahan->current_stage,
+            'data_gudang' => $pengolahan->dataGudang?->only(['tanggal_masuk_gudang', 'kuantum_hgl', 'plat_mobil', 'supir']),
+            'data_lhpk' => $pengolahan->dataLhpk?->only(['no_lhpk', 'tanggal_lhpk', 'kuantum_gabah_diolah', 'kuantum_beras_hgl', 'kualitas', 'broken', 'menir', 'katul', 'ka1', 'ka2', 'ka3', 'reject']),
+            'mo' => $pengolahan->moDetail?->mo?->only(['no_mo', 'no_tm_ada', 'no_tm_gudang', 'no_out', 'tanggal_out']),
+        ];
     }
 
     public function show(Request $request, TransaksiPengolahan $pengolahan)
@@ -240,25 +397,66 @@ class PengolahanController extends Controller
     }
 
     /**
-     * Membatalkan pengolahan yang belum berisi apa pun. Yang sudah punya data tahap TIDAK boleh
-     * lewat sini -- membatalkan pekerjaan orang lain bukan urusan tombol batal, itu jalurnya
-     * penolakan tahap.
+     * Dua jalur berbeda lewat satu route:
+     *
+     * - Role tahap MEMBATALKAN pengolahan yang belum berisi apa pun. Yang sudah punya data tahap
+     *   TIDAK boleh lewat sini -- membatalkan pekerjaan orang lain bukan urusan tombol batal, itu
+     *   jalurnya penolakan tahap.
+     * - Admin MENGHAPUS baris rekap yang salah beserta seluruh data tahapnya, padanan
+     *   TransaksiController::destroy pada rantai SerGab.
      */
     public function destroy(Request $request, TransaksiPengolahan $pengolahan)
     {
         $user = $request->user();
 
-        abort_unless(
-            $pengolahan->created_by === $user->id || $user->role->nama_role === 'admin',
-            403,
-            'Hanya pembuatnya yang bisa membatalkan pengolahan ini.',
-        );
+        if ($user->role->nama_role !== 'admin') {
+            abort_unless(
+                $pengolahan->created_by === $user->id,
+                403,
+                'Hanya pembuatnya yang bisa membatalkan pengolahan ini.',
+            );
 
-        abort_unless($pengolahan->masihKosong(), 422, 'Pengolahan ini sudah berisi data dan tidak bisa dibatalkan.');
+            abort_unless($pengolahan->masihKosong(), 422, 'Pengolahan ini sudah berisi data dan tidak bisa dibatalkan.');
 
-        $pengolahan->delete();
+            $pengolahan->delete();
 
-        return response()->noContent();
+            return response()->noContent();
+        }
+
+        return DB::transaction(function () use ($user, $pengolahan) {
+            $mo = $pengolahan->moDetail?->mo;
+
+            // audit_logs.pengolahan_id ber-FK nullOnDelete, jadi baris log ini selamat tapi
+            // kolom id-nya dikosongkan -- id-nya karena itu ikut disimpan di dalam snapshot.
+            $this->auditLog->logPengolahan($user, 'admin_rekap_pengolahan_delete', $pengolahan->id_pengolahan, [
+                // Kunci datar: halaman Audit Log membaca detail per kunci tingkat atas, bukan
+                // jalur bertitik, dan tanpa ini kalimatnya kehilangan id-nya sama sekali.
+                'id_pengolahan' => $pengolahan->id_pengolahan,
+                'pengolahan' => $this->snapshotRekap($pengolahan),
+            ]);
+
+            // Data tahap, keanggotaan MO, dan riwayat penolakan ikut lewat cascade FK (lihat
+            // TransaksiPengolahan::booted untuk foto-fotonya).
+            $pengolahan->delete();
+
+            // MO menyimpan TOTAL kuantum anggotanya. Tanpa disamakan ulang ia tetap menghitung
+            // baris yang sudah tidak ada; MO yang kehilangan seluruh anggotanya ikut dibuang
+            // supaya tidak menggantung tanpa isi -- sama seperti PO di rantai SerGab.
+            if ($mo) {
+                $mo->load('moDetail');
+
+                if ($mo->moDetail->isEmpty()) {
+                    $mo->delete();
+                } else {
+                    $mo->update([
+                        'total_kuantum_hgl' => $mo->moDetail->sum('kuantum_hgl_kontribusi'),
+                        'total_kuantum_gabah_diolah' => $mo->moDetail->sum('kuantum_gabah_diolah_kontribusi'),
+                    ]);
+                }
+            }
+
+            return response()->noContent();
+        });
     }
 
     public function gudang(Request $request, TransaksiPengolahan $pengolahan)
@@ -324,15 +522,23 @@ class PengolahanController extends Controller
             'foto' => ['required', 'file', 'mimes:jpeg,png', 'max:5120'],
         ]);
 
+        // Tiap slot foto milik satu tahap: nota timbang punya Gudang, LHPK punya UB Jastasma.
+        // Admin bebas keduanya. Tanpa ini, pemegang jatah edit tahap mana pun bisa menimpa foto
+        // tahap orang lain lewat cabang "terkunci" di bawah.
+        $pemilikSlot = ['foto_notim' => 'gudang', 'foto_lhpk' => 'ub_jastasma'][$validated['jenis_foto']];
+        $role = $request->user()->role->nama_role;
+        abort_unless($role === 'admin' || $role === $pemilikSlot, 403, 'Foto ini bukan milik tahap Anda.');
+
         $model = $this->modelFoto($pengolahan, $validated['jenis_foto']);
 
         if (! $model) {
             abort(422, 'Data tahap untuk foto ini belum ada. Simpan datanya lebih dulu.');
         }
 
-        // Tahap yang sudah dikunci reviewer tidak boleh diganti fotonya -- sama seperti
-        // FotoUploadService pada alur SerGab.
-        if ($model->locked_at !== null && $request->user()->role->nama_role !== 'admin') {
+        // Tahap yang sudah dikunci reviewer hanya bisa diganti fotonya oleh admin, atau oleh role
+        // yang jatah editnya sedang dibuka admin -- aturan yang sama dengan FotoUploadService
+        // pada alur SerGab, supaya perbaikan lewat Rekap tidak mentok di foto.
+        if ($model->locked_at !== null && ! $request->user()->bolehEditRekap()) {
             abort(422, 'Data tahap ini sudah dikunci, foto tidak bisa diubah.');
         }
 
@@ -368,6 +574,22 @@ class PengolahanController extends Controller
         )]);
     }
 
+    /** Padanan FotoController::destroy pada rantai pengolahan: admin saja. */
+    public function fotoHapus(Request $request, TransaksiPengolahan $pengolahan, string $jenisFoto)
+    {
+        abort_unless($request->user()->role->nama_role === 'admin', 403);
+
+        $media = $this->modelFoto($pengolahan, $jenisFoto)?->getFirstMedia($jenisFoto);
+
+        if (! $media) {
+            abort(404, 'Foto tidak ditemukan.');
+        }
+
+        $media->delete();
+
+        return response()->json(['message' => 'Foto dihapus.']);
+    }
+
     private function modelFoto(TransaksiPengolahan $pengolahan, string $jenisFoto)
     {
         return match ($jenisFoto) {
@@ -388,7 +610,7 @@ class PengolahanController extends Controller
 
         if ($makloonUserId !== null) {
             $this->assertMakloon($makloonUserId);
-            $this->service->setMakloon($pengolahan, $request->user(), $role, $makloonUserId);
+            $this->service->setMakloon($pengolahan, $role, $makloonUserId);
         }
 
         // Gudang tidak lagi diketik per tahap -- kolom tahap cuma menyalin gudang header supaya

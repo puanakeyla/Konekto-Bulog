@@ -195,10 +195,20 @@ const AKSI_CONFIG: Record<string, AksiConfig> = {
     label: 'Perbaikan data (akses sementara)',
     kalimat: (log) => `Memperbaiki data tahap ${d(log.detail, 'role') || 'sendiri'} lewat akses yang dibuka Admin`,
   },
+  admin_rekap_pengolahan_update: {
+    kategori: 'ubah',
+    label: 'Edit data pengolahan (admin)',
+    kalimat: () => 'Mengedit data pengolahan terkunci lewat rekap admin',
+  },
+  rekap_pengolahan_update_akses: {
+    kategori: 'ubah',
+    label: 'Perbaikan pengolahan (akses sementara)',
+    kalimat: (log) => `Memperbaiki data tahap ${d(log.detail, 'role') || 'sendiri'} pada rekap pengolahan lewat akses yang dibuka Admin`,
+  },
   admin_akses_edit_buka: {
     kategori: 'ubah',
     label: 'Buka akses perbaikan',
-    kalimat: (log) => `Membuka akses perbaikan data untuk user "${d(log.detail, 'username')}"`,
+    kalimat: (log) => `Memberi user "${d(log.detail, 'username')}" jatah ${d(log.detail, 'sisa') || 1} kali simpan perbaikan data`,
   },
   admin_akses_edit_kunci: {
     kategori: 'ubah',
@@ -209,6 +219,12 @@ const AKSI_CONFIG: Record<string, AksiConfig> = {
     kategori: 'hapus',
     label: 'Hapus transaksi (admin)',
     kalimat: () => 'Menghapus transaksi beserta data tahapnya',
+  },
+  admin_rekap_pengolahan_delete: {
+    kategori: 'hapus',
+    label: 'Hapus pengolahan (admin)',
+    // Kolom pengolahan_id-nya dikosongkan FK saat barisnya hilang, jadi idnya dibaca dari detail.
+    kalimat: (log) => `Menghapus pengolahan ${d(log.detail, 'id_pengolahan')} beserta data tahapnya`.replace('  ', ' '),
   },
   admin_makloon_import: {
     kategori: 'impor',

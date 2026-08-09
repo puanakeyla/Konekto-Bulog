@@ -1,7 +1,7 @@
 import { useEffect } from 'react'
-import { useFotoPengolahanUrl } from '../hooks/useFotoTransaksi'
-import { bukaTabBaru } from '../lib/bukaTabBaru'
+import { ambilFotoPengolahan, useFotoPengolahanUrl } from '../hooks/useFotoTransaksi'
 import { labelFoto } from '../lib/fotoDokumen'
+import KartuFoto from './KartuFoto'
 import ModalPortal from './ModalPortal'
 
 /**
@@ -69,24 +69,13 @@ export default function DokumenPengolahanModal({
 
 function KartuDokumen({ idPengolahan, slot }: { idPengolahan: string; slot: SlotDokumen }) {
   const { data: thumb } = useFotoPengolahanUrl(idPengolahan, slot.jenisFoto, slot.ada, 'thumb')
-  const { data: asli, refetch } = useFotoPengolahanUrl(idPengolahan, slot.jenisFoto, false)
-  const label = `${slot.tahap} — ${labelFoto(slot.jenisFoto)}`
 
   return (
-    <div className="panel panel-pad">
-      <p className="text-[0.68rem] font-bold uppercase tracking-[0.06em] text-muted">{label}</p>
-      {thumb ? (
-        <button type="button" onClick={() => bukaTabBaru(async () => asli ?? (await refetch()).data)} className="group mt-2 block w-full text-left">
-          <span className="block h-40 w-full overflow-hidden rounded-lg border border-border bg-surface">
-            <img src={thumb} alt={label} loading="lazy" className="h-40 w-full object-cover transition-transform group-hover:scale-105" />
-          </span>
-          <span className="mt-2 block text-xs font-semibold text-primary">Buka ukuran penuh</span>
-        </button>
-      ) : (
-        <p className="mt-2 rounded-lg border border-dashed border-border bg-surface px-3 py-6 text-center text-sm text-muted">
-          Belum diunggah.
-        </p>
-      )}
-    </div>
+    <KartuFoto
+      label={labelFoto(slot.jenisFoto)}
+      badge={slot.tahap}
+      thumbUrl={thumb}
+      ambilAsli={(opts) => ambilFotoPengolahan(idPengolahan, slot.jenisFoto, opts)}
+    />
   )
 }

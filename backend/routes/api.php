@@ -48,6 +48,8 @@ Route::middleware(['auth:sanctum', 'user.aktif'])->group(function () {
         // Perbandingan volume antar-makloon adalah alat pengawasan internal BULOG. Tanpa gerbang
         // ini seorang mitra makloon bisa melihat nama & jumlah transaksi seluruh pesaingnya.
         Route::get('/makloon', [MonitoringController::class, 'makloon'])->middleware('role:admin');
+        // Alasan yang sama: peringkat volume olahan per makloon adalah perbandingan antar-mitra.
+        Route::get('/pengolahan', [MonitoringController::class, 'pengolahan'])->middleware('role:admin');
     });
 
     Route::middleware('role:admin')->prefix('admin')->group(function () {
@@ -72,8 +74,8 @@ Route::middleware(['auth:sanctum', 'user.aktif'])->group(function () {
     // sebelum GET /transaksi/{transaksi} (show) -- kalau tidak, show akan menelan seluruh
     // sisa path (mis. "/foto/foto_petani") sebagai bagian dari {transaksi} karena ia
     // dicocokkan lebih dulu (first-match-wins berdasar urutan registrasi).
-    // Sengaja tanpa middleware `role:admin`: selain admin, user yang aksesnya sedang dibuka
-    // admin (users.akses_edit_dibuka_at) juga boleh masuk, tapi hanya untuk blok data
+    // Sengaja tanpa middleware `role:admin`: selain admin, user yang jatah editnya sedang
+    // dibuka admin (users.akses_edit_sisa) juga boleh masuk, tapi hanya untuk blok data
     // miliknya sendiri. Keputusan itu butuh konteks transaksi + payload, jadi ditegakkan di
     // adminUpdateRekap(), bukan di daftar role.
     Route::patch('/transaksi/{transaksi}/admin-rekap', [TransaksiController::class, 'adminUpdateRekap']);
@@ -102,46 +104,57 @@ Route::middleware(['auth:sanctum', 'user.aktif'])->group(function () {
     // === Alur Pengolahan (rantai kedua, GDG/UBJ) ===
     // Route bersuffix WAJIB didaftarkan sebelum '/pengolahan/{pengolahan}': pattern-nya greedy
     // ('.*'), jadi show akan menelan 'rekap'/'kandidat-mo' sebagai bagian dari id.
+    //
+    // Admin SENGAJA tidak lagi ada di daftar role aksi mana pun di bawah ini: mengerjakan
+    // alur pengolahan bukan pekerjaan admin, dan menu Pengolahan/MO-nya sudah dicabut.
+    // Yang tersisa untuk admin cuma membaca (index/rekap/show/foto) dan memperbaiki lewat
+    // /pengolahan/{pengolahan}/admin-rekap.
     Route::get('/pengolahan', [PengolahanController::class, 'index']);
     Route::get('/pengolahan/rekap', [PengolahanController::class, 'rekap']);
     Route::get('/pengolahan/kandidat-mo', [PengolahanController::class, 'kandidatMo'])
-        ->middleware('role:operasi|admin');
+        ->middleware('role:operasi');
     Route::post('/pengolahan', [PengolahanController::class, 'store'])
-        ->middleware('role:gudang|ub_jastasma|admin');
+        ->middleware('role:gudang|ub_jastasma');
+    // Padanan /transaksi/{transaksi}/admin-rekap: tanpa `role:admin` karena role yang jatah
+    // editnya sedang dibuka admin juga masuk lewat sini. Lihat adminUpdateRekap().
+    Route::patch('/pengolahan/{pengolahan}/admin-rekap', [PengolahanController::class, 'adminUpdateRekap']);
     Route::patch('/pengolahan/{pengolahan}/gudang', [PengolahanController::class, 'gudang'])
-        ->middleware('role:gudang|admin');
+        ->middleware('role:gudang');
     Route::patch('/pengolahan/{pengolahan}/lhpk', [PengolahanController::class, 'lhpk'])
-        ->middleware('role:ub_jastasma|admin');
+        ->middleware('role:ub_jastasma');
     Route::post('/pengolahan/{pengolahan}/terima', [PengolahanController::class, 'terima']);
     Route::post('/pengolahan/{pengolahan}/tolak', [PengolahanController::class, 'tolak']);
     Route::get('/pengolahan/{pengolahan}/foto/{jenisFoto}', [PengolahanController::class, 'fotoLink']);
+    Route::delete('/pengolahan/{pengolahan}/foto/{jenisFoto}', [PengolahanController::class, 'fotoHapus'])
+        ->middleware('role:admin');
     Route::post('/pengolahan/{pengolahan}/foto', [PengolahanController::class, 'fotoUpload'])
         ->middleware('throttle:40,1');
-    // Hanya untuk membatalkan pengolahan yang belum berisi apa pun -- lihat destroy().
+    // Dua jalur: role tahap membatalkan pengolahan yang belum berisi apa pun, admin menghapus
+    // baris rekap beserta data tahapnya -- lihat destroy().
     Route::delete('/pengolahan/{pengolahan}', [PengolahanController::class, 'destroy'])
         ->middleware('role:gudang|ub_jastasma|admin');
     Route::get('/pengolahan/{pengolahan}', [PengolahanController::class, 'show']);
 
     Route::post('/mo/gabungkan', [MoController::class, 'gabungkan'])
-        ->middleware('role:operasi|admin');
+        ->middleware('role:operasi');
     Route::get('/mo', [MoController::class, 'index'])
         ->middleware('role:gudang|ub_jastasma|operasi|pengadaan|admin');
     Route::get('/mo/{mo}', [MoController::class, 'show'])
         ->middleware('role:gudang|ub_jastasma|operasi|pengadaan|admin');
     Route::patch('/mo/{mo}', [MoController::class, 'update'])
-        ->middleware('role:operasi|admin');
+        ->middleware('role:operasi');
     Route::patch('/mo/{mo}/anggota', [MoController::class, 'ubahAnggota'])
-        ->middleware('role:operasi|admin');
+        ->middleware('role:operasi');
     Route::post('/mo/{mo}/kirim', [MoController::class, 'kirim'])
-        ->middleware('role:operasi|admin');
+        ->middleware('role:operasi');
     Route::post('/mo/{mo}/batalkan', [MoController::class, 'batalkan'])
-        ->middleware('role:operasi|admin');
+        ->middleware('role:operasi');
     Route::post('/mo/{mo}/terima', [MoController::class, 'terima'])
-        ->middleware('role:pengadaan|admin');
+        ->middleware('role:pengadaan');
     Route::post('/mo/{mo}/tolak', [MoController::class, 'tolak'])
-        ->middleware('role:pengadaan|admin');
+        ->middleware('role:pengadaan');
     Route::patch('/mo/{mo}/out', [MoController::class, 'isiOut'])
-        ->middleware('role:pengadaan|admin');
+        ->middleware('role:pengadaan');
 
     Route::post('/pengadaan/gabungkan-po', [PengadaanController::class, 'gabungkanPo'])
         ->middleware('role:pengadaan|admin');

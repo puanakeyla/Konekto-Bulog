@@ -21,7 +21,7 @@ class User extends Authenticatable
         'kecamatan',
         'kabupaten',
         'is_active',
-        'akses_edit_dibuka_at',
+        'akses_edit_sisa',
     ];
 
     protected $hidden = [
@@ -34,7 +34,7 @@ class User extends Authenticatable
         return [
             'password' => 'hashed',
             'is_active' => 'boolean',
-            'akses_edit_dibuka_at' => 'datetime',
+            'akses_edit_sisa' => 'integer',
         ];
     }
 
@@ -45,14 +45,28 @@ class User extends Authenticatable
 
     /**
      * Boleh menembus kunci tahap (edit rekap / ganti foto)? Admin selalu boleh. Role lain
-     * hanya selama admin membukakan aksesnya di Kelola User, dan tetap dibatasi dua lapis
-     * lagi: cuma blok field milik role-nya (TransaksiController::SCOPE_EDIT_REKAP) dan cuma
-     * transaksi yang dia tangani (Transaksi::dimilikiOleh()). Akses tertutup sendiri setelah
-     * satu kali simpan.
+     * hanya selama masih punya jatah simpan yang dibukakan admin di Kelola User, dan tetap
+     * dibatasi dua lapis lagi: cuma blok field milik role-nya (TransaksiController::
+     * SCOPE_EDIT_REKAP / PengolahanController::SCOPE_EDIT_REKAP) dan cuma transaksi yang dia
+     * tangani (Transaksi::dimilikiOleh()).
      */
     public function bolehEditRekap(): bool
     {
-        return $this->role?->nama_role === 'admin' || $this->akses_edit_dibuka_at !== null;
+        return $this->role?->nama_role === 'admin' || $this->akses_edit_sisa > 0;
+    }
+
+    /**
+     * Pakai satu jatah edit. Dipanggil SETELAH penyimpanan berhasil, jadi percobaan yang
+     * ditolak (403/422) tidak ikut menghanguskan jatah. Admin tidak punya jatah -- aksesnya
+     * permanen, bukan kuota.
+     */
+    public function pakaiJatahEdit(): void
+    {
+        if ($this->role?->nama_role === 'admin') {
+            return;
+        }
+
+        $this->update(['akses_edit_sisa' => max(0, $this->akses_edit_sisa - 1)]);
     }
 
     protected static function booted(): void

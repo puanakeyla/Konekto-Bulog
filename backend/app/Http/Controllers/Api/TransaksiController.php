@@ -398,11 +398,9 @@ class TransaksiController extends Controller
                 'role' => $role,
             ]);
 
-            // Akses sementara sekali pakai: begitu koreksinya tersimpan, kuncinya balik
-            // seperti semula tanpa admin harus ingat menutupnya.
-            if ($role !== 'admin') {
-                $user->update(['akses_edit_dibuka_at' => null]);
-            }
+            // Jatah berkurang satu tiap koreksi yang benar-benar tersimpan; begitu habis,
+            // kuncinya balik seperti semula tanpa admin harus ingat menutupnya.
+            $user->pakaiJatahEdit();
 
             $transaksi->load(['dataJemputPangan.makloon', 'dataMakloonMpp', 'dataMakloonTjp', 'dataUbJastasma', 'poDetail.dataPengadaan.poDetail', 'poDetail.dataPengadaan.dataKeuangan', 'creator']);
 

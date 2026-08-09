@@ -186,25 +186,31 @@ class AdminUserController extends Controller
     }
 
     /**
-     * Buka/kunci akses edit rekap sementara milik satu user. Dipakai saat petugas salah
-     * input (mis. foto keliru) dan datanya sudah terkunci: admin membuka, user memperbaiki
-     * bagiannya sendiri, lalu akses tertutup otomatis setelah satu kali simpan
-     * (TransaksiController::adminUpdateRekap) atau dikunci manual lewat endpoint ini.
+     * Atur jatah edit rekap milik satu user. Dipakai saat petugas salah input (mis. foto
+     * keliru) dan datanya sudah terkunci: admin memberi N kali simpan, user memperbaiki
+     * bagiannya sendiri, dan jatahnya berkurang tiap penyimpanan berhasil sampai habis
+     * (User::pakaiJatahEdit). `sisa = 0` mengunci kembali seketika.
+     *
+     * Jatah adalah angka, bukan saklar: satu koreksi jarang cukup -- petugas yang salah
+     * input biasanya punya beberapa baris yang harus dibenahi sekaligus.
      */
     public function aksesEdit(Request $request, User $user)
     {
         $validated = $request->validate([
-            'buka' => ['required', 'boolean'],
+            // Batas atas menjaga "buka akses" tetap bermakna sementara; kalau butuh lebih dari
+            // 99 koreksi, yang salah bukan datanya melainkan alurnya.
+            'sisa' => ['required', 'integer', 'min:0', 'max:99'],
         ]);
 
         abort_if($user->role->nama_role === 'admin', 422, 'Admin sudah punya akses penuh.');
 
-        $user->update(['akses_edit_dibuka_at' => $validated['buka'] ? now() : null]);
+        $user->update(['akses_edit_sisa' => $validated['sisa']]);
 
-        $this->auditLog->log($request->user(), $validated['buka'] ? 'admin_akses_edit_buka' : 'admin_akses_edit_kunci', null, [
+        $this->auditLog->log($request->user(), $validated['sisa'] > 0 ? 'admin_akses_edit_buka' : 'admin_akses_edit_kunci', null, [
             'target_user_id' => $user->id,
             'username' => $user->username,
             'role' => $user->role->nama_role,
+            'sisa' => $validated['sisa'],
         ]);
 
         return response()->json(['data' => new AdminUserResource($user->fresh('role'))]);

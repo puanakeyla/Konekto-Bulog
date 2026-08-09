@@ -42,6 +42,27 @@ export function useFotoUrl(transaksiId: string | undefined, jenisFoto: string, e
   })
 }
 
+/**
+ * URL bertanda tangan satu foto, DI LUAR cache React Query. Dipakai aksi sesaat (Lihat, Download,
+ * dan pratinjau cadangan saat thumb-nya belum digenerate) yang justru butuh URL segar tiap kali --
+ * menyimpannya di cache hanya menghidupkan kembali link yang sudah kedaluwarsa.
+ */
+export async function ambilFotoTransaksi(transaksiId: string, jenisFoto: string, opts: { download?: boolean } = {}) {
+  const { data } = await api.get<{ url: string }>(
+    `/api/transaksi/${encodeURIComponent(transaksiId)}/foto/${jenisFoto}`,
+    { params: opts.download ? { download: 1 } : undefined },
+  )
+  return data.url
+}
+
+export async function ambilFotoPengolahan(pengolahanId: string, jenisFoto: string, opts: { download?: boolean } = {}) {
+  const { data } = await api.get<{ url: string }>(
+    `/api/pengolahan/${encodeURIComponent(pengolahanId)}/foto/${jenisFoto}`,
+    { params: opts.download ? { download: 1 } : undefined },
+  )
+  return data.url
+}
+
 export function useFotoPengolahanUrl(pengolahanId: string | undefined, jenisFoto: string, enabled: boolean, conversion?: 'thumb') {
   return useQuery({
     queryKey: ['foto-pengolahan-url', pengolahanId, jenisFoto, conversion ?? 'asli'],

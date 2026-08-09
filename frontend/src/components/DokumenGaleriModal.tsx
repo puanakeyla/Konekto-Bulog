@@ -1,9 +1,8 @@
-import { useEffect, useState } from 'react'
-import { toast } from 'sonner'
-import api, { pesanKegagalan } from '../lib/api'
-import { bukaTabBaru } from '../lib/bukaTabBaru'
-import { useDokumenTransaksi, type FotoTersimpan } from '../hooks/useFotoTransaksi'
+import { useEffect } from 'react'
+import { pesanKegagalan } from '../lib/api'
+import { ambilFotoTransaksi, useDokumenTransaksi, type FotoTersimpan } from '../hooks/useFotoTransaksi'
 import { labelFoto, labelRoleFoto } from '../lib/fotoDokumen'
+import KartuFoto from './KartuFoto'
 import ModalPortal from './ModalPortal'
 
 /**
@@ -70,83 +69,18 @@ export default function DokumenGaleriModal({ transaksiId, onClose }: { transaksi
   )
 }
 
+/**
+ * thumb_url sudah ikut di response daftar -- kartu tidak menembak endpoint link sendiri saat
+ * dirender (dulu galeri 7 foto = 8 request). Sisa pekerjaan kartunya (pratinjau, cadangan
+ * full-size, Lihat, Download) ada di KartuFoto, dipakai bersama panel edit dan Rekap Pengolahan.
+ */
 function FotoKartu({ transaksiId, item }: { transaksiId: string; item: FotoTersimpan }) {
-  // thumb_url sudah ikut di response daftar -- kartu tidak lagi menembak endpoint link
-  // sendiri saat dirender (dulu galeri 7 foto = 8 request).
-  const [src, setSrc] = useState<string | null>(item.thumb_url)
-  // Thumbnail digenerate lewat queue; di dev tanpa worker file 'thumb' bisa belum ada.
-  // Karena itu kalau img gagal termuat -> fallback ke gambar full-size.
-  const [pakaiFull, setPakaiFull] = useState(false)
-  const [gagalTampil, setGagalTampil] = useState(false)
-  const [busy, setBusy] = useState<null | 'lihat' | 'download'>(null)
-
-  const urlFoto = (opts: { download?: boolean } = {}) =>
-    `/api/transaksi/${encodeURIComponent(transaksiId)}/foto/${item.jenis_foto}${opts.download ? '?download=1' : ''}`
-
-  const handleImgError = async () => {
-    if (pakaiFull) { setGagalTampil(true); return }
-    setPakaiFull(true)
-    try {
-      const { data } = await api.get<{ url: string }>(urlFoto())
-      setSrc(data.url)
-    } catch {
-      setGagalTampil(true)
-    }
-  }
-
-  // Unduhan tidak kena popup blocker: <a download> yang diklik programatis bukan popup.
-  const unduh = async () => {
-    setBusy('download')
-    try {
-      const { data } = await api.get<{ url: string }>(urlFoto({ download: true }))
-      const a = document.createElement('a')
-      a.href = data.url
-      a.rel = 'noopener'
-      document.body.appendChild(a)
-      a.click()
-      a.remove()
-    } catch (err) {
-      toast.error(pesanKegagalan(err) ?? 'Dokumen tidak dapat dibuka.')
-    } finally {
-      setBusy(null)
-    }
-  }
-
-  const lihat = () => {
-    setBusy('lihat')
-    return bukaTabBaru(async () => {
-      const { data } = await api.get<{ url: string }>(urlFoto({ download: false }))
-      return data.url
-    })
-      .catch((err: unknown) => toast.error(pesanKegagalan(err) ?? 'Dokumen tidak dapat dibuka.'))
-      .finally(() => setBusy(null))
-  }
-
   return (
-    <div className="overflow-hidden rounded-xl border border-border bg-white shadow-sm">
-      <div className="flex aspect-[4/3] items-center justify-center bg-slate-100">
-        {gagalTampil || !src ? (
-          <span className="px-3 text-center text-xs font-semibold text-slate-400">
-            {gagalTampil ? 'Pratinjau tidak tersedia' : 'Memuat...'}
-          </span>
-        ) : (
-          <img src={src} alt={labelFoto(item.jenis_foto)} loading="lazy" className="h-full w-full object-cover" onError={handleImgError} />
-        )}
-      </div>
-      <div className="p-3">
-        <div className="flex items-start justify-between gap-2">
-          <span className="text-sm font-bold text-primary-dark">{labelFoto(item.jenis_foto)}</span>
-          <span className="shrink-0 rounded bg-primary-tint px-2 py-0.5 text-[0.6rem] font-bold uppercase text-primary">{labelRoleFoto(item.role)}</span>
-        </div>
-        <div className="mt-3 flex gap-2">
-          <button type="button" onClick={lihat} disabled={busy === 'lihat'} className="btn btn-ghost flex-1 border border-border bg-white px-3 py-1.5 text-xs">
-            {busy === 'lihat' ? 'Membuka...' : 'Lihat'}
-          </button>
-          <button type="button" onClick={unduh} disabled={busy === 'download'} className="btn btn-ghost flex-1 border border-primary/20 bg-primary-tint px-3 py-1.5 text-xs text-primary">
-            {busy === 'download' ? 'Mengunduh...' : 'Download'}
-          </button>
-        </div>
-      </div>
-    </div>
+    <KartuFoto
+      label={labelFoto(item.jenis_foto)}
+      badge={labelRoleFoto(item.role)}
+      thumbUrl={item.thumb_url}
+      ambilAsli={(opts) => ambilFotoTransaksi(transaksiId, item.jenis_foto, opts)}
+    />
   )
 }

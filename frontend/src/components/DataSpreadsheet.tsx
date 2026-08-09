@@ -302,7 +302,12 @@ export default function DataSpreadsheet<T>({
             </thead>
             <tbody>
               {filtered.map((row, i) => (
-                <tr key={rowKey(row)} className="odd:bg-white even:bg-surface hover:bg-primary-tint/40">
+                // Warna hover WAJIB pekat (tanpa /40 dan sejenisnya): kolom Aksi di ujung kanan
+                // lengket sambil memakai `bg-inherit`, jadi ia mewarisi warna baris ini apa
+                // adanya. Warna baris yang tembus pandang membuat sel Aksi tembus pandang juga,
+                // dan sel-sel yang tergulir di bawahnya terbaca menembus tombol -- terlihat
+                // seperti "tulisan hantu" tiap kali kursor mendekat untuk mengklik.
+                <tr key={rowKey(row)} className="odd:bg-white even:bg-surface hover:bg-primary-tint">
                   <td className="border-b border-r border-border px-3 py-2 text-right text-muted tabular-nums">{i + 1}</td>
                   {columns.map((c) => {
                     const span = rowSpans[c.key]?.[i]

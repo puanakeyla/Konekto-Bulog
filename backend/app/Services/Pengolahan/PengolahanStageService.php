@@ -34,8 +34,9 @@ class PengolahanStageService
             abort(422, 'Skema pengolahan tidak dikenal.');
         }
 
-        $role = $creator->role->nama_role;
-        if ($role !== 'admin' && $role !== PengolahanStages::PEMBUAT[$skema]) {
+        // Admin tidak ikut mengerjakan rantai pengolahan -- perannya membaca & memperbaiki
+        // lewat Rekap Pengolahan, bukan menjalankan tahapnya.
+        if ($creator->role->nama_role !== PengolahanStages::PEMBUAT[$skema]) {
             abort(403, 'Role Anda tidak dapat memulai skema pengolahan ini.');
         }
 
@@ -64,19 +65,17 @@ class PengolahanStageService
 
     /**
      * Makloon ditetapkan oleh pengisi tahap PERTAMA (Gudang di GDG, UB Jastasma di UBJ) dan
-     * setelah itu hanya bisa dibaca -- tahap kedua mencocokkan, bukan menentukan ulang. Admin
-     * tetap boleh mengubahnya untuk membereskan salah input.
+     * setelah itu hanya bisa dibaca -- tahap kedua mencocokkan, bukan menentukan ulang.
      */
-    public function setMakloon(TransaksiPengolahan $transaksi, User $actor, string $role, ?int $makloonUserId): void
+    public function setMakloon(TransaksiPengolahan $transaksi, string $role, ?int $makloonUserId): void
     {
         if ($makloonUserId === null) {
             return;
         }
 
         $tahapPertama = PengolahanStages::stageAt($transaksi->skema, 0)['role'];
-        $bolehMenetapkan = $role === $tahapPertama || $actor->role->nama_role === 'admin';
 
-        if (! $bolehMenetapkan || $transaksi->makloon_user_id === $makloonUserId) {
+        if ($role !== $tahapPertama || $transaksi->makloon_user_id === $makloonUserId) {
             return;
         }
 
@@ -288,10 +287,14 @@ class PengolahanStageService
         return [$prevStage, $record];
     }
 
+    /**
+     * Tanpa jalan pintas admin: route terima/tolak pengolahan memang tidak memasang
+     * middleware role (tahapnya ditentukan data, bukan URL), jadi di sinilah admin
+     * dihentikan dari ikut mengerjakan alur.
+     */
     private function assertRole(User $actor, string $expectedRole): void
     {
-        $actorRole = $actor->role->nama_role;
-        if ($actorRole !== $expectedRole && $actorRole !== 'admin') {
+        if ($actor->role->nama_role !== $expectedRole) {
             abort(403, 'Anda tidak berwenang melakukan aksi ini.');
         }
     }

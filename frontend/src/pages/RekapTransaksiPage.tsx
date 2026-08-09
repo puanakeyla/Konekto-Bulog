@@ -4,13 +4,14 @@ import { toast } from 'sonner'
 import FormHero from '../components/FormHero'
 import DataSpreadsheet, { type SheetColumn } from '../components/DataSpreadsheet'
 import DokumenGaleriModal from '../components/DokumenGaleriModal'
+import KartuFoto from '../components/KartuFoto'
 import AngkaInput from '../components/AngkaInput'
 import KabupatenSelect from '../components/KabupatenSelect'
 import { useAuth } from '../hooks/useAuth'
 import { useRekapTransaksi, type RekapTransaksi } from '../hooks/useRekapTransaksi'
 import { useMakloonOptions } from '../hooks/useMakloonOptions'
+import { ambilFotoTransaksi, useDokumenTransaksi } from '../hooks/useFotoTransaksi'
 import api, { pesanKegagalan } from '../lib/api'
-import { bukaTabBaru } from '../lib/bukaTabBaru'
 import { formatDesimal, formatMoney, formatNumber, trimDesimal } from '../lib/poFormat'
 import ModalPortal from '../components/ModalPortal'
 
@@ -494,8 +495,8 @@ export default function RekapTransaksiPage() {
       toast.success(`Transaksi ${vars.row.id_transaksi} diperbarui.`)
       setEditing(null)
       setEditForm(null)
-      // Akses sementara hangus setelah satu kali simpan (backend menutupnya), jadi data
-      // user harus disegarkan supaya tombol Edit ikut hilang tanpa perlu reload.
+      // Jatah berkurang tiap simpan (backend yang mengurangi), jadi data user harus
+      // disegarkan supaya sisa jatah -- dan tombol Edit saat habis -- ikut menyesuaikan.
       queryClient.invalidateQueries({ queryKey: ['me'] })
       queryClient.invalidateQueries({ queryKey: ['rekap-transaksi'] })
       queryClient.invalidateQueries({ queryKey: ['transaksi-list'] })
@@ -520,9 +521,10 @@ export default function RekapTransaksiPage() {
     setEditForm(formDariRekap(row))
   }
 
-  // Admin selalu; role lain hanya selama admin membukakan aksesnya di Kelola User, dan
+  // Admin selalu; role lain hanya selama jatah simpan dari admin masih tersisa, dan
   // hanya untuk blok data miliknya sendiri (dibatasi lagi di backend).
-  const aksesSementara = role !== 'admin' && !!user?.akses_edit_dibuka_at
+  const sisaJatah = user?.akses_edit_sisa ?? 0
+  const aksesSementara = role !== 'admin' && sisaJatah > 0
   const bolehEditBaris = (row: RekapTransaksi) =>
     role === 'admin' || (aksesSementara && dimilikiUser(row, role, user?.id))
 
@@ -576,7 +578,7 @@ export default function RekapTransaksiPage() {
       <div className="relative mx-auto -mt-16 max-w-6xl space-y-6 px-6 pb-16">
         {aksesSementara && (
           <div className="alert-warning">
-            Admin membuka akses perbaikan untuk Anda. Tekan <strong>Edit</strong> pada transaksi yang salah, perbaiki data atau ganti fotonya, lalu simpan — akses langsung terkunci kembali setelah satu kali simpan.
+            Admin membuka akses perbaikan untuk Anda: <strong>sisa {sisaJatah} kali simpan</strong>. Tekan <strong>Edit</strong> pada transaksi yang salah, perbaiki data atau ganti fotonya, lalu simpan — tiap penyimpanan memakai satu jatah, dan data terkunci kembali begitu jatahnya habis.
           </div>
         )}
 
@@ -707,7 +709,7 @@ function RekapEditModal({ row, form, role, makloonOptions, isSaving, onChange, o
               <p className="mt-1 text-sm text-white/70">
                 {isAdmin
                   ? 'Koreksi data terkunci tanpa mengulang alur transaksi.'
-                  : 'Akses dibuka Admin dan berlaku sekali: setelah disimpan, data terkunci kembali.'}
+                  : 'Akses dibuka Admin dengan jatah terbatas: tiap penyimpanan memakai satu jatah.'}
               </p>
             </div>
             <div className="flex gap-2">
@@ -802,7 +804,10 @@ function RekapEditModal({ row, form, role, makloonOptions, isSaving, onChange, o
 }
 
 function DokumenAdminPanel({ row, role }: { row: RekapTransaksi; role: string }) {
-  const [busyKey, setBusyKey] = useState<string | null>(null)
+  const queryClient = useQueryClient()
+  // Satu request untuk SELURUH thumbnail panel ini (jenis_foto -> thumb_url); slot yang belum
+  // punya foto memang tidak muncul di daftar dan kartunya tampil sebagai "Belum diunggah".
+  const { data: tersimpan = [] } = useDokumenTransaksi(row.id_transaksi)
   const isAdmin = role === 'admin'
   const semuaField = [
     ...(row.skema === 'TJP' ? DOKUMEN_TJP : DOKUMEN_MPP),
@@ -815,48 +820,25 @@ function DokumenAdminPanel({ row, role }: { row: RekapTransaksi; role: string })
 
   if (fields.length === 0) return null
 
-  const bukaDokumen = (field: DokumenField) => {
-    setBusyKey(`open:${field.key}`)
-    return bukaTabBaru(async () => {
-      const { data } = await api.get<{ url: string }>(`/api/transaksi/${encodeURIComponent(row.id_transaksi)}/foto/${field.key}`)
-      return data.url
-    })
-      .catch((err: unknown) => toast.error(pesanKegagalan(err) ?? 'Dokumen belum tersedia.'))
-      .finally(() => setBusyKey(null))
-  }
+  // Thumbnail baru datang dari daftar, jadi tiap penggantian/penghapusan menyegarkannya.
+  const segarkan = () => queryClient.invalidateQueries({ queryKey: ['dokumen-transaksi', row.id_transaksi] })
 
-  const gantiDokumen = async (field: DokumenField, file: File | null) => {
-    if (!file) return
-    setBusyKey(`upload:${field.key}`)
-    try {
-      const formData = new FormData()
-      formData.append('jenis_foto', field.key)
-      formData.append('foto', file)
-      // `role` adalah override khusus admin (backend menolaknya dari role lain); untuk
-      // non-admin biarkan backend memakai role pengunggah itu sendiri.
-      if (isAdmin) formData.append('role', field.role)
-      await api.post(`/api/transaksi/${encodeURIComponent(row.id_transaksi)}/foto`, formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      })
-      toast.success(`${field.label} diperbarui.`)
-    } catch (err) {
-      toast.error(pesanKegagalan(err) ?? 'Gagal mengganti dokumen.')
-    } finally {
-      setBusyKey(null)
-    }
+  const gantiDokumen = async (field: DokumenField, file: File) => {
+    const formData = new FormData()
+    formData.append('jenis_foto', field.key)
+    formData.append('foto', file)
+    // `role` adalah override khusus admin (backend menolaknya dari role lain); untuk
+    // non-admin biarkan backend memakai role pengunggah itu sendiri.
+    if (isAdmin) formData.append('role', field.role)
+    await api.post(`/api/transaksi/${encodeURIComponent(row.id_transaksi)}/foto`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+    await segarkan()
   }
 
   const hapusDokumen = async (field: DokumenField) => {
-    if (!window.confirm(`Hapus ${field.label} dari transaksi ${row.id_transaksi}?`)) return
-    setBusyKey(`delete:${field.key}`)
-    try {
-      await api.delete(`/api/transaksi/${encodeURIComponent(row.id_transaksi)}/foto/${field.key}`)
-      toast.success(`${field.label} dihapus.`)
-    } catch (err) {
-      toast.error(pesanKegagalan(err) ?? 'Gagal menghapus dokumen.')
-    } finally {
-      setBusyKey(null)
-    }
+    await api.delete(`/api/transaksi/${encodeURIComponent(row.id_transaksi)}/foto/${field.key}`)
+    await segarkan()
   }
 
   return (
@@ -866,33 +848,24 @@ function DokumenAdminPanel({ row, role }: { row: RekapTransaksi; role: string })
           <h3 className="text-sm font-extrabold text-primary-dark">Dokumen {row.skema}</h3>
           <p className="mt-1 text-xs text-slate-500">
             {isAdmin
-              ? 'Buka/download ulang, ganti file, atau hapus dokumen transaksi.'
-              : 'Buka/download ulang atau ganti file dokumen tahap Anda.'}
+              ? 'Lihat/download ulang, ganti file, atau hapus dokumen transaksi.'
+              : 'Lihat/download ulang atau ganti file dokumen tahap Anda.'}
           </p>
         </div>
         <span className="rounded-full bg-primary-tint px-3 py-1 text-[0.68rem] font-bold text-primary">{fields.length} slot dokumen</span>
       </div>
-      <div className="grid gap-3 md:grid-cols-2">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {fields.map((field) => (
-          <div key={`${field.role}:${field.key}`} className="rounded-lg border border-border bg-surface px-3 py-3">
-            <div className="mb-3 flex items-center justify-between gap-3">
-              <span className="text-xs font-bold text-primary-dark">{field.label}</span>
-              <span className="rounded bg-white px-2 py-0.5 text-[0.65rem] font-bold uppercase text-slate-500">{field.role.replaceAll('_', ' ')}</span>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <button type="button" className="btn btn-ghost border border-border bg-white px-3 py-1.5 text-xs" disabled={busyKey === `open:${field.key}`} onClick={() => bukaDokumen(field)}>
-                {busyKey === `open:${field.key}` ? 'Membuka...' : 'Buka/Download'}
-              </button>
-              <label className="btn btn-ghost cursor-pointer border border-primary/20 bg-primary-tint px-3 py-1.5 text-xs text-primary">
-                {busyKey === `upload:${field.key}` ? 'Mengunggah...' : 'Ganti'}
-                <input type="file" accept="image/jpeg,image/png" className="hidden" disabled={busyKey === `upload:${field.key}`} onChange={(event) => gantiDokumen(field, event.target.files?.[0] ?? null)} />
-              </label>
-              {/* Hapus foto tetap admin-only (route DELETE-nya juga role:admin). */}
-              <button type="button" hidden={!isAdmin} className="btn btn-ghost border border-danger/20 bg-danger-bg px-3 py-1.5 text-xs text-danger" disabled={busyKey === `delete:${field.key}`} onClick={() => hapusDokumen(field)}>
-                {busyKey === `delete:${field.key}` ? 'Menghapus...' : 'Hapus'}
-              </button>
-            </div>
-          </div>
+          <KartuFoto
+            key={`${field.role}:${field.key}`}
+            label={field.label}
+            badge={field.role.replaceAll('_', ' ')}
+            thumbUrl={tersimpan.find((f) => f.jenis_foto === field.key)?.thumb_url ?? null}
+            ambilAsli={(opts) => ambilFotoTransaksi(row.id_transaksi, field.key, opts)}
+            onGanti={(file) => gantiDokumen(field, file)}
+            // Hapus foto tetap admin-only (route DELETE-nya juga role:admin).
+            onHapus={isAdmin ? () => hapusDokumen(field) : undefined}
+          />
         ))}
       </div>
     </section>

@@ -30,6 +30,15 @@ test('role di luar rantai pengolahan hanya dapat Rekap Sergab, tetap paling kana
   }
 })
 
+// Admin cuma membaca & memperbaiki rantai pengolahan; menjalankan alurnya sudah dicabut
+// (backend menolaknya juga, lihat routes/api.php).
+test('admin tidak punya menu kerja Pengolahan & MO', () => {
+  const tujuan = buildActions('admin').map((item) => item.to)
+  assert.ok(!tujuan.includes('/pengolahan'), 'admin tidak boleh punya menu Pengolahan')
+  assert.ok(!tujuan.includes('/mo'), 'admin tidak boleh punya menu MO')
+  assert.ok(tujuan.includes('/rekap-pengolahan'), 'admin tetap butuh Rekap Pengolahan')
+})
+
 test('tidak ada menu ganda walau sebuah role lolos dua cabang', () => {
   // ub_jastasma & pengadaan masuk daftar rekap sergab DAN daftar role pengolahan.
   for (const role of ['ub_jastasma', 'pengadaan']) {
