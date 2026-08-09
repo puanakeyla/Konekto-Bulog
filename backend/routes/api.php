@@ -8,6 +8,7 @@ use App\Http\Controllers\Api\FotoController;
 use App\Http\Controllers\Api\FotoStreamController;
 use App\Http\Controllers\Api\GudangController;
 use App\Http\Controllers\Api\GudangOptionController;
+use App\Http\Controllers\Api\JaminanMakloonController;
 use App\Http\Controllers\Api\MakloonOptionController;
 use App\Http\Controllers\Api\MoController;
 use App\Http\Controllers\Api\MonitoringController;
@@ -152,6 +153,12 @@ Route::middleware(['auth:sanctum', 'user.aktif'])->group(function () {
         ->middleware('role:operasi');
     Route::post('/mo/{mo}/batalkan', [MoController::class, 'batalkan'])
         ->middleware('role:operasi');
+
+    Route::get('/operasi/jaminan-makloon', [JaminanMakloonController::class, 'index'])
+        ->middleware('role:operasi');
+    Route::post('/operasi/jaminan-makloon', [JaminanMakloonController::class, 'store'])
+        ->middleware('role:operasi');
+
     Route::post('/mo/{mo}/terima', [MoController::class, 'terima'])
         ->middleware('role:pengadaan');
     Route::post('/mo/{mo}/tolak', [MoController::class, 'tolak'])
