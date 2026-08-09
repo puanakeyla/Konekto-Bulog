@@ -635,7 +635,9 @@ function TahapSummary({ tahap, transaksi }: { tahap: TahapPengolahan; transaksi:
           ['Gabah diolah', fmt(data?.kuantum_gabah_diolah, ' kg')],
           ['Beras HGL', fmt(data?.kuantum_beras_hgl, ' kg')],
           ['Rendemen', fmt(data?.rendemen, '%')],
-          ['Kualitas', data?.kualitas ?? '-'],
+          // fmt() sudah meloloskan isian non-angka apa adanya, jadi "Medium" tetap "Medium"
+          // sementara angka kilogram dapat pemisah ribuannya.
+          ['Kualitas', fmt(data?.kualitas)],
           ['Broken / Menir / Katul', `${fmt(data?.broken)} / ${fmt(data?.menir)} / ${fmt(data?.katul)}`],
           ['KA1 / KA2 / KA3', `${fmt(data?.ka1)} / ${fmt(data?.ka2)} / ${fmt(data?.ka3)}`],
           ['Reject', fmt(data?.reject)],

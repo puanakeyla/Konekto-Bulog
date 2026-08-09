@@ -26,3 +26,17 @@ export function trimDesimal(value: string | number | null | undefined) {
 export function formatDesimal(value: string | number) {
   return Number(value).toLocaleString('id-ID', { maximumFractionDigits: 2 })
 }
+
+/**
+ * Angka mutu (kualitas, broken, menir, katul, reject) yang di lapangan diisi dalam kilogram
+ * berskala ratusan ribu, jadi tanpa pemisah ribuan "1589776" praktis tidak terbaca.
+ *
+ * `kualitas` disimpan sebagai TEKS di database dan sebagian besar diisi angka, tapi tidak
+ * dijamin: isian seperti "Medium" harus lewat apa adanya, bukan berubah jadi "NaN". Karena itu
+ * pemformatan hanya berlaku kalau nilainya benar-benar angka.
+ */
+export function formatAngkaTeks(value: string | number | null | undefined, kosong = '-') {
+  if (value === null || value === undefined || String(value).trim() === '') return kosong
+  const angka = Number(value)
+  return Number.isNaN(angka) ? String(value) : formatDesimal(angka)
+}

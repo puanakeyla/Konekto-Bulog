@@ -11,6 +11,7 @@ import { ambilFotoPengolahan, useFotoPengolahanUrl } from '../hooks/useFotoTrans
 import api from '../lib/api'
 import { labelFoto } from '../lib/fotoDokumen'
 import { pesanError } from '../lib/pesanError'
+import { formatAngkaTeks } from '../lib/poFormat'
 
 function num(value: string | number | null | undefined) {
   if (value === null || value === undefined || value === '') return 0
@@ -56,7 +57,9 @@ const COLS_LHPK: Kolom[] = [
   { key: 'stok_gudang', label: 'Stok Gudang saat LHPK', value: (r) => fmt(num(r.data_lhpk?.kuantum_stok_gudang)), align: 'right' },
   { key: 'gabah_diolah', label: 'Gabah Diolah', value: (r) => fmt(num(r.data_lhpk?.kuantum_gabah_diolah)), align: 'right' },
   { key: 'beras_hgl', label: 'Beras HGL', value: (r) => fmt(num(r.data_lhpk?.kuantum_beras_hgl)), align: 'right' },
-  { key: 'kualitas', label: 'Kualitas', value: (r) => r.data_lhpk?.kualitas ?? '-', filterable: true },
+  // Kualitas diisi angka kilogram di lapangan; formatAngkaTeks memberinya pemisah ribuan tapi
+  // tetap meloloskan isian huruf apa adanya.
+  { key: 'kualitas', label: 'Kualitas', value: (r) => formatAngkaTeks(r.data_lhpk?.kualitas), filterable: true, align: 'right' },
   { key: 'broken', label: 'Broken', value: (r) => fmt(num(r.data_lhpk?.broken)), align: 'right' },
   { key: 'menir', label: 'Menir', value: (r) => fmt(num(r.data_lhpk?.menir)), align: 'right' },
   { key: 'katul', label: 'Katul', value: (r) => fmt(num(r.data_lhpk?.katul)), align: 'right' },

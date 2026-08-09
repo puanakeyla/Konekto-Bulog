@@ -50,6 +50,9 @@ Route::middleware(['auth:sanctum', 'user.aktif'])->group(function () {
         Route::get('/makloon', [MonitoringController::class, 'makloon'])->middleware('role:admin');
         // Alasan yang sama: peringkat volume olahan per makloon adalah perbandingan antar-mitra.
         Route::get('/pengolahan', [MonitoringController::class, 'pengolahan'])->middleware('role:admin');
+        // Neraca gabah per makloon (SerGab + Pengolahan dalam satu baris). Perbandingan antar-mitra
+        // yang paling telanjang di seluruh sistem, jadi admin saja.
+        Route::get('/rekap-makloon', [MonitoringController::class, 'rekapMakloon'])->middleware('role:admin');
     });
 
     Route::middleware('role:admin')->prefix('admin')->group(function () {

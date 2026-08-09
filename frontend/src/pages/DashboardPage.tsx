@@ -15,6 +15,7 @@ import {
 } from '../lib/kerjaanTransaksi'
 import { namaTampilan } from '../lib/namaUser'
 import { SkeletonMakloonGroups, SkeletonTable } from '../components/Skeleton'
+import RekapMakloonTabel from '../components/RekapMakloonTabel'
 
 type SkemaFilter = 'semua' | 'TJP' | 'MPP'
 type PengadaanTahapFilter = 'semua' | PengadaanTahapId
@@ -327,6 +328,16 @@ export default function DashboardPage() {
               </div>
             </div>
           </section>
+        </div>
+      )}
+
+      {/* Admin tidak mengerjakan transaksi satu per satu, jadi daftar antreannya dicabut (lihat
+          blok di bawah). Yang menggantikannya: neraca gabah per makloon -- pandangan menyeluruh
+          kedua rantai sekaligus. Wadahnya sengaja lebih lebar dari bagian lain: 19 kolom angka
+          tidak masuk akal dijejalkan ke lebar 6xl. */}
+      {role === 'admin' && (
+        <div className="mx-auto max-w-[100rem] px-6 py-8">
+          <RekapMakloonTabel />
         </div>
       )}
 
