@@ -108,11 +108,10 @@ class Transaksi extends Model
      *
      * - Pengadaan DITAMBAH transaksi yang tahapnya sudah 'keuangan' tapi Sergab-nya belum ditutup.
      *   Tanpa itu seluruh chip Sergab kosong permanen.
-     * - Keuangan DIKURANGI transaksi yang pembayarannya sudah lunas. Tahapnya berhenti di
-     *   'keuangan' dan transaksinya baru berstatus 'selesai' setelah Pengadaan menutup Sergab,
-     *   jadi tanpa pengurangan ini PO yang sudah dibayar menggantung di antrean Keuangan --
-     *   dan karena tidak ada cabang yang cocok di KerjaanTransaksi::ekspresi(), ia jatuh ke
-     *   ELSE dan salah berlabel "Perlu diisi".
+     * - Keuangan TIDAK dibatasi status_keseluruhan='berjalan'. Setelah No. SPP dikirim,
+     *   Pengadaan boleh menutup Status Sergab lebih dulu sehingga transaksi jadi 'selesai',
+     *   padahal PO masih menunggu review/pembayaran Keuangan. Yang mengeluarkan dari antrean
+     *   Keuangan adalah pembayaran/review Keuangan yang sudah diterima.
      */
     public function scopeAntreanRole(Builder $query, string $role): Builder
     {
@@ -125,7 +124,7 @@ class Transaksi extends Model
             ->all();
 
         return $query
-            ->where('transaksi.status_keseluruhan', 'berjalan')
+            ->when($role !== 'keuangan', fn (Builder $q) => $q->where('transaksi.status_keseluruhan', 'berjalan'))
             ->where(function (Builder $antrean) use ($stageRoles, $role) {
                 $antrean->whereIn('transaksi.current_stage', $stageRoles ?: [$role]);
 
@@ -136,6 +135,9 @@ class Transaksi extends Model
                 }
             })
             ->when($role === 'keuangan', fn (Builder $q) => $q
+                ->whereHas('poDetail.dataPengadaan', fn (Builder $po) => $po
+                    ->where('review_status', '<>', 'draft')
+                    ->where('status', '<>', 'dibatalkan'))
                 ->whereDoesntHave('poDetail.dataPengadaan.dataKeuangan', fn (Builder $keu) => $keu
                     ->where('review_status', 'diterima')));
     }
