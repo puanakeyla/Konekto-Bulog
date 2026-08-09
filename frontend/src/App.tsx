@@ -20,6 +20,7 @@ import PengolahanListPage from './pages/PengolahanListPage'
 import PengolahanDetailPage from './pages/PengolahanDetailPage'
 import MoPage from './pages/MoPage'
 import RekapPengolahanPage from './pages/RekapPengolahanPage'
+import JaminanMakloonPage from './pages/JaminanMakloonPage'
 
 const queryClient = new QueryClient()
 
@@ -68,6 +69,7 @@ function AppRoutes() {
         <Route path="/pengolahan" element={<PengolahanListPage />} />
         <Route path="/pengolahan/:id" element={<PengolahanDetailPage />} />
         <Route path="/mo" element={<MoPage />} />
+        <Route path="/operasi/jaminan-makloon" element={<JaminanMakloonPage />} />
         <Route path="/rekap-pengolahan" element={<RekapPengolahanPage />} />
       </Route>
     </Routes>

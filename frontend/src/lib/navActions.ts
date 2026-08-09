@@ -41,6 +41,7 @@ export function buildActions(role: string): NavAction[] {
   // jadi rekapnya selalu kosong buat mereka. ub_jastasma & pengadaan tetap dapat lewat blok di atas.
   if (ROLE_PENGOLAHAN.includes(role)) {
     push(actions, { to: '/pengolahan', label: 'Pengolahan' })
+    if (role === 'operasi') push(actions, { to: '/operasi/jaminan-makloon', label: 'Jaminan Makloon' })
     // Baca-saja: mereka memilih gudang saat mengisi, jadi perlu bisa melihat daftarnya
     // tanpa harus menunggu form terbuka. Yang mengubah isinya tetap Admin.
     push(actions, { to: '/gudang', label: 'Daftar Gudang' })
