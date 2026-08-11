@@ -11,7 +11,6 @@ class JaminanMakloon extends Model
 
     protected $fillable = [
         'makloon_user_id',
-        'user_makloon_id',
         'jaminan_rp',
         'kapasitas_per_hari_kg',
         'batas_hari',
@@ -31,10 +30,5 @@ class JaminanMakloon extends Model
     public function makloon(): BelongsTo
     {
         return $this->belongsTo(User::class, 'makloon_user_id');
-    }
-
-    public function userMakloon(): BelongsTo
-    {
-        return $this->belongsTo(User::class, 'user_makloon_id');
     }
 }

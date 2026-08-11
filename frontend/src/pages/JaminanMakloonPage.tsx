@@ -59,7 +59,6 @@ export default function JaminanMakloonPage() {
 
     mutation.mutate({
       makloon_user_id: form.makloon_user_id,
-      user_makloon_id: form.makloon_user_id,
       jaminan_rp: Number(form.jaminan_rp),
       kapasitas_per_hari_kg: Number(form.kapasitas_per_hari_kg),
       batas_hari: Number(form.batas_hari),

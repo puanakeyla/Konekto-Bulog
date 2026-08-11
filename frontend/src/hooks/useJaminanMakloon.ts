@@ -9,8 +9,6 @@ export type JaminanMakloonItem = {
   kabupaten: string | null
   jaminan: null | {
     id: number
-    user_makloon_id: number | null
-    user_makloon_username: string | null
     jaminan_rp: number
     kapasitas_per_hari_kg: number
     batas_hari: number
@@ -27,7 +25,6 @@ export type JaminanMakloonItem = {
 
 export type SimpanJaminanMakloonPayload = {
   makloon_user_id: number
-  user_makloon_id: number | null
   jaminan_rp: number
   kapasitas_per_hari_kg: number
   batas_hari: number

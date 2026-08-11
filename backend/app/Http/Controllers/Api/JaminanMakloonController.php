@@ -23,7 +23,7 @@ class JaminanMakloonController extends Controller
             ->whereHas('role', fn ($q) => $q->where('nama_role', 'makloon'))
             ->where('is_active', true)
             ->whereNotNull('nama_maklon')
-            ->with(['role', 'jaminanMakloon.userMakloon'])
+            ->with(['role', 'jaminanMakloon'])
             ->leftJoinSub(self::agregatGabahSergab(), 'sg', 'sg.makloon_user_id', '=', 'users.id')
             ->leftJoinSub(self::agregatOlahPengolahan(), 'pg', 'pg.makloon_user_id', '=', 'users.id')
             ->when($request->string('q')->toString(), fn ($q, $search) => $q->where('users.nama_maklon', 'like', "%{$search}%"))
@@ -43,7 +43,6 @@ class JaminanMakloonController extends Controller
         $makloonRoleId = Role::where('nama_role', 'makloon')->value('id');
         $validated = $request->validate([
             'makloon_user_id' => ['required', 'integer', Rule::exists('users', 'id')->where('role_id', $makloonRoleId)->where('is_active', true)],
-            'user_makloon_id' => ['nullable', 'integer', Rule::exists('users', 'id')->where('role_id', $makloonRoleId)->where('is_active', true)],
             'jaminan_rp' => ['required', 'numeric', 'min:0', 'max:9999999999999'],
             'kapasitas_per_hari_kg' => ['required', 'numeric', 'min:1', 'max:9999999999999'],
             'batas_hari' => ['required', 'integer', 'min:1', 'max:365'],
@@ -121,8 +120,6 @@ class JaminanMakloonController extends Controller
             'kabupaten' => $user->kabupaten,
             'jaminan' => $jaminan ? [
                 'id' => $jaminan->id,
-                'user_makloon_id' => $jaminan->user_makloon_id,
-                'user_makloon_username' => $jaminan->userMakloon?->username,
                 'jaminan_rp' => (float) $jaminan->jaminan_rp,
                 'kapasitas_per_hari_kg' => $kapasitasHarian,
                 'batas_hari' => $batasHari,
