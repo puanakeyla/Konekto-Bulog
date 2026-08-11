@@ -1,4 +1,4 @@
-import { Link } from 'react-router-dom'
+import TautanDashboard from './TautanDashboard'
 
 type Props = {
   title: string
@@ -50,13 +50,7 @@ export default function FormHero({
       </svg>
 
       <div className={`relative mx-auto ${widthClass} px-6 pb-24 pt-7`}>
-        <Link
-          to={backTo}
-          className="flex w-fit items-center gap-1.5 text-xs font-semibold text-white/70 transition-colors hover:text-white"
-        >
-          <span aria-hidden className="text-base leading-none">&larr;</span>
-          {backLabel}
-        </Link>
+        <TautanDashboard to={backTo} label={backLabel} terang />
 
         {eyebrow && (
           <p className="mt-6 flex items-center gap-2.5 text-xs font-bold uppercase tracking-[0.18em] text-accent">

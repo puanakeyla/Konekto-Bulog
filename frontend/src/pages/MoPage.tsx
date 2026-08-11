@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
+import TautanDashboard from '../components/TautanDashboard'
 import { useAuth } from '../hooks/useAuth'
 import { useKandidatMo, type PengolahanItem } from '../hooks/usePengolahan'
 import { useMoDetail, useMoList, useMoMutations, type MoItem, type StatusMo } from '../hooks/useMo'
@@ -157,6 +158,7 @@ export default function MoPage() {
 
   return (
     <div className="mx-auto max-w-6xl px-6 py-8">
+      <TautanDashboard className="mb-4" />
       <div className="mb-6">
         <h1 className="section-title">Movement Order (MO)</h1>
         <p className="page-subtitle">

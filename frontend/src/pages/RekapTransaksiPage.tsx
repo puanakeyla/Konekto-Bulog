@@ -248,6 +248,37 @@ const JUDUL: Record<string, { title: string; badge: string; sub: string }> = {
   admin: { title: 'Rekap Seluruh Tahap', badge: 'Rekap Admin', sub: 'Seluruh kolom lintas tahap, dipisah tabel TJP dan MPP.' },
 }
 
+/**
+ * Kolom sebuah tahap baru terisi setelah tahap itu DITERIMA.
+ *
+ * Selama masih draft/menunggu review/ditolak, angkanya belum final: role di tahap itu masih
+ * boleh menolak lalu mengedit, dan rekap yang menampilkannya akan berubah sendiri di bawah
+ * pembacanya. Yang paling terasa di admin -- satu-satunya role yang kolomnya menjangkau sampai
+ * Keuangan, jadi selalu ada tahap di depannya yang belum tentu selesai. Untuk role lain ini
+ * tidak berefek: kolomnya kumulatif sampai tahap sendiri, dan tahap sebelumnya pasti sudah
+ * diterima sebelum barisnya masuk rekap.
+ *
+ * Sel kosong dirender '-' seperti kolom kosong lainnya, dan `value` null membuat kolomnya juga
+ * kosong di ekspor CSV -- angka belum final tidak boleh ikut keluar ke berkas.
+ */
+function hanyaSetelahDiterima(
+  cols: SheetColumn<RekapTransaksi>[],
+  sudahDiterima: (r: RekapTransaksi) => boolean,
+): SheetColumn<RekapTransaksi>[] {
+  return cols.map((col) => ({
+    ...col,
+    value: (r: RekapTransaksi) => (sudahDiterima(r) ? col.value(r) : null),
+    render: (r: RekapTransaksi) => (sudahDiterima(r) ? (col.render ? col.render(r) : (col.value(r) ?? '-')) : '-'),
+  }))
+}
+
+const jpDiterima = (r: RekapTransaksi) => r.data_jemput_pangan?.status === 'diterima'
+const makloonDiterima = (r: RekapTransaksi) =>
+  (r.skema === 'TJP' ? r.data_makloon_tjp?.status : r.data_makloon_mpp?.status) === 'diterima'
+const ubDiterima = (r: RekapTransaksi) => r.data_ub_jastasma?.status === 'diterima'
+const poDiterima = (r: RekapTransaksi) => r.data_pengadaan?.review_status === 'diterima'
+const keuanganDiterima = (r: RekapTransaksi) => r.data_pengadaan?.data_keuangan?.review_status === 'diterima'
+
 /** Skema yang relevan untuk role: Jemput Pangan hanya ada di alur TJP. */
 function skemaUntukRole(role: string): ('TJP' | 'MPP')[] {
   return role === 'jemput_pangan' ? ['TJP'] : ['TJP', 'MPP']
@@ -265,11 +296,11 @@ function kolomUntukRoleSkema(role: string, skema: 'TJP' | 'MPP'): SheetColumn<Re
     : COLS_UMUM
   if (batas < 0) return colsUmum
   const stageCols = STAGE_ORDER.slice(0, batas + 1).flatMap((s): SheetColumn<RekapTransaksi>[] => {
-    if (s === 'jemput_pangan') return skema === 'TJP' ? COLS_JP : []
-    if (s === 'makloon') return skema === 'TJP' ? COLS_MAKLOON_TJP : COLS_MAKLOON_MPP
-    if (s === 'ub_jastasma') return COLS_UB
-    if (s === 'pengadaan') return COLS_PENGADAAN
-    return COLS_KEUANGAN
+    if (s === 'jemput_pangan') return skema === 'TJP' ? hanyaSetelahDiterima(COLS_JP, jpDiterima) : []
+    if (s === 'makloon') return hanyaSetelahDiterima(skema === 'TJP' ? COLS_MAKLOON_TJP : COLS_MAKLOON_MPP, makloonDiterima)
+    if (s === 'ub_jastasma') return hanyaSetelahDiterima(COLS_UB, ubDiterima)
+    if (s === 'pengadaan') return hanyaSetelahDiterima(COLS_PENGADAAN, poDiterima)
+    return hanyaSetelahDiterima(COLS_KEUANGAN, keuanganDiterima)
   })
   return [...colsUmum, ...stageCols]
 }

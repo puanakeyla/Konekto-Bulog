@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
+import TautanDashboard from '../components/TautanDashboard'
 import { useAuth } from '../hooks/useAuth'
 import {
   LABEL_TAHAP,
@@ -140,6 +141,7 @@ export default function PengolahanListPage() {
 
   return (
     <div className="mx-auto max-w-6xl px-6 py-8">
+      <TautanDashboard className="mb-4" />
       <div className="mb-6">
         <h1 className="section-title">Alur Pengolahan</h1>
         <p className="page-subtitle">

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
+import TautanDashboard from '../components/TautanDashboard'
 import api from '../lib/api'
 import { useAuth } from '../hooks/useAuth'
 import { useFotoPengolahanUrl } from '../hooks/useFotoTransaksi'
@@ -351,6 +352,7 @@ export default function PengolahanDetailPage() {
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6">
+      <TautanDashboard className="mb-4" />
       {/* Selama belum ada satu pun data tersimpan, pengolahan ini belum jadi transaksi: keluar
           dari sini artinya membatalkannya, bukan menyimpannya sebagai baris kosong. */}
       {masihKosong ? (

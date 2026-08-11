@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Navigate } from 'react-router-dom'
 import { toast } from 'sonner'
+import TautanDashboard from '../components/TautanDashboard'
 import { useAuth } from '../hooks/useAuth'
 import { useGudangList, useGudangMutations, useGudangOptions, type Gudang, type GudangImportResult } from '../hooks/useGudang'
 import { pesanError } from '../lib/pesanError'
@@ -82,6 +83,7 @@ export default function AdminGudangPage() {
 
   return (
     <div className="mx-auto max-w-5xl px-6 py-8">
+      <TautanDashboard className="mb-4" />
       <div className="mb-6">
         <h1 className="section-title">{isAdmin ? 'Master Gudang' : 'Daftar Gudang'}</h1>
         <p className="page-subtitle">

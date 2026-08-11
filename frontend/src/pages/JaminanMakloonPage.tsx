@@ -3,6 +3,7 @@ import { Navigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import AngkaInput from '../components/AngkaInput'
 import MakloonCombobox from '../components/MakloonCombobox'
+import TautanDashboard from '../components/TautanDashboard'
 import { apiErrorMessage } from '../lib/apiError'
 import { useAuth } from '../hooks/useAuth'
 import { useJaminanMakloon, useSimpanJaminanMakloon } from '../hooks/useJaminanMakloon'
@@ -74,6 +75,7 @@ export default function JaminanMakloonPage() {
 
   return (
     <div className="mx-auto max-w-6xl px-6 py-8">
+      <TautanDashboard className="mb-4" />
       <div className="mb-6">
         <h1 className="section-title">Jaminan Makloon</h1>
         <p className="page-subtitle">Atur jaminan, kapasitas harian, dan batas hari untuk makloon aktif.</p>

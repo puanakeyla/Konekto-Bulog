@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
+import TautanDashboard from '../components/TautanDashboard'
 import { useAuth } from '../hooks/useAuth'
 import { LABEL_TAHAP, tahapTerlihat, usePengolahanRekap, type PengolahanItem, type SkemaPengolahan, type TahapPengolahan } from '../hooks/usePengolahan'
 import DataSpreadsheet, { type SheetColumn } from '../components/DataSpreadsheet'
@@ -117,9 +118,31 @@ const KOLOM_TAHAP: Record<TahapPengolahan, Kolom[]> = {
   pengadaan: COLS_PENGADAAN,
 }
 
+/**
+ * Kolom sebuah tahap baru terisi setelah tahap itu DITERIMA -- cerminan
+ * hanyaSetelahDiterima() di Rekap Sergab, dengan alasan yang sama: selama masih
+ * draft/menunggu review/ditolak, role di tahap itu masih boleh menolak lalu mengedit,
+ * dan rekap yang menampilkannya akan berubah sendiri di bawah pembacanya.
+ */
+const TAHAP_DITERIMA: Record<TahapPengolahan, (r: PengolahanItem) => boolean> = {
+  gudang: (r) => r.data_gudang?.status === 'diterima',
+  ub_jastasma: (r) => r.data_lhpk?.status === 'diterima',
+  operasi: (r) => r.mo_detail?.mo?.review_status === 'diterima',
+  // Pengadaan tidak punya tabel tahap sendiri; tuntasnya ditandai terbitnya Nomor OUT.
+  pengadaan: (r) => Boolean(r.mo_detail?.mo?.no_out),
+}
+
+function hanyaSetelahDiterima(cols: Kolom[], sudahDiterima: (r: PengolahanItem) => boolean): Kolom[] {
+  return cols.map((col) => ({
+    ...col,
+    value: (r: PengolahanItem) => (sudahDiterima(r) ? col.value(r) : null),
+    render: (r: PengolahanItem) => (sudahDiterima(r) ? (col.render ? col.render(r) : (col.value(r) ?? '-')) : '-'),
+  }))
+}
+
 function kolomUntukRole(role: string, skema: SkemaPengolahan): Kolom[] {
   const tahap = tahapTerlihat(role, skema)
-  const stageCols = tahap.flatMap((item) => KOLOM_TAHAP[item])
+  const stageCols = tahap.flatMap((item) => hanyaSetelahDiterima(KOLOM_TAHAP[item], TAHAP_DITERIMA[item]))
   const lengkap = tahap.includes('gudang') && tahap.includes('ub_jastasma')
 
   return [...COLS_UMUM, ...stageCols, ...(lengkap ? [COL_SUSUT] : [])]
@@ -387,6 +410,7 @@ export default function RekapPengolahanPage() {
 
   return (
     <div className="mx-auto max-w-[96rem] px-4 py-8 sm:px-6 2xl:max-w-[104rem]">
+      <TautanDashboard className="mb-4" />
       <section className="panel panel-pad mb-6">
         <div className="toolbar-card mb-4">
           <div>

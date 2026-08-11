@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
+import TautanDashboard from '../components/TautanDashboard'
 import api from '../lib/api'
 import { SkeletonMakloonGroups, SkeletonSebaranTahap } from '../components/Skeleton'
 
@@ -90,6 +91,7 @@ export default function MonitoringPage() {
   return (
     <div className="page-shell">
       <div className="page-container">
+        <TautanDashboard className="mb-4" />
         <header className="page-header">
           <div>
             <h1 className="page-title">Monitoring</h1>
