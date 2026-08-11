@@ -26,5 +26,18 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {
-        //
+        /*
+         | Konteks yang ikut tercatat di SETIAP exception. Di produksi APP_DEBUG=false, jadi
+         | layar cuma menampilkan "Server Error" -- log inilah satu-satunya keterangan yang
+         | tersisa, dan "SQLSTATE..." tanpa siapa/di mana hampir tidak bisa ditindaklanjuti.
+         |
+         | Semuanya dibungkus null-safe: exception juga terjadi di perintah artisan & queue
+         | worker, yang tidak punya request maupun user.
+         */
+        $exceptions->context(fn () => [
+            'user_id' => auth()->id(),
+            'url' => request()?->fullUrl(),
+            'metode' => request()?->method(),
+            'ip' => request()?->ip(),
+        ]);
     })->create();

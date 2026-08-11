@@ -2,11 +2,15 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Prunable;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class Notifikasi extends Model
 {
+    use Prunable;
+
     protected $table = 'notifikasi';
 
     protected $fillable = [
@@ -19,6 +23,16 @@ class Notifikasi extends Model
         'data',
         'read_at',
     ];
+
+    /** Retensi 0 = jangan pangkas. Lihat catatan yang sama di AuditLog::prunable(). */
+    public function prunable(): Builder
+    {
+        $hari = (int) config('pemeliharaan.retensi.notifikasi_hari');
+
+        return $hari > 0
+            ? static::where('created_at', '<=', now()->subDays($hari))
+            : static::whereRaw('1 = 0');
+    }
 
     public function user(): BelongsTo
     {
