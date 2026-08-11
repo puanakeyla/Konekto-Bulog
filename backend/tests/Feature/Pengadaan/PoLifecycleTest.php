@@ -158,7 +158,13 @@ class PoLifecycleTest extends TestCase
         $this->assertContains($transaksiBelumIds[0], $ids);
     }
 
-    public function test_transaksi_selesai_tidak_muncul_di_daftar_tindakan_keuangan(): void
+    /**
+     * Begitu No. SPP dikirim, PO itu jadi kerjaan Keuangan sampai Keuangan sendiri yang
+     * menyelesaikannya. Pengadaan boleh menutup Status Sergab lebih dulu -- transaksinya jadi
+     * 'selesai' padahal PO-nya belum dibayar. Kalau status itu ikut mengeluarkannya dari
+     * antrean, Keuangan kehilangan PO yang masih wajib dia bayar tanpa tanda apa pun.
+     */
+    public function test_transaksi_selesai_tetap_di_antrean_keuangan_selama_po_belum_dibayar(): void
     {
         [$poSelesai, $transaksiSelesaiIds] = $this->buatPoDikirimKeKeuangan(1);
         [$poMenunggu, $transaksiMenungguIds] = $this->buatPoDikirimKeKeuangan(1);
@@ -177,9 +183,16 @@ class PoLifecycleTest extends TestCase
         $response->assertOk();
         $ids = collect($response->json('data'))->pluck('id_transaksi')->all();
 
-        $this->assertNotContains($transaksiSelesaiIds[0], $ids);
+        $this->assertContains($transaksiSelesaiIds[0], $ids);
         $this->assertContains($transaksiMenungguIds[0], $ids);
         $this->assertSame('keuangan', $poMenunggu->fresh()->poDetail()->first()->transaksi->current_stage);
+
+        // Yang mengeluarkannya memang pembayaran, bukan status transaksi.
+        $this->bayarPo($poSelesai, '2026-07-12');
+
+        Sanctum::actingAs($this->keuangan);
+        $idsSetelahBayar = collect($this->getJson('/api/transaksi')->assertOk()->json('data'))->pluck('id_transaksi')->all();
+        $this->assertNotContains($transaksiSelesaiIds[0], $idsSetelahBayar);
     }
 
     /**

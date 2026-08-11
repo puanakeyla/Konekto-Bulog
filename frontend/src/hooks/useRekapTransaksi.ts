@@ -51,6 +51,7 @@ export type RekapPengadaan = {
   id: number
   no_po: string
   no_spp: string | null
+  // Status Sergab. Read-only di Rekap -- yang mengubahnya cuma Pengadaan lewat PoStatusSergabForm.
   status: string
   harga: string | null
   total_kuantum: string | null

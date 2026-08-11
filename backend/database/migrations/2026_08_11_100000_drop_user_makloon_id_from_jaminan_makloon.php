@@ -8,8 +8,13 @@ return new class extends Migration
 {
     public function up(): void
     {
+        // Urutannya mengikat: MySQL menolak melepas index yang masih dipakai foreign key,
+        // sedangkan SQLite tidak ikut membuang index saat kolomnya hilang. Jadi FK dulu,
+        // index, baru kolomnya -- satu-satunya urutan yang jalan di kedua driver.
         Schema::table('jaminan_makloon', function (Blueprint $table) {
-            $table->dropConstrainedForeignId('user_makloon_id');
+            $table->dropForeign(['user_makloon_id']);
+            $table->dropIndex(['user_makloon_id']);
+            $table->dropColumn('user_makloon_id');
         });
     }
 

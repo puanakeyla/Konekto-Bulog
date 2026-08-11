@@ -3,6 +3,7 @@
 namespace Tests\Feature\Transaksi;
 
 use App\Models\DataMakloonMpp;
+use App\Models\JaminanMakloon;
 use App\Models\Role;
 use App\Models\Transaksi;
 use App\Models\User;
@@ -47,6 +48,16 @@ class MakloonMppAlurTest extends TestCase
         $this->makloon = User::factory()->create([
             'role_id' => Role::where('nama_role', 'makloon')->value('id'),
             'nama_maklon' => 'PT. UJI MPP',
+        ]);
+
+        // Sejak jaminan makloon ada, submit ditolak kalau Operasi belum mengisinya. Kapasitas
+        // dibuat longgar supaya berkas ini menguji alur dokumen, bukan batas jaminan --
+        // batasnya sendiri diuji di JaminanMakloonTest.
+        JaminanMakloon::create([
+            'makloon_user_id' => $this->makloon->id,
+            'jaminan_rp' => 500_000_000,
+            'kapasitas_per_hari_kg' => 100_000,
+            'batas_hari' => 30,
         ]);
     }
 

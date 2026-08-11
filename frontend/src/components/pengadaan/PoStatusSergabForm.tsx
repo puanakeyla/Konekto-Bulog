@@ -4,7 +4,7 @@ import { toast } from 'sonner'
 import api from '../../lib/api'
 import { apiErrorMessage } from '../../lib/apiError'
 import { labelFoto } from '../../lib/fotoDokumen'
-import { formatMoney, formatNumber } from '../../lib/poFormat'
+import { LABEL_STATUS_SERGAB, formatMoney, formatNumber } from '../../lib/poFormat'
 import { ambilFotoPo, ambilFotoTransaksi, useDokumenPo, useDokumenTransaksi } from '../../hooks/useFotoTransaksi'
 import type { PoItem } from '../../hooks/usePoList'
 import ConfirmDialog from '../ConfirmDialog'
@@ -12,12 +12,10 @@ import KartuFoto from '../KartuFoto'
 import PoProgressInfo from './PoProgressInfo'
 import PoTransaksiRows from './PoTransaksiRows'
 
-const statusOptions: { value: PoItem['status']; label: string }[] = [
-  { value: 'lengkap', label: 'Lengkap' },
-  { value: 'kwitansi_belum_upload', label: 'Kwitansi belum upload' },
-  { value: 'foto_belum_lengkap', label: 'Foto belum lengkap' },
-  { value: 'dibatalkan', label: 'Dibatalkan' },
-]
+// 'proses' sengaja tidak ditawarkan: itu nilai awal, bukan pilihan.
+const statusOptions: { value: PoItem['status']; label: string }[] = (
+  ['lengkap', 'kwitansi_belum_upload', 'foto_belum_lengkap', 'dibatalkan'] as const
+).map((value) => ({ value, label: LABEL_STATUS_SERGAB[value] }))
 
 const fotoSergab = [
   'foto_barang',

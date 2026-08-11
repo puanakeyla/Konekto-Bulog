@@ -12,7 +12,7 @@ import { useRekapTransaksi, type RekapTransaksi } from '../hooks/useRekapTransak
 import { useMakloonOptions } from '../hooks/useMakloonOptions'
 import { ambilFotoTransaksi, useDokumenTransaksi } from '../hooks/useFotoTransaksi'
 import api, { pesanKegagalan } from '../lib/api'
-import { formatDesimal, formatMoney, formatNumber, trimDesimal } from '../lib/poFormat'
+import { formatDesimal, formatMoney, formatNumber, labelStatusSergab, trimDesimal } from '../lib/poFormat'
 import ModalPortal from '../components/ModalPortal'
 
 /**
@@ -202,6 +202,9 @@ const COLS_PENGADAAN: SheetColumn<RekapTransaksi>[] = [
   { key: 'po_harga', label: 'Pengadaan · Harga/kg', value: (r) => r.data_pengadaan?.harga != null ? formatMoney(r.data_pengadaan.harga) : null, mergeKey: poMerge, align: 'right' },
   { key: 'po_kuantum', label: 'Pengadaan · Total Kuantum (kg)', value: (r) => num(r.data_pengadaan?.total_kuantum), render: (r) => r.data_pengadaan?.total_kuantum != null ? formatNumber(r.data_pengadaan.total_kuantum) : '-', mergeKey: poMerge, align: 'right' },
   { key: 'po_total', label: 'Pengadaan · Total Harga', value: (r) => r.data_pengadaan?.total_harga != null ? formatMoney(r.data_pengadaan.total_harga) : null, mergeKey: poMerge, align: 'right' },
+  // Baca saja. Status Sergab menandai sergab sudah didokumentasikan, bukan syarat alur mana pun,
+  // jadi ia tidak ikut daftar field yang bisa diperbaiki lewat Edit Rekap.
+  { key: 'po_status', label: 'Pengadaan · Status Sergab', value: (r) => labelStatusSergab(r.data_pengadaan?.status), mergeKey: poMerge, filterable: true },
 ]
 
 const COLS_KEUANGAN: SheetColumn<RekapTransaksi>[] = [

@@ -595,12 +595,14 @@ class TransaksiController extends Controller
         }
         unset($data['aksi']);
 
-        $this->pastikanKapasitasJaminanMakloon($request, $transaksi, $data);
-
         $stage = $transaksi->skema === 'MPP' ? 'makloon_kirim' : 'makloon';
         if ($aksi === 'draft') {
             $record = $this->service->saveDraft($transaksi, $request->user(), $stage, $model, $data);
         } else {
+            // Jaminan hanya menggerbangi PENGIRIMAN, bukan draft: draft belum menambah stok
+            // apa pun, dan memblokirnya berarti makloon tidak bisa mencatat muatan yang sudah
+            // ada di depannya cuma karena Operasi belum sempat mengisi jaminan.
+            $this->pastikanKapasitasJaminanMakloon($request, $transaksi, $data);
             // MPP: surat jalan & nota timbang bukan dokumen tahap Makloon Kirim -- keduanya
             // diunggah nanti di tahap Makloon Terima, jadi jangan dituntut di sini.
             $this->pastikanDokumenLengkap($transaksi, $model, $transaksi->skema === 'MPP' ? DataMakloonMpp::FOTO_TAHAP_KIRIM : null);
