@@ -163,54 +163,82 @@ class JaminanMakloonController extends Controller
 
     private static function stokBelumAdmBelumOlah(int $makloonUserId): float
     {
-        $sg = (float) self::agregatGabahSergab()->where('g.makloon_user_id', $makloonUserId)->value('gabah_sudah_in');
-        $pg = (float) self::agregatOlahPengolahan()->where('tp.makloon_user_id', $makloonUserId)->value('olah_rekap');
+        // JANGAN pakai ->value('nama_kolom') di sini. Pada query yang daftar select-nya sudah
+        // diisi (dan keduanya sudah), Laravel mengabaikan nama yang diminta lalu mengembalikan
+        // kolom PERTAMA -- yaitu makloon_user_id. Gerbang ini pernah membandingkan ID user
+        // dengan batas kilogram karenanya, dan tidak ada yang tampak salah dari luar.
+        $sg = (float) (self::agregatGabahSergab($makloonUserId)->first()->gabah_sudah_in ?? 0);
+        $pg = (float) (self::agregatOlahPengolahan($makloonUserId)->first()->olah_rekap ?? 0);
 
         return $sg - $pg;
     }
 
-    private static function agregatGabahSergab(): \Illuminate\Database\Query\Builder
+    /**
+     * $makloonUserId menyaring DI DALAM, sebelum penggabungan dan pengelompokan.
+     *
+     * Ini bukan sekadar rapi. Pemanggil per-submit hanya butuh satu makloon, dan menyaring di
+     * luar (`->where(...)` pada hasil agregat) memaksa MySQL menghitung seluruh makloon atas
+     * seluruh sejarah transaksi lebih dulu, baru membuang 29/30 hasilnya. Terukur 198 ms per
+     * submit di 15.000 transaksi. index() tetap memanggil tanpa argumen karena ia memang
+     * membutuhkan semua baris.
+     */
+    private static function agregatGabahSergab(?int $makloonUserId = null): \Illuminate\Database\Query\Builder
     {
         $tjp = DB::table('transaksi as t')
             ->join('data_jemput_pangan as jp', 'jp.transaksi_id', '=', 't.id_transaksi')
             ->join('data_makloon_tjp as mk', 'mk.transaksi_id', '=', 't.id_transaksi')
             ->where('t.skema', 'TJP')
             ->where('mk.status', 'diterima')
+            ->when($makloonUserId !== null, fn ($q) => $q->where('jp.makloon_user_id', $makloonUserId))
             ->selectRaw('jp.makloon_user_id as makloon_user_id')
-            ->selectRaw('t.id_transaksi as transaksi_id')
             ->selectRaw('COALESCE(mk.kuantum_bongkar, 0) as kuantum');
+        self::batasiKeSudahIn($tjp);
 
+        // MPP: pemiliknya pembuat transaksi, bukan data_jemput_pangan (skema ini tidak punya
+        // tahap JP) -- jadi kolom penyaringnya pun beda.
         $mpp = DB::table('transaksi as t')
             ->join('data_makloon_mpp as mk', 'mk.transaksi_id', '=', 't.id_transaksi')
             ->where('t.skema', 'MPP')
             ->where('mk.status', 'diterima')
+            ->when($makloonUserId !== null, fn ($q) => $q->where('t.created_by', $makloonUserId))
             ->selectRaw('t.created_by as makloon_user_id')
-            ->selectRaw('t.id_transaksi as transaksi_id')
             ->selectRaw('COALESCE(mk.kuantum_bongkar, 0) as kuantum');
+        self::batasiKeSudahIn($mpp);
 
         return DB::query()
             ->fromSub($tjp->unionAll($mpp), 'g')
-            ->leftJoinSub(self::statusPoPerTransaksi(), 'po', 'po.transaksi_id', '=', 'g.transaksi_id')
             ->groupBy('g.makloon_user_id')
             ->select('g.makloon_user_id')
-            ->selectRaw('COALESCE(SUM(CASE WHEN po.ada_in = 1 THEN g.kuantum ELSE 0 END), 0) as gabah_sudah_in');
+            ->selectRaw('COALESCE(SUM(g.kuantum), 0) as gabah_sudah_in');
     }
 
-    private static function statusPoPerTransaksi(): \Illuminate\Database\Query\Builder
+    /**
+     * "Sudah masuk" = transaksinya punya po_detail ber-No IN pada PO yang tidak dibatalkan.
+     *
+     * Ditulis sebagai EXISTS di dalam, bukan LEFT JOIN ke tabel turunan berisi status PO
+     * seluruh transaksi. Hasilnya identik -- baris tanpa No IN dulu ikut terbawa lalu
+     * dinolkan CASE, sekarang tersaring lebih awal -- tapi EXISTS memakai indeks
+     * po_detail.transaksi_id per baris, sedangkan tabel turunan itu dimaterialisasi UTUH
+     * untuk setiap pemanggilan, termasuk saat yang ditanya cuma satu makloon.
+     */
+    private static function batasiKeSudahIn(\Illuminate\Database\Query\Builder $query): void
     {
-        return DB::table('po_detail as pd')
+        $query->whereExists(fn ($ada) => $ada
+            ->from('po_detail as pd')
             ->join('data_pengadaan as dp', 'dp.id', '=', 'pd.data_pengadaan_id')
+            ->whereColumn('pd.transaksi_id', 't.id_transaksi')
             ->where('dp.status', '<>', 'dibatalkan')
-            ->groupBy('pd.transaksi_id')
-            ->select('pd.transaksi_id')
-            ->selectRaw("MAX(CASE WHEN pd.no_in IS NOT NULL AND pd.no_in <> '' THEN 1 ELSE 0 END) as ada_in");
+            ->whereNotNull('pd.no_in')
+            ->where('pd.no_in', '<>', ''));
     }
 
-    private static function agregatOlahPengolahan(): \Illuminate\Database\Query\Builder
+    /** Alasan $makloonUserId sama dengan agregatGabahSergab(): saring dulu, baru kelompokkan. */
+    private static function agregatOlahPengolahan(?int $makloonUserId = null): \Illuminate\Database\Query\Builder
     {
         return DB::table('transaksi_pengolahan as tp')
             ->join('pengolahan_lhpk as l', 'l.transaksi_pengolahan_id', '=', 'tp.id_pengolahan')
             ->whereNotNull('tp.makloon_user_id')
+            ->when($makloonUserId !== null, fn ($q) => $q->where('tp.makloon_user_id', $makloonUserId))
             ->where('l.status', 'diterima')
             ->groupBy('tp.makloon_user_id')
             ->select('tp.makloon_user_id')

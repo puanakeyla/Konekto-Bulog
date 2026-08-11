@@ -14,6 +14,8 @@ use App\Services\Pengolahan\PengolahanStageService;
 use App\Services\Transaksi\FotoAccessService;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
+use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Pagination\Paginator;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
@@ -159,7 +161,10 @@ class PengolahanController extends Controller
             ->selectRaw('COUNT(*) as baris, COALESCE(SUM(rk_l.kuantum_beras_hgl), 0) as beras_hgl')
             ->first();
 
-        $halaman = $query
+        $perPage = $validated['per_page'] ?? 200;
+        $nomorHalaman = Paginator::resolveCurrentPage();
+
+        $baris = $query
             // Kolom No. MO/TM/OUT milik MO gabungan, bukan satu pengolahan, jadi tabel frontend
             // menggabungkan selnya (mergeKey). Sel gabungan hanya benar kalau seluruh anggota satu
             // MO BERDAMPINGAN, dan itu tugas urutan di sini -- persis prasyarat blok PO di
@@ -176,7 +181,22 @@ class PengolahanController extends Controller
             ->orderBy('rk_md.pengolahan_mo_id')
             ->orderByDesc('transaksi_pengolahan.created_at')
             ->with(['gudang', 'makloon:id,nama_maklon', 'dataGudang.gudang', 'dataLhpk.gudangTujuan', 'moDetail.mo'])
-            ->paginate($validated['per_page'] ?? 200);
+            ->forPage($nomorHalaman, $perPage)
+            ->get();
+
+        // Paginator dirakit sendiri, bukan lewat paginate(), karena JUMLAH BARISNYA SUDAH ADA:
+        // $ringkasan->baris menghitung himpunan yang sama persis. paginate() akan menjalankan
+        // COUNT(*) kedua atas query yang sama beserta dua LEFT JOIN pengurutnya -- terukur 134 ms
+        // terbuang di 6.000 pengolahan untuk menghitung ulang angka yang sudah di tangan.
+        //
+        // Kesamaannya bertumpu pada satu fakta skema: transaksi_pengolahan_id UNIK di
+        // pengolahan_lhpk, pengolahan_gudang, dan pengolahan_mo_detail, jadi tidak satu pun
+        // LEFT JOIN di sini bisa menggandakan baris. Kalau keunikan itu suatu saat dicabut,
+        // angka ini ikut salah -- dan itulah yang dijaga PengolahanRekapHalamanTest.
+        $halaman = new LengthAwarePaginator($baris, (int) $ringkasan->baris, $perPage, $nomorHalaman, [
+            'path' => Paginator::resolveCurrentPath(),
+            'pageName' => 'page',
+        ]);
 
         return response()->json([
             ...$halaman->toArray(),
