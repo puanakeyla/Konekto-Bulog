@@ -67,25 +67,35 @@ class JaminanMakloonTest extends TestCase
             ->assertOk();
     }
 
-    public function test_submit_ditolak_kalau_jaminan_belum_diatur(): void
+    public function test_mpp_makloon_kirim_lolos_walau_jaminan_belum_diatur(): void
     {
         $transaksi = $this->buatTransaksi();
 
-        $this->patchJson("/api/transaksi/{$transaksi->id_transaksi}/makloon", $this->dataMpp('submit'))
-            ->assertStatus(422)
-            ->assertJsonPath('message', fn (string $pesan) => str_contains($pesan, 'Jaminan makloon belum diatur'));
+        $this->lengkapiFotoKirim($transaksi);
 
-        $this->assertSame('makloon_kirim', $transaksi->fresh()->current_stage);
+        $this->patchJson("/api/transaksi/{$transaksi->id_transaksi}/makloon", $this->dataMpp('submit'))
+            ->assertOk();
+
+        $this->assertSame('makloon_terima', $transaksi->fresh()->current_stage);
     }
 
-    public function test_submit_ditolak_kalau_kuantum_melebihi_kapasitas_harian(): void
+    public function test_mpp_makloon_terima_ditolak_kalau_jaminan_belum_diatur(): void
+    {
+        $transaksi = $this->mppSampaiMakloonTerima();
+
+        $this->patchJson("/api/transaksi/{$transaksi->id_transaksi}/makloon-terima", $this->dataMakloonTerima('submit'))
+            ->assertStatus(422)
+            ->assertJsonPath('message', fn (string $pesan) => str_contains($pesan, 'Jaminan makloon belum diatur'));
+    }
+
+    public function test_mpp_makloon_terima_ditolak_kalau_kuantum_bongkar_melebihi_kapasitas_harian(): void
     {
         $this->buatJaminan(kapasitasPerHari: 500);
-        $transaksi = $this->buatTransaksi();
+        $transaksi = $this->mppSampaiMakloonTerima();
 
-        // Guard jaminan sengaja dijalankan sebelum pemeriksaan dokumen, jadi penolakan yang
+        // Guard jaminan sengaja dijalankan sebelum pemeriksaan dokumen terima, jadi penolakan yang
         // muncul adalah soal kapasitas -- bukan "Dokumen belum lengkap" yang menyesatkan.
-        $this->patchJson("/api/transaksi/{$transaksi->id_transaksi}/makloon", $this->dataMpp('submit'))
+        $this->patchJson("/api/transaksi/{$transaksi->id_transaksi}/makloon-terima", $this->dataMakloonTerima('submit'))
             ->assertStatus(422)
             ->assertJsonPath('message', fn (string $pesan) => str_contains($pesan, 'kapasitas harian'));
     }
@@ -93,21 +103,14 @@ class JaminanMakloonTest extends TestCase
     public function test_submit_lolos_kalau_masih_di_dalam_kapasitas(): void
     {
         $this->buatJaminan(kapasitasPerHari: 5_000);
-        $transaksi = $this->buatTransaksi();
+        $transaksi = $this->mppSampaiMakloonTerima();
 
-        $this->patchJson("/api/transaksi/{$transaksi->id_transaksi}/makloon", $this->dataMpp('draft'))->assertOk();
+        $this->patchJson("/api/transaksi/{$transaksi->id_transaksi}/makloon-terima", $this->dataMakloonTerima('draft'))->assertOk();
+        $this->lengkapiFotoTerima($transaksi);
 
-        foreach (self::FOTO_KIRIM as $jenis) {
-            $this->postJson("/api/transaksi/{$transaksi->id_transaksi}/foto", [
-                'jenis_foto' => $jenis,
-                'foto' => File::image("{$jenis}.jpg"),
-            ])->assertCreated();
-        }
+        $this->patchJson("/api/transaksi/{$transaksi->id_transaksi}/makloon-terima", $this->dataMakloonTerima('submit'))->assertOk();
 
-        $this->patchJson("/api/transaksi/{$transaksi->id_transaksi}/makloon", $this->dataMpp('submit'))
-            ->assertOk();
-
-        $this->assertSame('makloon_terima', $transaksi->fresh()->current_stage);
+        $this->assertSame('ub_jastasma', $transaksi->fresh()->current_stage);
     }
 
     /**
@@ -124,7 +127,7 @@ class JaminanMakloonTest extends TestCase
         $transaksi = $this->buatTransaksi();
 
         // kuantum 1 kg supaya batas HARIAN tidak ikut terpicu -- yang diuji batas totalnya.
-        $response = $this->patchJson("/api/transaksi/{$transaksi->id_transaksi}/makloon", [...$this->dataMpp('submit'), 'kuantum' => 1])
+        $response = $this->patchJson("/api/transaksi/{$transaksi->id_transaksi}/makloon-terima", [...$this->dataMakloonTerima('submit'), 'kuantum_bongkar' => 1])
             ->assertStatus(422);
 
         $this->assertStringContainsString('melewati batas jaminan', (string) $response->json('message'));
@@ -152,11 +155,31 @@ class JaminanMakloonTest extends TestCase
 
         $baru = $this->buatTransaksi();
 
-        $this->patchJson("/api/transaksi/{$baru->id_transaksi}/makloon", [...$this->dataMpp('submit'), 'kuantum' => 1])
+        $this->patchJson("/api/transaksi/{$baru->id_transaksi}/makloon-terima", [...$this->dataMakloonTerima('submit'), 'kuantum_bongkar' => 1])
             ->assertStatus(422)
             ->assertJsonPath('message', fn (string $pesan) => str_contains($pesan, 'Dokumen belum lengkap'));
 
         $this->assertNotNull($transaksi);
+    }
+
+    public function test_submit_ditolak_pada_hari_keempat_meski_kapasitas_masih_tersisa(): void
+    {
+        $this->buatJaminan(kapasitasPerHari: 1_000, batasHari: 3);
+        $this->stokBelumSelesai('2026-08-01', 100);
+
+        $transaksi = $this->buatTransaksi();
+
+        DataMakloonMpp::create([
+            'transaksi_id' => $transaksi->id_transaksi,
+            'kuantum' => 50,
+            'tanggal_bongkar' => '2026-08-04',
+            'status' => 'diterima',
+        ]);
+        $transaksi->update(['current_stage' => 'makloon_terima']);
+
+        $this->patchJson("/api/transaksi/{$transaksi->id_transaksi}/makloon-terima", [...$this->dataMakloonTerima('submit'), 'kuantum_bongkar' => 50])
+            ->assertStatus(422)
+            ->assertJsonPath('message', fn (string $pesan) => str_contains($pesan, 'Batas hari jaminan sudah lewat'));
     }
 
     /** Satu transaksi MPP milik makloon ini yang sudah diterima DAN sudah ber-No IN. */
@@ -195,6 +218,27 @@ class JaminanMakloonTest extends TestCase
             'transaksi_id' => $transaksi->id_transaksi,
             'kuantum_kontribusi' => $kuantum,
             'no_in' => 'IN-STOK',
+        ]);
+
+        return $transaksi;
+    }
+
+    private function stokBelumSelesai(string $tanggal, float $kuantum): Transaksi
+    {
+        Sanctum::actingAs($this->makloon);
+        $transaksi = Transaksi::findOrFail($this->postJson('/api/transaksi')->assertCreated()->json('data.id_transaksi'));
+
+        DataMakloonMpp::create([
+            'transaksi_id' => $transaksi->id_transaksi,
+            'kuantum' => $kuantum,
+            'tanggal_bongkar' => $tanggal,
+            'status' => 'diterima',
+        ]);
+
+        DataMakloonTerima::create([
+            'transaksi_id' => $transaksi->id_transaksi,
+            'kuantum_bongkar' => 0,
+            'status' => 'diterima',
         ]);
 
         return $transaksi;
@@ -255,6 +299,37 @@ class JaminanMakloonTest extends TestCase
         );
     }
 
+    private function mppSampaiMakloonTerima(): Transaksi
+    {
+        $transaksi = $this->buatTransaksi();
+
+        $this->patchJson("/api/transaksi/{$transaksi->id_transaksi}/makloon", $this->dataMpp('draft'))->assertOk();
+        $this->lengkapiFotoKirim($transaksi);
+        $this->patchJson("/api/transaksi/{$transaksi->id_transaksi}/makloon", $this->dataMpp('submit'))->assertOk();
+
+        return $transaksi->fresh();
+    }
+
+    private function lengkapiFotoKirim(Transaksi $transaksi): void
+    {
+        foreach (self::FOTO_KIRIM as $jenis) {
+            $this->postJson("/api/transaksi/{$transaksi->id_transaksi}/foto", [
+                'jenis_foto' => $jenis,
+                'foto' => File::image("{$jenis}.jpg"),
+            ])->assertCreated();
+        }
+    }
+
+    private function lengkapiFotoTerima(Transaksi $transaksi): void
+    {
+        foreach (['foto_surat_jalan', 'foto_nota_timbang'] as $jenis) {
+            $this->postJson("/api/transaksi/{$transaksi->id_transaksi}/foto", [
+                'jenis_foto' => $jenis,
+                'foto' => File::image("{$jenis}.jpg"),
+            ])->assertCreated();
+        }
+    }
+
     private function dataMpp(string $aksi): array
     {
         return [
@@ -268,6 +343,14 @@ class JaminanMakloonTest extends TestCase
             'tanggal_bongkar' => '2026-08-11',
             'kuantum' => 1000,
             'jarak_ke_makloon_km' => 5,
+        ];
+    }
+
+    private function dataMakloonTerima(string $aksi): array
+    {
+        return [
+            'aksi' => $aksi,
+            'kuantum_bongkar' => 1000,
         ];
     }
 }
