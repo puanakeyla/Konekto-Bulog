@@ -3,6 +3,7 @@
 namespace Tests\Feature\Transaksi;
 
 use App\Models\DataMakloonMpp;
+use App\Models\DataMakloonTerima;
 use App\Models\Role;
 use App\Models\Transaksi;
 use App\Models\User;
@@ -77,33 +78,79 @@ class MakloonMppAlurTest extends TestCase
         $this->assertSame('makloon_kirim', $transaksi->fresh()->current_stage);
     }
 
-    public function test_makloon_terima_menolak_terima_sebelum_surat_jalan_dan_nota_timbang_diunggah(): void
+    /**
+     * Aksi Terima di tahap ini SATU pekerjaan saja: menerima data Makloon Kirim. Ia tidak lagi
+     * menuntut dokumen maupun kuantum -- keduanya milik form Makloon Terima yang dikirim
+     * sesudahnya. Dulu ketiganya menempel di satu tombol.
+     */
+    public function test_terima_mengunci_data_kirim_tanpa_menuntut_dokumen(): void
     {
         $transaksi = $this->sampaiMakloonTerima();
 
-        $this->postJson("/api/transaksi/{$transaksi->id_transaksi}/terima", ['kuantum_bongkar' => 900])
+        $this->postJson("/api/transaksi/{$transaksi->id_transaksi}/terima")->assertOk();
+
+        $mpp = DataMakloonMpp::where('transaksi_id', $transaksi->id_transaksi)->first();
+        $this->assertSame('diterima', $mpp->status);
+        $this->assertNotNull($mpp->locked_at);
+
+        // Transaksinya TETAP di Makloon Terima -- form tahap ini belum diisi.
+        $this->assertSame('makloon_terima', $transaksi->fresh()->current_stage);
+    }
+
+    public function test_makloon_terima_menolak_kirim_sebelum_surat_jalan_dan_nota_timbang_diunggah(): void
+    {
+        $transaksi = $this->sampaiTerimaDikunci();
+
+        $this->patchJson("/api/transaksi/{$transaksi->id_transaksi}/makloon-terima", ['aksi' => 'submit', 'kuantum_bongkar' => 900])
             ->assertStatus(422)
             ->assertJsonPath('message', fn (string $pesan) => str_contains($pesan, 'Dokumen belum lengkap'));
 
         $this->assertSame('makloon_terima', $transaksi->fresh()->current_stage);
     }
 
-    public function test_makloon_terima_menerima_setelah_dokumennya_lengkap(): void
+    public function test_makloon_terima_mengirim_setelah_dokumennya_lengkap(): void
     {
-        $transaksi = $this->sampaiMakloonTerima();
-
+        $transaksi = $this->sampaiTerimaDikunci();
         $this->uploadFoto($transaksi, self::FOTO_TERIMA);
 
-        $this->postJson("/api/transaksi/{$transaksi->id_transaksi}/terima", ['kuantum_bongkar' => 900])
+        $this->patchJson("/api/transaksi/{$transaksi->id_transaksi}/makloon-terima", ['aksi' => 'submit', 'kuantum_bongkar' => 900])
             ->assertOk();
 
         $transaksi->refresh();
         $this->assertSame('ub_jastasma', $transaksi->current_stage);
 
-        $mpp = DataMakloonMpp::where('transaksi_id', $transaksi->id_transaksi)->first();
-        $this->assertSame('diterima', $mpp->status);
-        $this->assertNotNull($mpp->locked_at);
-        $this->assertEquals(900, $mpp->kuantum_bongkar);
+        $terima = DataMakloonTerima::where('transaksi_id', $transaksi->id_transaksi)->first();
+        $this->assertSame('menunggu_review', $terima->status);
+        $this->assertEquals(900, $terima->kuantum_bongkar);
+    }
+
+    /** Inti perubahan ini: UB Jastasma akhirnya punya sesuatu untuk diterima/ditolak. */
+    public function test_ub_jastasma_memeriksa_hasil_timbang_makloon_terima(): void
+    {
+        $transaksi = $this->sampaiTerimaDikunci();
+        $this->uploadFoto($transaksi, self::FOTO_TERIMA);
+        $this->patchJson("/api/transaksi/{$transaksi->id_transaksi}/makloon-terima", ['aksi' => 'submit', 'kuantum_bongkar' => 900])->assertOk();
+
+        $ub = User::factory()->create(['role_id' => Role::where('nama_role', 'ub_jastasma')->value('id')]);
+        Sanctum::actingAs($ub);
+
+        $this->postJson("/api/transaksi/{$transaksi->id_transaksi}/tolak", ['catatan' => 'Timbangan tidak cocok'])->assertOk();
+
+        $transaksi->refresh();
+        $this->assertSame('makloon_terima', $transaksi->current_stage);
+        $this->assertSame('ditolak', DataMakloonTerima::where('transaksi_id', $transaksi->id_transaksi)->value('status'));
+    }
+
+    /** Sampai tahap Makloon Terima DAN data Kirim sudah diterima, siap diisi formnya. */
+    private function sampaiTerimaDikunci(): Transaksi
+    {
+        $transaksi = $this->sampaiMakloonTerima();
+        $this->postJson("/api/transaksi/{$transaksi->id_transaksi}/terima")->assertOk();
+
+        // Record tahap harus ada sebelum fotonya boleh diunggah -- sama seperti tahap lain.
+        $this->patchJson("/api/transaksi/{$transaksi->id_transaksi}/makloon-terima", ['aksi' => 'draft'])->assertOk();
+
+        return $transaksi->fresh();
     }
 
     private function buatDraft(): Transaksi

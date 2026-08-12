@@ -4,14 +4,14 @@ namespace App\Services\Transaksi;
 
 use App\Models\DataJemputPangan;
 use App\Models\DataMakloonMpp;
+use App\Models\DataMakloonTerima;
 use App\Models\DataMakloonTjp;
 use App\Models\DataUbJastasma;
 
 class TransaksiStages
 {
     /**
-     * Urutan tahap per skema. Timeline transaksi berhenti di Keuangan (TJP 5 tahap, MPP 5 tahap);
-     * Operasi & Gudang bukan tahap timeline (modul Pengolahan yang dulu memakai keduanya sudah dihapus).
+     * Urutan tahap per skema. Timeline transaksi berhenti di Keuangan (TJP 5 tahap, MPP 5 tahap).
      * Tahap dengan 'model' null (pengadaan & keuangan) beroperasi di level PO (gabungan banyak
      * transaksi), bukan satu baris per transaksi — jadi tidak lewat TransaksiStageService::
      * submitStage/terima/tolak generik, melainkan endpoint khusus di PengadaanController yang
@@ -33,7 +33,7 @@ class TransaksiStages
             ],
             'MPP' => [
                 ['role' => 'makloon_kirim', 'model' => DataMakloonMpp::class, 'actor_role' => 'makloon', 'label' => 'Makloon Kirim'],
-                ['role' => 'makloon_terima', 'model' => null, 'actor_role' => 'makloon', 'label' => 'Makloon Terima'],
+                ['role' => 'makloon_terima', 'model' => DataMakloonTerima::class, 'actor_role' => 'makloon', 'label' => 'Makloon Terima'],
                 ...$afterMakloon,
             ],
             default => [],

@@ -4,7 +4,7 @@ export function Skeleton({ className = '' }: { className?: string }) {
   return <div className={`animate-pulse rounded bg-slate-200 ${className}`} aria-hidden="true" />
 }
 
-// Kartu PO (Pengadaan/Keuangan/Operasi/Gudang) -- meniru .po-card.
+// Kartu PO (Pengadaan/Keuangan) -- meniru .po-card.
 export function SkeletonPoCards({ count = 2 }: { count?: number }) {
   return (
     <div className="space-y-4">

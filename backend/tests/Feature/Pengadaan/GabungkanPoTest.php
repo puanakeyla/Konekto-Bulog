@@ -4,6 +4,7 @@ namespace Tests\Feature\Pengadaan;
 
 use App\Models\DataJemputPangan;
 use App\Models\DataMakloonMpp;
+use App\Models\DataMakloonTerima;
 use App\Models\DataMakloonTjp;
 use App\Models\DataUbJastasma;
 use App\Models\PoDetail;
@@ -280,8 +281,11 @@ class GabungkanPoTest extends TestCase
 
         $this->stageService->submitStage($transaksi, $this->makloon, 'makloon', DataMakloonMpp::class, $this->dataMakloonMpp($idPemasok, $tanggalBongkar, $kuantum));
 
-        // Tahap "Makloon Terima" (MPP) dikerjakan makloon sendiri, bukan UB Jastasma.
+        // Makloon Terima kini tahap berdata sendiri: makloon menerima data Kirim, mengisi hasil
+        // timbang, lalu mengirimnya -- baru setelah itu UB Jastasma yang memeriksanya.
         $this->stageService->terima($transaksi->fresh(), $this->makloon);
+        $this->stageService->submitStage($transaksi->fresh(), $this->makloon, 'makloon_terima', DataMakloonTerima::class, ['kuantum_bongkar' => 980]);
+        $this->stageService->terima($transaksi->fresh(), $this->ubJastasma);
         $this->stageService->submitStage($transaksi->fresh(), $this->ubJastasma, 'ub_jastasma', DataUbJastasma::class, $this->dataUbJastasma());
 
         $this->stageService->terima($transaksi->fresh(), $this->pengadaan);

@@ -13,7 +13,7 @@ use Illuminate\Support\Facades\DB;
 /**
  * Review PO oleh Keuangan (Terima & Lanjutkan / Tolak) atas data Pengadaan. Keuangan adalah
  * tahap terakhir timeline transaksi; setelah pembayaran, transaksi ditandai selesai
- * (lihat PoLifecycleService). Operasi & Gudang tidak ikut timeline transaksi.
+ * (lihat PoLifecycleService).
  */
 class PoReviewService
 {

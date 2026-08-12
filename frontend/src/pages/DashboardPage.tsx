@@ -21,7 +21,7 @@ type PengadaanTahapFilter = 'semua' | PengadaanTahapId
 
 // Role yang menampilkan daftar transaksi dikelompokkan per makloon (accordion).
 // Semua role operasional + Admin, KECUALI Makloon (dia hanya melihat transaksinya sendiri).
-const GROUPED_ROLES = new Set(['jemput_pangan', 'ub_jastasma', 'pengadaan', 'keuangan', 'operasi', 'gudang', 'admin'])
+const GROUPED_ROLES = new Set(['jemput_pangan', 'ub_jastasma', 'pengadaan', 'keuangan', 'admin'])
 
 // Label ramah + kalimat pembuka per role untuk hero sambutan dashboard.
 const ROLE_LABEL: Record<string, string> = {
@@ -30,8 +30,6 @@ const ROLE_LABEL: Record<string, string> = {
   ub_jastasma: 'UB Jastasma',
   pengadaan: 'Pengadaan',
   keuangan: 'Keuangan',
-  operasi: 'Operasi',
-  gudang: 'Gudang',
   makloon: 'Makloon',
 }
 
@@ -40,9 +38,7 @@ const ROLE_SUBTITLE: Record<string, string> = {
   ub_jastasma: 'Tinjau UB & jastasma tiap transaksi sebelum masuk tahap pengadaan.',
   pengadaan: 'Tinjau transaksi masuk dan terbitkan PO untuk melanjutkan proses serap.',
   keuangan: 'Proses pembayaran PO tepat waktu agar rantai serap terus berjalan.',
-  operasi: 'Catat data operasi lapangan supaya progres tiap transaksi selalu terpantau.',
-  gudang: 'Konfirmasi penerimaan gabah di gudang sebagai penutup alur serap.',
-  admin: 'Pantau seluruh alur TJP dan MPP dari input awal sampai penerimaan gudang.',
+  admin: 'Pantau seluruh alur TJP dan MPP dari input awal sampai pembayaran.',
   makloon: 'Kelola bongkar dan proses gabah dari mitra dengan rapi dan tepat waktu.',
 }
 
@@ -330,9 +326,7 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* Operasi & Gudang adalah modul mandiri (lepas dari timeline transaksi),
-          jadi daftar transaksi menunggu tindakan tidak relevan untuk dua role ini. */}
-      {!['operasi', 'gudang', 'admin'].includes(role) && (
+      {role !== 'admin' && (
       <div className="mx-auto max-w-6xl px-6 py-8">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
           <div>

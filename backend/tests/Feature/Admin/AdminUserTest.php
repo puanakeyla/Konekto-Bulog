@@ -135,7 +135,7 @@ class AdminUserTest extends TestCase
     public function test_admin_dapat_reset_password_user(): void
     {
         Sanctum::actingAs($this->admin);
-        $user = $this->buatUser('gudang');
+        $user = $this->buatUser('keuangan');
 
         $response = $this->patchJson("/api/admin/users/{$user->id}/reset-password", [
             'password' => 'password-baru',
@@ -232,7 +232,7 @@ class AdminUserTest extends TestCase
     public function test_admin_dapat_nonaktifkan_dan_hapus_user(): void
     {
         Sanctum::actingAs($this->admin);
-        $user = $this->buatUser('operasi');
+        $user = $this->buatUser('ub_jastasma');
 
         $this->patchJson("/api/admin/users/{$user->id}/deactivate")
             ->assertOk()

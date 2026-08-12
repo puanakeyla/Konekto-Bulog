@@ -6,7 +6,6 @@ use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\FotoController;
 use App\Http\Controllers\Api\FotoStreamController;
-use App\Http\Controllers\Api\GudangOptionController;
 use App\Http\Controllers\Api\MakloonOptionController;
 use App\Http\Controllers\Api\MonitoringController;
 use App\Http\Controllers\Api\NotifikasiController;
@@ -33,7 +32,6 @@ Route::middleware(['auth:sanctum', 'user.aktif'])->group(function () {
     Route::patch('/notifikasi/{notifikasi}/read', [NotifikasiController::class, 'markRead']);
 
     Route::get('/makloon-options', [MakloonOptionController::class, 'index']);
-    Route::get('/gudang-options', [GudangOptionController::class, 'index']);
 
     // Angka ringkasan dashboard dihitung di database, bukan dari baris yang ter-fetch browser.
     Route::get('/dashboard/ringkasan', [DashboardController::class, 'ringkasan']);
@@ -82,6 +80,8 @@ Route::middleware(['auth:sanctum', 'user.aktif'])->group(function () {
         ->middleware('role:jemput_pangan|admin');
     Route::patch('/transaksi/{transaksi}/makloon', [TransaksiController::class, 'makloon'])
         ->middleware('role:makloon|admin');
+    Route::patch('/transaksi/{transaksi}/makloon-terima', [TransaksiController::class, 'makloonTerima'])
+        ->middleware('role:makloon|admin');
     Route::patch('/transaksi/{transaksi}/ub-jastasma', [TransaksiController::class, 'ubJastasma'])
         ->middleware('role:ub_jastasma|admin');
     Route::post('/transaksi/{transaksi}/terima', [TransaksiController::class, 'terima']);
@@ -94,9 +94,9 @@ Route::middleware(['auth:sanctum', 'user.aktif'])->group(function () {
     Route::post('/pengadaan/gabungkan-po', [PengadaanController::class, 'gabungkanPo'])
         ->middleware('role:pengadaan|admin');
     Route::get('/po', [PengadaanController::class, 'index'])
-        ->middleware('role:pengadaan|keuangan|operasi|gudang|admin');
+        ->middleware('role:pengadaan|keuangan|admin');
     Route::get('/po/{dataPengadaan}', [PengadaanController::class, 'show'])
-        ->middleware('role:pengadaan|keuangan|operasi|gudang|admin');
+        ->middleware('role:pengadaan|keuangan|admin');
     Route::get('/po/{dataPengadaan}/foto', [PengadaanController::class, 'fotoIndex'])
         ->middleware('role:pengadaan|keuangan|admin');
     Route::post('/po/{dataPengadaan}/foto', [PengadaanController::class, 'fotoUpload'])
@@ -112,7 +112,7 @@ Route::middleware(['auth:sanctum', 'user.aktif'])->group(function () {
     Route::patch('/po/{dataPengadaan}/pembayaran', [PengadaanController::class, 'pembayaran'])
         ->middleware('role:keuangan|admin');
     Route::post('/po/{dataPengadaan}/terima', [PengadaanController::class, 'terimaPo'])
-        ->middleware('role:pengadaan|keuangan|operasi|gudang|admin');
+        ->middleware('role:pengadaan|keuangan|admin');
     Route::post('/po/{dataPengadaan}/tolak', [PengadaanController::class, 'tolakPo'])
-        ->middleware('role:pengadaan|keuangan|operasi|gudang|admin');
+        ->middleware('role:pengadaan|keuangan|admin');
 });

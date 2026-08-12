@@ -12,8 +12,6 @@ const alurStages = [
   { label: 'UB Jastasma', note: 'Review dan validasi mutu gabah.', schemes: ['TJP', 'MPP'] },
   { label: 'Pengadaan', note: 'Penggabungan PO dan nomor IN.', schemes: ['TJP', 'MPP'] },
   { label: 'Keuangan', note: 'Proses pembayaran PO.', schemes: ['TJP', 'MPP'] },
-  { label: 'Operasi', note: 'Input MO, TM, dan hasil lab.', schemes: ['TJP', 'MPP'] },
-  { label: 'Gudang', note: 'Penerimaan akhir di gudang.', schemes: ['TJP', 'MPP'] },
 ] as const
 
 const misi = [
@@ -151,7 +149,7 @@ export default function LandingPage() {
                 SerGab Lampung<span className="text-accent">.</span>
               </h1>
               <div className="mt-5 h-1 w-20 rounded-full bg-accent" />
-              <p className="mt-7 max-w-lg text-sm leading-7 text-white/70 md:text-base">Sistem monitoring serap gabah yang membedakan alur TJP dan MPP dari input awal, review, PO, pembayaran, operasi, sampai penerimaan gudang.</p>
+              <p className="mt-7 max-w-lg text-sm leading-7 text-white/70 md:text-base">Sistem monitoring serap gabah yang membedakan alur TJP dan MPP dari input awal, review, PO, sampai pembayaran.</p>
               <div className="mt-8 flex flex-wrap items-center gap-2.5">
                 <span className="rounded-full border border-white/15 bg-white/10 px-4 py-1.5 text-xs font-semibold text-white">TJP</span>
                 <span className="rounded-full border border-white/15 bg-white/10 px-4 py-1.5 text-xs font-semibold text-white">MPP</span>

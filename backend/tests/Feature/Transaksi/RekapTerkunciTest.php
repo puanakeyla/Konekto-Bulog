@@ -5,6 +5,7 @@ namespace Tests\Feature\Transaksi;
 use App\Models\DataJemputPangan;
 use App\Models\DataKeuangan;
 use App\Models\DataMakloonMpp;
+use App\Models\DataMakloonTerima;
 use App\Models\DataMakloonTjp;
 use App\Models\DataPengadaan;
 use App\Models\DataUbJastasma;
@@ -216,7 +217,7 @@ class RekapTerkunciTest extends TestCase
     /**
      * Keuangan adalah tahap TERAKHIR: tidak ada role yang mereviewnya. `review_status = 'diterima'`
      * di data_keuangan dipasang sendiri oleh updatePembayaran() saat status_bayar jadi 'dibayarkan',
-     * jadi artinya "pembayaran sudah difinalisasi", bukan "sudah diterima Operasi".
+     * jadi artinya "pembayaran sudah difinalisasi".
      */
     public function test_keuangan_hanya_melihat_transaksi_yang_pembayarannya_sudah_difinalisasi(): void
     {
@@ -291,8 +292,11 @@ class RekapTerkunciTest extends TestCase
             'jarak_ke_makloon_km' => 7,
         ]);
 
-        // Tahap "Makloon Terima" (MPP) dikerjakan makloon sendiri, bukan UB Jastasma.
+        // Makloon Terima kini tahap berdata sendiri: makloon menerima data Kirim, MENGISI hasil
+        // timbang, lalu mengirimnya -- baru setelah itu UB Jastasma yang memeriksanya.
         $this->stageService->terima($transaksi->fresh(), $this->makloon);
+        $this->stageService->submitStage($transaksi->fresh(), $this->makloon, 'makloon_terima', DataMakloonTerima::class, ['kuantum_bongkar' => 980]);
+        $this->stageService->terima($transaksi->fresh(), $this->ubJastasma);
 
         return $transaksi->fresh();
     }

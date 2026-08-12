@@ -7,6 +7,7 @@ use App\Http\Resources\TransaksiResource;
 use App\Models\DataJemputPangan;
 use App\Models\DataKeuangan;
 use App\Models\DataMakloonMpp;
+use App\Models\DataMakloonTerima;
 use App\Models\DataMakloonTjp;
 use App\Models\DataUbJastasma;
 use App\Models\Role;
@@ -60,7 +61,7 @@ class TransaksiController extends Controller
             // Pengadaan, sehingga chip "Perlu diperbaiki" berangka tapi panelnya tidak memuat
             // apa-apa. Tiga query tambahan per halaman (bukan N+1), halaman dibatasi 20 baris.
             ->with([
-                'dataJemputPangan.makloon', 'dataMakloonMpp', 'dataMakloonTjp', 'dataUbJastasma', 'creator',
+                'dataJemputPangan.makloon', 'dataMakloonMpp', 'dataMakloonTerima', 'dataMakloonTjp', 'dataUbJastasma', 'creator',
                 'poDetail.dataPengadaan.poDetail',
                 'poDetail.dataPengadaan.dataKeuangan',
             ])
@@ -149,6 +150,7 @@ class TransaksiController extends Controller
             ->with([
                 'dataJemputPangan.makloon',
                 'dataMakloonMpp',
+                'dataMakloonTerima',
                 'dataMakloonTjp',
                 'dataUbJastasma',
                 'poDetail.dataPengadaan.poDetail',
@@ -243,6 +245,7 @@ class TransaksiController extends Controller
         $transaksi->load([
             'dataJemputPangan.makloon',
             'dataMakloonMpp',
+            'dataMakloonTerima',
             'dataMakloonTjp',
             'dataUbJastasma',
             'creator',
@@ -268,7 +271,8 @@ class TransaksiController extends Controller
      */
     private const SCOPE_EDIT_REKAP = [
         'jemput_pangan' => ['data_jemput_pangan' => null],
-        'makloon' => ['data_makloon_tjp' => null, 'data_makloon_mpp' => null],
+        // Makloon Terima ikut blok 'makloon': pelakunya role yang sama, cuma tahapnya beda.
+        'makloon' => ['data_makloon_tjp' => null, 'data_makloon_mpp' => null, 'data_makloon_terima' => null],
         'ub_jastasma' => ['data_ub_jastasma' => null],
         'pengadaan' => ['data_pengadaan' => ['no_po', 'no_in', 'harga']],
         'keuangan' => ['data_pengadaan' => ['no_spp', 'tanggal_bayar']],
@@ -318,8 +322,11 @@ class TransaksiController extends Controller
             'data_makloon_mpp.kabupaten' => ['nullable', 'string', 'max:255'],
             'data_makloon_mpp.tanggal_bongkar' => ['nullable', 'date'],
             'data_makloon_mpp.kuantum' => ['nullable', 'integer', 'min:0', 'max:9999999999999'],
-            'data_makloon_mpp.kuantum_bongkar' => ['nullable', 'integer', 'min:0', 'max:9999999999999'],
             'data_makloon_mpp.jarak_ke_makloon_km' => ['nullable', 'numeric', 'min:0', 'max:99999999.99'],
+
+            // Hasil timbang pindah ke tahapnya sendiri; koreksinya pun ikut ke sana.
+            'data_makloon_terima' => ['sometimes', 'array'],
+            'data_makloon_terima.kuantum_bongkar' => ['nullable', 'integer', 'min:0', 'max:9999999999999'],
 
             'data_ub_jastasma' => ['sometimes', 'array'],
             'data_ub_jastasma.ka1' => ['nullable', 'numeric', 'min:0', 'max:100'],
@@ -353,6 +360,10 @@ class TransaksiController extends Controller
 
             if (array_key_exists('data_makloon_tjp', $validated) && $transaksi->dataMakloonTjp) {
                 $transaksi->dataMakloonTjp->update($validated['data_makloon_tjp']);
+            }
+
+            if (array_key_exists('data_makloon_terima', $validated) && $transaksi->dataMakloonTerima) {
+                $transaksi->dataMakloonTerima->update($validated['data_makloon_terima']);
             }
 
             if (array_key_exists('data_makloon_mpp', $validated) && $transaksi->dataMakloonMpp) {
@@ -404,7 +415,7 @@ class TransaksiController extends Controller
                 $user->update(['akses_edit_dibuka_at' => null]);
             }
 
-            $transaksi->load(['dataJemputPangan.makloon', 'dataMakloonMpp', 'dataMakloonTjp', 'dataUbJastasma', 'poDetail.dataPengadaan.poDetail', 'poDetail.dataPengadaan.dataKeuangan', 'creator']);
+            $transaksi->load(['dataJemputPangan.makloon', 'dataMakloonMpp', 'dataMakloonTerima', 'dataMakloonTjp', 'dataUbJastasma', 'poDetail.dataPengadaan.poDetail', 'poDetail.dataPengadaan.dataKeuangan', 'creator']);
 
             return response()->json(['data' => new TransaksiResource($transaksi)]);
         });
@@ -507,7 +518,7 @@ class TransaksiController extends Controller
 
     private function adminSnapshot(Transaksi $transaksi): array
     {
-        $transaksi->loadMissing(['dataJemputPangan', 'dataMakloonMpp', 'dataMakloonTjp', 'dataUbJastasma', 'poDetail.dataPengadaan.dataKeuangan']);
+        $transaksi->loadMissing(['dataJemputPangan', 'dataMakloonMpp', 'dataMakloonTerima', 'dataMakloonTjp', 'dataUbJastasma', 'poDetail.dataPengadaan.dataKeuangan']);
         $pengadaan = $transaksi->poDetail->first()?->dataPengadaan;
 
         return [
@@ -517,7 +528,8 @@ class TransaksiController extends Controller
             'status_keseluruhan' => $transaksi->status_keseluruhan,
             'data_jemput_pangan' => $transaksi->dataJemputPangan?->only(['id_pemasok', 'supir', 'plat_mobil', 'nama_poktan_gapoktan', 'desa', 'kecamatan', 'kabupaten', 'makloon_user_id', 'tanggal_kirim', 'kuantum', 'jarak_ke_makloon_km']),
             'data_makloon_tjp' => $transaksi->dataMakloonTjp?->only(['tanggal_bongkar', 'kuantum_bongkar']),
-            'data_makloon_mpp' => $transaksi->dataMakloonMpp?->only(['id_pemasok', 'supir', 'plat_mobil', 'desa', 'kecamatan', 'kabupaten', 'tanggal_bongkar', 'kuantum', 'kuantum_bongkar', 'jarak_ke_makloon_km']),
+            'data_makloon_mpp' => $transaksi->dataMakloonMpp?->only(['id_pemasok', 'supir', 'plat_mobil', 'desa', 'kecamatan', 'kabupaten', 'tanggal_bongkar', 'kuantum', 'jarak_ke_makloon_km']),
+            'data_makloon_terima' => $transaksi->dataMakloonTerima?->only(['kuantum_bongkar']),
             'data_ub_jastasma' => $transaksi->dataUbJastasma?->only(['ka1', 'ka2', 'ka3', 'hampa', 'butir_hijau']),
             'data_pengadaan' => $pengadaan ? [
                 'no_po' => $pengadaan->no_po,
@@ -610,6 +622,36 @@ class TransaksiController extends Controller
         return response()->json(['data' => $record]);
     }
 
+    /**
+     * Tahap Makloon Terima (MPP): hasil timbang setelah bongkar, beserta surat jalan & nota
+     * timbang. Baru bisa diisi setelah data Makloon Kirim diterima -- penjagaannya ada di
+     * TransaksiStageService lewat current_stage, sama seperti tahap lain.
+     */
+    public function makloonTerima(Request $request, Transaksi $transaksi)
+    {
+        if ($transaksi->skema !== 'MPP') {
+            abort(422, 'Tahap Makloon Terima hanya ada pada skema MPP.');
+        }
+
+        $aksi = $this->aksiSimpan($request);
+        $required = $aksi === 'submit' ? 'required' : 'nullable';
+
+        $data = $request->validate([
+            'aksi' => ['sometimes', Rule::in(['draft', 'submit'])],
+            'kuantum_bongkar' => [$required, 'integer', 'min:0', 'max:9999999999999'],
+        ]);
+        unset($data['aksi']);
+
+        if ($aksi === 'draft') {
+            $record = $this->service->saveDraft($transaksi, $request->user(), 'makloon_terima', DataMakloonTerima::class, $data);
+        } else {
+            $this->pastikanDokumenLengkap($transaksi, DataMakloonTerima::class);
+            $record = $this->service->submitStage($transaksi, $request->user(), 'makloon_terima', DataMakloonTerima::class, $data);
+        }
+
+        return response()->json(['data' => $record]);
+    }
+
     public function ubJastasma(Request $request, Transaksi $transaksi)
     {
         $aksi = $this->aksiSimpan($request);
@@ -678,24 +720,18 @@ class TransaksiController extends Controller
         'foto_lhpk_hpk' => 'Foto LHPK/HPK',
     ];
 
+    /**
+     * Terima polos untuk SEMUA tahap.
+     *
+     * Dulu ada cabang khusus di sini: pada MPP, aksi Terima sekaligus menuntut dokumen tahap
+     * Makloon Terima dan menyimpan kuantum bongkarnya -- satu tombol untuk tiga pekerjaan.
+     * Akibatnya penerimaan habis di situ dan UB Jastasma tidak kebagian apa pun untuk diperiksa.
+     * Sejak Makloon Terima punya tabel sendiri, ia mengisi dan mengirim lewat endpoint
+     * makloonTerima() seperti tahap lain, dan Terima kembali berarti satu hal saja: menerima
+     * data tahap sebelumnya.
+     */
     public function terima(Request $request, Transaksi $transaksi)
     {
-        // Makloon Terima (MPP): tahap ini punya dokumennya sendiri (surat jalan & nota timbang)
-        // yang wajib ada sebelum data dikunci, lalu simpan kuantum_bongkar opsional.
-        if ($transaksi->skema === 'MPP' && $transaksi->current_stage === 'makloon_terima') {
-            $this->pastikanDokumenLengkap($transaksi, DataMakloonMpp::class, DataMakloonMpp::FOTO_TAHAP_TERIMA);
-
-            if ($request->has('kuantum_bongkar')) {
-                $validated = $request->validate([
-                    'kuantum_bongkar' => ['required', 'integer', 'min:0', 'max:9999999999999'],
-                ]);
-                $mpp = DataMakloonMpp::where('transaksi_id', $transaksi->id_transaksi)->first();
-                if ($mpp) {
-                    $mpp->kuantum_bongkar = $validated['kuantum_bongkar'];
-                    $mpp->save();
-                }
-            }
-        }
 
         $record = $this->service->terima($transaksi, $request->user());
 

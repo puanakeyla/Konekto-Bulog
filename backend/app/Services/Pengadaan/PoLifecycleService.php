@@ -10,7 +10,7 @@ class PoLifecycleService
 {
     /**
      * Pembayaran PO oleh Keuangan (level PO). Keuangan adalah tahap TERAKHIR timeline transaksi
-     * (TJP/MPP berhenti di Keuangan). Operasi & Gudang bukan kelanjutan timeline ini.
+     * (TJP/MPP berhenti di Keuangan).
      *
      * Pelunasan TIDAK menandai transaksi selesai: penutupnya adalah Status Sergab 'lengkap' dari
      * Pengadaan (PengadaanController::update). Pembayaran dan Sergab berjalan paralel setelah

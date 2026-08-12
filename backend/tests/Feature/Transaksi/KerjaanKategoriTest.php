@@ -3,6 +3,7 @@
 namespace Tests\Feature\Transaksi;
 
 use App\Models\DataMakloonMpp;
+use App\Models\DataMakloonTerima;
 use App\Models\DataPengadaan;
 use App\Models\DataUbJastasma;
 use App\Models\Role;
@@ -56,6 +57,64 @@ class KerjaanKategoriTest extends TestCase
         $this->ubJastasma = $this->buatUser('ub_jastasma');
         $this->pengadaan = $this->buatUser('pengadaan');
         $this->keuangan = $this->buatUser('keuangan');
+    }
+
+    /**
+     * Sejak Makloon Terima punya tabel sendiri, data MPP selalu sudah 'diterima' ketika
+     * transaksi sampai ke UB. Klasifikasi lama masih melihat data MPP di sini, sehingga UB
+     * tidak pernah mendapat chip "Perlu dicek" -- yang menunggu diperiksa adalah HASIL TIMBANG.
+     */
+    public function test_ub_dengan_hasil_timbang_menunggu_review_berkategori_periksa(): void
+    {
+        $this->transaksiSampaiUb();
+
+        $this->assertKerjaan($this->ubJastasma, 'periksa');
+    }
+
+    public function test_makloon_dengan_draft_hasil_timbang_berkategori_draft(): void
+    {
+        $transaksi = $this->transaksiSampaiMakloonTerima();
+        $this->stageService->saveDraft($transaksi->fresh(), $this->makloon, 'makloon_terima', DataMakloonTerima::class, ['kuantum_bongkar' => 900]);
+
+        $this->assertKerjaan($this->makloon, 'draft');
+    }
+
+    public function test_hasil_timbang_ditolak_ub_berkategori_ditolak(): void
+    {
+        $transaksi = $this->transaksiSampaiUb();
+        $this->stageService->tolak($transaksi->fresh(), $this->ubJastasma, 'Timbangan tidak cocok');
+
+        $this->assertKerjaan($this->makloon, 'ditolak');
+    }
+
+    /** MPP yang data Makloon Kirim-nya sudah diterima, berhenti di tahap Makloon Terima. */
+    private function transaksiSampaiMakloonTerima(): Transaksi
+    {
+        $transaksi = $this->stageService->createTransaksi($this->makloon);
+
+        $this->stageService->submitStage($transaksi, $this->makloon, 'makloon', DataMakloonMpp::class, [
+            'id_pemasok' => 'PEMASOK-MT',
+            'supir' => 'Supir',
+            'plat_mobil' => 'B 1234 XYZ',
+            'desa' => 'Desa',
+            'kecamatan' => 'Kecamatan',
+            'kabupaten' => 'Kabupaten',
+            'tanggal_bongkar' => '2026-07-10',
+            'kuantum' => 100,
+            'jarak_ke_makloon_km' => 5,
+        ]);
+        $this->stageService->terima($transaksi->fresh(), $this->makloon);
+
+        return $transaksi->fresh();
+    }
+
+    /** Lanjutan: hasil timbang sudah dikirim, menunggu diperiksa UB. */
+    private function transaksiSampaiUb(): Transaksi
+    {
+        $transaksi = $this->transaksiSampaiMakloonTerima();
+        $this->stageService->submitStage($transaksi->fresh(), $this->makloon, 'makloon_terima', DataMakloonTerima::class, ['kuantum_bongkar' => 980]);
+
+        return $transaksi->fresh();
     }
 
     public function test_pengadaan_menunggu_review_ub_berkategori_periksa(): void
@@ -179,7 +238,10 @@ class KerjaanKategoriTest extends TestCase
             'jarak_ke_makloon_km' => 5,
         ]);
 
+        // Makloon Terima: terima data Kirim, isi hasil timbang, kirim -- lalu UB memeriksanya.
         $this->stageService->terima($transaksi->fresh(), $this->makloon);
+        $this->stageService->submitStage($transaksi->fresh(), $this->makloon, 'makloon_terima', DataMakloonTerima::class, ['kuantum_bongkar' => 980]);
+        $this->stageService->terima($transaksi->fresh(), $this->ubJastasma);
         $this->stageService->submitStage($transaksi->fresh(), $this->ubJastasma, 'ub_jastasma', DataUbJastasma::class, [
             'ka1' => 12.5,
             'ka2' => 12.6,

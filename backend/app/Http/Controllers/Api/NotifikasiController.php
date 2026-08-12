@@ -37,7 +37,6 @@ class NotifikasiController extends Controller
                     'username' => $item->actor->username,
                     'role' => $item->actor->role?->nama_role,
                     'nama_maklon' => $item->actor->nama_maklon,
-                    'nama_gudang' => $item->actor->nama_gudang,
                 ] : null,
             ])->values(),
             'unread_count' => $unread,

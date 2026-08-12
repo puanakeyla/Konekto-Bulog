@@ -44,11 +44,11 @@ class FieldVisibilityTest extends TestCase
         $response->assertJsonMissingPath('data.data_jemput_pangan.kuantum');
     }
 
-    public function test_kuantum_jemput_pangan_tersembunyi_untuk_pengadaan_keuangan_operasi_gudang(): void
+    public function test_kuantum_jemput_pangan_tersembunyi_untuk_pengadaan_keuangan(): void
     {
         $transaksi = $this->buatTransaksiTjpDenganKuantum(50);
 
-        foreach (['pengadaan', 'keuangan', 'operasi', 'gudang'] as $role) {
+        foreach (['pengadaan', 'keuangan'] as $role) {
             Sanctum::actingAs($this->buatUser($role));
             $response = $this->getJson("/api/transaksi/{$transaksi->id_transaksi}");
 

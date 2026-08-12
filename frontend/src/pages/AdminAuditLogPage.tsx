@@ -34,8 +34,6 @@ const ROLE_LABELS: Record<string, string> = {
   ub_jastasma: 'UB Jastasma',
   pengadaan: 'Pengadaan',
   keuangan: 'Keuangan',
-  operasi: 'Operasi',
-  gudang: 'Gudang',
 }
 
 const STAGE_LABELS: Record<string, string> = {
@@ -44,8 +42,6 @@ const STAGE_LABELS: Record<string, string> = {
   ub_jastasma: 'UB Jastasma',
   pengadaan: 'Pengadaan',
   keuangan: 'Keuangan',
-  operasi: 'Operasi',
-  gudang: 'Gudang',
 }
 
 // Label grup (level-1 pada snapshot rekap) untuk memperjelas asal field pada diff.
@@ -93,7 +89,6 @@ const FIELD_LABELS: Record<string, string> = {
   username: 'Username',
   role_id: 'Role (ID)',
   nama_maklon: 'Nama Makloon',
-  nama_gudang: 'Nama Gudang',
   is_active: 'Status Aktif',
 }
 

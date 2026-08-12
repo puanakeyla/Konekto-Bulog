@@ -34,6 +34,7 @@ class TransaksiResource extends JsonResource
                 fn () => $this->dataJemputPangan ? new DataJemputPanganResource($this->dataJemputPangan) : null
             ),
             'data_makloon_mpp' => $this->whenLoaded('dataMakloonMpp'),
+            'data_makloon_terima' => $this->whenLoaded('dataMakloonTerima'),
             'data_makloon_tjp' => $this->whenLoaded('dataMakloonTjp'),
             'data_ub_jastasma' => $sampaiTahapMakloon ? null : $this->whenLoaded('dataUbJastasma'),
             // PO tempat transaksi ini bernaung (null bila belum digabung). Dipakai timeline untuk

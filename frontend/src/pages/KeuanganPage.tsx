@@ -14,7 +14,7 @@ export default function KeuanganPage() {
   const poList = poResult?.items ?? []
   const meta = poResult?.meta
   // Keuangan hanya boleh memproses PO yang transaksi anggotanya memang sedang di tahap
-  // keuangan. Tanpa guard ini, data lama yang sudah maju ke Operasi tetapi review_status
+  // keuangan. Tanpa guard ini, data lama yang tahapnya sudah lewat tetapi review_status
   // PO-nya tertinggal "menunggu_review" masih muncul sebagai antrean palsu.
   const poTahapKeuangan = poList.filter((po) => po.current_stage?.includes('keuangan'))
   const perluReview = poTahapKeuangan.filter((po) => po.review_status === 'menunggu_review')

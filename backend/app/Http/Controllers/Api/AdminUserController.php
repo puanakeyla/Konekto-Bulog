@@ -143,14 +143,14 @@ class AdminUserController extends Controller
             unset($validated['password']);
         }
 
-        $before = $user->only(['username', 'role_id', 'nama_maklon', 'nama_gudang', 'kecamatan', 'kabupaten', 'is_active']);
+        $before = $user->only(['username', 'role_id', 'nama_maklon', 'kecamatan', 'kabupaten', 'is_active']);
 
         $user->update($validated);
 
         $this->auditLog->log($request->user(), 'admin_user_update', null, [
             'target_user_id' => $user->id,
             'before' => $before,
-            'after' => $user->fresh()->only(['username', 'role_id', 'nama_maklon', 'nama_gudang', 'kecamatan', 'kabupaten', 'is_active']),
+            'after' => $user->fresh()->only(['username', 'role_id', 'nama_maklon', 'kecamatan', 'kabupaten', 'is_active']),
             'password_changed' => array_key_exists('password', $validated),
         ]);
 
@@ -236,16 +236,10 @@ class AdminUserController extends Controller
     {
         $roleId = $request->integer('role_id', $user?->role_id ?? 0);
         $makloonRoleId = Role::where('nama_role', 'makloon')->value('id');
-        $gudangRoleId = Role::where('nama_role', 'gudang')->value('id');
         $namaMaklonRules = ['nullable', 'string', 'max:150'];
-        $namaGudangRules = ['nullable', 'string', 'max:150'];
 
         if ($roleId === $makloonRoleId && ($user === null || $request->has('role_id') || $request->has('nama_maklon'))) {
             array_unshift($namaMaklonRules, 'required');
-        }
-
-        if ($roleId === $gudangRoleId && ($user === null || $request->has('role_id') || $request->has('nama_gudang'))) {
-            array_unshift($namaGudangRules, 'required');
         }
 
         return $request->validate([
@@ -258,7 +252,6 @@ class AdminUserController extends Controller
             'password' => [$user ? 'sometimes' : 'required', 'string', 'min:8', 'confirmed'],
             'role_id' => [$user ? 'sometimes' : 'required', 'integer', Rule::exists('roles', 'id')],
             'nama_maklon' => $namaMaklonRules,
-            'nama_gudang' => $namaGudangRules,
             'kecamatan' => ['nullable', 'string', 'max:100'],
             'kabupaten' => ['nullable', 'string', 'max:100'],
             'is_active' => ['sometimes', 'boolean'],
@@ -269,19 +262,13 @@ class AdminUserController extends Controller
     {
         // Wajib di-cast: klien bisa mengirim role_id sebagai STRING (form-encoded, atau JSON
         // "role_id": "2"), dan perbandingan ketat di bawah ("2" !== 2) akan menganggapnya bukan
-        // makloon lalu menghapus nama_maklon/nama_gudang akun yang sah. validateUser() di atas
-        // sudah memakai $request->integer(), jadi ini sekaligus menyamakan keduanya.
+        // makloon lalu menghapus nama_maklon akun yang sah. validateUser() di atas sudah
+        // memakai $request->integer(), jadi ini sekaligus menyamakan keduanya.
         $roleId = isset($validated['role_id']) ? (int) $validated['role_id'] : $user?->role_id;
         $makloonRoleId = Role::where('nama_role', 'makloon')->value('id');
-        $gudangRoleId = Role::where('nama_role', 'gudang')->value('id');
 
         if ($roleId !== $makloonRoleId) {
             $validated['nama_maklon'] = null;
-        }
-
-        // Nama gudang hanya bermakna untuk akun ber-role gudang (paralel nama_maklon).
-        if ($roleId !== $gudangRoleId) {
-            $validated['nama_gudang'] = null;
         }
 
         return $validated;

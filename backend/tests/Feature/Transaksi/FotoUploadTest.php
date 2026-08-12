@@ -4,6 +4,7 @@ namespace Tests\Feature\Transaksi;
 
 use App\Models\DataJemputPangan;
 use App\Models\DataMakloonMpp;
+use App\Models\DataMakloonTerima;
 use App\Models\Role;
 use App\Models\Transaksi;
 use App\Models\User;
@@ -182,6 +183,11 @@ class FotoUploadTest extends TestCase
             'jarak_ke_makloon_km' => 4,
         ]);
 
+        // Nota timbang milik tahap Makloon Terima, jadi recordnya harus ada dulu: terima data
+        // Kirim, lalu simpan draft tahap ini -- persis urutan yang dilakukan pengguna.
+        $this->stageService->terima($transaksi->fresh(), $this->makloon);
+        $this->stageService->saveDraft($transaksi->fresh(), $this->makloon, 'makloon_terima', DataMakloonTerima::class, []);
+
         $media = $this->fotoService->upload(
             $transaksi->fresh(),
             $this->makloon,
@@ -189,7 +195,9 @@ class FotoUploadTest extends TestCase
             File::image('nota.jpg')
         );
 
-        $this->assertInstanceOf(DataMakloonMpp::class, $media->model);
+        // Nota timbang milik tahap Makloon Terima, bukan Makloon Kirim -- dua-duanya role
+        // 'makloon', jadi pemiliknya ditentukan jenis fotonya.
+        $this->assertInstanceOf(DataMakloonTerima::class, $media->model);
     }
 
     public function test_post_foto_via_http_sukses(): void

@@ -57,7 +57,7 @@ export default function LoginPage() {
             </h2>
             <div className="mt-5 h-1 w-16 rounded-full bg-accent" />
             <p className="mt-6 max-w-md text-sm leading-7 text-white/70">
-              Masuk untuk memantau serap gabah dari input awal, review, PO, pembayaran, operasi, sampai penerimaan gudang.
+              Masuk untuk memantau serap gabah dari input awal, review, PO, sampai pembayaran.
             </p>
             <div className="mt-7 flex flex-wrap items-center gap-2.5">
               <span className="rounded-full border border-white/15 bg-white/10 px-4 py-1.5 text-xs font-semibold text-white">TJP</span>

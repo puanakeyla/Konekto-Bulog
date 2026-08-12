@@ -82,6 +82,8 @@ type TransaksiDetail = {
   nama_maklon: string | null
   data_jemput_pangan: StageData | null
   data_makloon_mpp: StageData | null
+  /** Tahap Makloon Terima (MPP): hasil timbang, siklus statusnya terpisah dari Makloon Kirim. */
+  data_makloon_terima: StageData | null
   data_makloon_tjp: StageData | null
   data_ub_jastasma: StageData | null
   data_pengadaan: PoItem | null
@@ -94,20 +96,16 @@ type StageConfig = {
   owner: string
   dataKeys: (keyof TransaksiDetail)[]
   helper: string
-  actionPath?: string
-  actionLabel?: string
 }
 
 const STAGES: StageConfig[] = [
   { id: 'jemput_pangan', label: 'Jemput Pangan', owner: 'Jemput Pangan', dataKeys: ['data_jemput_pangan'], helper: 'Input pemasok, kuantum awal, tujuan makloon, dan dokumen lapangan.' },
   { id: 'makloon', label: 'Makloon', owner: 'Makloon', dataKeys: ['data_makloon_tjp', 'data_makloon_mpp'], helper: 'Input data bongkar dan dokumen timbang dari makloon.' },
   { id: 'makloon_kirim', label: 'Makloon Kirim', owner: 'Makloon', dataKeys: ['data_makloon_mpp'], helper: 'Makloon membuat data MPP dan mengirimkannya untuk pengecekan internal.' },
-  { id: 'makloon_terima', label: 'Makloon Terima', owner: 'Makloon', dataKeys: [], helper: 'Makloon mengecek data MPP sebelum diteruskan ke UB Jastasma.' },
+  { id: 'makloon_terima', label: 'Makloon Terima', owner: 'Makloon', dataKeys: ['data_makloon_terima'], helper: 'Terima data Makloon Kirim, lalu catat hasil timbang beserta surat jalan & nota timbang.' },
   { id: 'ub_jastasma', label: 'UB Jastasma', owner: 'UB Jastasma', dataKeys: ['data_ub_jastasma'], helper: 'Cek mutu gabah sebelum transaksi masuk pengadaan.' },
   { id: 'pengadaan', label: 'Pengadaan', owner: 'Pengadaan', dataKeys: [], helper: 'Gabungkan transaksi yang diterima menjadi PO dan isi nomor IN.' },
   { id: 'keuangan', label: 'Keuangan', owner: 'Keuangan', dataKeys: [], helper: 'Input No. SPP dan tanggal pembayaran PO.' },
-  { id: 'operasi', label: 'Operasi', owner: 'Operasi', dataKeys: [], helper: 'Input MO/TM dan persentase hasil produksi.', actionPath: '/operasi', actionLabel: 'Buka Operasi' },
-  { id: 'gudang', label: 'Gudang', owner: 'Gudang', dataKeys: [], helper: 'Catat penerimaan akhir ke gudang.', actionPath: '/gudang', actionLabel: 'Buka Gudang' },
 ]
 
 // Ikon garis sederhana per tahap (stroke currentColor) supaya marker timeline lebih
@@ -208,20 +206,15 @@ function formatDateTime(value: string) {
   return new Intl.DateTimeFormat('id-ID', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }).format(new Date(value))
 }
 
-// Operasi & Gudang sengaja tidak dirender di timeline -- alurnya dikerjakan di halaman
-// /operasi & /gudang. Timeline berhenti di Keuangan. Definisi keduanya tetap ada di STAGES
-// untuk keperluan lookup label (mis. current_stage, riwayat penolakan).
-const TIMELINE_HIDDEN = new Set(['operasi', 'gudang'])
 const STAGE_ACTOR_ROLES: Record<string, string> = {
   makloon_kirim: 'makloon',
   makloon_terima: 'makloon',
 }
 
 function stagesFor(skema: 'TJP' | 'MPP') {
-  const base = skema === 'MPP'
+  return skema === 'MPP'
     ? STAGES.filter((stage) => !['jemput_pangan', 'makloon'].includes(stage.id))
     : STAGES.filter((stage) => !['makloon_kirim', 'makloon_terima'].includes(stage.id))
-  return base.filter((stage) => !TIMELINE_HIDDEN.has(stage.id))
 }
 
 function actorRoleFor(stageId: string) {
@@ -244,7 +237,6 @@ function ownerLabel(owner: string, namaMaklon: string | null) {
 function pendingReviewFor(activeStages: StageConfig[], currentIndex: number, transaksi: TransaksiDetail) {
   if (currentIndex <= 0) return null
 
-  const currentStage = activeStages[currentIndex]
   for (let i = currentIndex - 1; i >= 0; i -= 1) {
     const previousStage = activeStages[i]
     const data = previousStage.dataKeys
@@ -254,13 +246,9 @@ function pendingReviewFor(activeStages: StageConfig[], currentIndex: number, tra
     if (data) {
       // Aksi Terima/Tolak menempel di blok tahap yang DATANYA sedang direview, bukan di blok
       // peninjaunya -- itu yang bikin "Terima & Lanjutkan" muncul di kartu yang isinya memang
-      // sedang dinilai. Makloon Terima satu-satunya pengecualian: ia tidak punya record sendiri
-      // (dataKeys kosong) dan pekerjaannya -- unggah dokumen lalu terima -- memang milik blok itu,
-      // sementara recordnya menumpang di data_makloon_mpp milik Makloon Kirim.
-      return {
-        stageId: currentStage.id === 'makloon_terima' ? currentStage.id : previousStage.id,
-        data,
-      }
+      // sedang dinilai. Tidak ada lagi pengecualian: sejak Makloon Terima punya record sendiri,
+      // tombolnya pun mendarat di kartu Makloon Kirim seperti tahap lain.
+      return { stageId: previousStage.id, data }
     }
   }
 
@@ -408,6 +396,10 @@ export default function TransaksiDetailPage() {
       hampa: textField(transaksi.data_ub_jastasma, 'hampa'),
       butir_hijau: textField(transaksi.data_ub_jastasma, 'butir_hijau'),
     })
+
+    // Tanpa baris ini, kuantum bongkar yang baru disimpan sebagai draft kembali kosong begitu
+    // data ter-refresh -- tersimpan di server tapi tampak hilang di layar.
+    setKuantumBongkarMpp(textField(transaksi.data_makloon_terima, 'kuantum_bongkar'))
   }, [transaksi])
 
   const invalidate = () => {
@@ -418,26 +410,13 @@ export default function TransaksiDetailPage() {
     queryClient.invalidateQueries({ queryKey: ['foto-url', id] })
   }
 
+  // Terima kini SATU pekerjaan untuk semua tahap: menerima data tahap sebelumnya. Dokumen dan
+  // kuantum tahap Makloon Terima tidak lagi menumpang di sini -- keduanya dikirim lewat formnya
+  // sendiri (simpanMakloonTerima), persis seperti tahap lain.
   const terima = useMutation({
-    mutationFn: async (_stageLabel: string) => {
-      const payload: Record<string, unknown> = {}
-      // Makloon Terima (MPP): unggah dokumen tahap ini dulu (backend menolak Terima bila surat
-      // jalan/nota timbang belum ada), lalu sertakan kuantum_bongkar jika diisi.
-      if (transaksi?.skema === 'MPP' && transaksi?.current_stage === 'makloon_terima') {
-        const { gagal } = await uploadSemuaFoto(id!, fotosMakloonTerima, (jenisFoto, percent) =>
-          setProgressMakloonTerima((prev) => ({ ...prev, [jenisFoto]: percent })))
-        if (gagal.length > 0) {
-          throw new Error(`Foto ${gagal.map(fotoLabel).join(', ')} gagal diupload, coba ulangi.`)
-        }
-        if (kuantumBongkarMpp) payload.kuantum_bongkar = Number(kuantumBongkarMpp)
-      }
-      return api.post(`/api/transaksi/${encodeURIComponent(id!)}/terima`, payload)
-    },
+    mutationFn: async (_stageLabel: string) => api.post(`/api/transaksi/${encodeURIComponent(id!)}/terima`),
     onSuccess: (_res, stageLabel) => {
       setCatatan('')
-      setKuantumBongkarMpp('')
-      setFotosMakloonTerima({})
-      setProgressMakloonTerima({})
       invalidate()
       toast.success(`Data ${stageLabel} diterima & dikunci.`)
     },
@@ -515,6 +494,41 @@ export default function TransaksiDetailPage() {
     onError: (err) => toast.error(apiErrorMessage(err, 'Gagal menyimpan data Makloon.')),
   })
 
+  /**
+   * Tahap Makloon Terima, pola sama dengan UB: simpan draft dulu supaya recordnya ada,
+   * BARU unggah foto. Urutan itu wajib -- surat jalan & nota timbang menempel pada record
+   * tahap ini, dan sebelum recordnya lahir tidak ada tempat untuk menaruhnya.
+   */
+  const simpanMakloonTerima = useMutation({
+    mutationFn: async (aksi: AksiSimpan) => {
+      await api.patch(`/api/transaksi/${encodeURIComponent(id!)}/makloon-terima`, {
+        aksi: 'draft',
+        kuantum_bongkar: angkaAtauNull(kuantumBongkarMpp),
+      })
+      const { gagal } = await uploadSemuaFoto(id!, fotosMakloonTerima, (jenisFoto, percent) =>
+        setProgressMakloonTerima((prev) => ({ ...prev, [jenisFoto]: percent })))
+
+      if (aksi === 'submit' && gagal.length === 0) {
+        await api.patch(`/api/transaksi/${encodeURIComponent(id!)}/makloon-terima`, {
+          aksi: 'submit',
+          kuantum_bongkar: Number(kuantumBongkarMpp),
+        })
+      }
+
+      return { gagal, aksi }
+    },
+    onSuccess: ({ gagal, aksi }) => {
+      setFotosMakloonTerima({})
+      setProgressMakloonTerima({})
+      invalidate()
+      toast.success(aksi === 'draft'
+        ? 'Data Makloon Terima tersimpan sebagai draft.'
+        : 'Data Makloon Terima dikirim, transaksi diteruskan ke UB Jastasma.')
+      gagal.forEach((f) => toast.error(`Foto "${fotoLabel(f)}" gagal diupload, coba ulangi.`))
+    },
+    onError: (err) => toast.error(apiErrorMessage(err, 'Gagal menyimpan data Makloon Terima.')),
+  })
+
   const simpanUb = useMutation({
     mutationFn: async (aksi: AksiSimpan) => {
       await api.patch(`/api/transaksi/${encodeURIComponent(id!)}/ub-jastasma`, {
@@ -575,10 +589,10 @@ export default function TransaksiDetailPage() {
   const fotoJemputPanganTersimpan = new Set(dokumenTersimpan.filter((foto) => foto.role === 'jemput_pangan').map((foto) => foto.jenis_foto))
   const fotoMakloonTersimpan = new Set(dokumenTersimpan.filter((foto) => foto.role === 'makloon').map((foto) => foto.jenis_foto))
   const fotoUbTersimpan = new Set(dokumenTersimpan.filter((foto) => foto.role === 'ub_jastasma').map((foto) => foto.jenis_foto))
-  // Makloon Terima bukan review "baca lalu klik": backend menolak Terima selama surat jalan &
-  // nota timbang belum terunggah (TransaksiController@terima), jadi tanpa gerbang ini user baru
-  // tahu setelah kena 422. Kuantum bongkar ikut diwajibkan supaya tidak ada baris tanpa angka
-  // bongkar -- kolom itu yang dipakai rekap.
+  // Gerbang KIRIM tahap Makloon Terima (bukan gerbang Terima -- Terima sekarang polos).
+  // Backend menolak submit selama surat jalan & nota timbang belum terunggah, jadi tanpa daftar
+  // ini user baru tahu setelah kena 422. Kuantum bongkar ikut diwajibkan karena kolom itulah
+  // yang dipakai rekap.
   const makloonTerimaKurang = transaksi.current_stage !== 'makloon_terima'
     ? []
     : [
@@ -592,6 +606,8 @@ export default function TransaksiDetailPage() {
   const canFillJemputPangan = canAct && !pendingData && transaksi.skema === 'TJP' && transaksi.current_stage === 'jemput_pangan' && (!transaksi.data_jemput_pangan || ['draft', 'ditolak'].includes(String(transaksi.data_jemput_pangan.status)))
   const makloonStageData = transaksi.skema === 'MPP' ? transaksi.data_makloon_mpp : transaksi.data_makloon_tjp
   const canFillMakloon = canAct && !pendingData && ((transaksi.skema === 'TJP' && transaksi.current_stage === 'makloon') || (transaksi.skema === 'MPP' && transaksi.current_stage === 'makloon_kirim')) && (!makloonStageData || ['draft', 'ditolak'].includes(String(makloonStageData.status)))
+  const canFillMakloonTerima = canAct && !pendingData && transaksi.skema === 'MPP' && transaksi.current_stage === 'makloon_terima'
+    && (!transaksi.data_makloon_terima || ['draft', 'ditolak'].includes(String(transaksi.data_makloon_terima.status)))
   const canFillUb = canAct && !pendingData && transaksi.current_stage === 'ub_jastasma' && (!transaksi.data_ub_jastasma || ['draft', 'ditolak'].includes(String(transaksi.data_ub_jastasma.status)))
   // Tahap PO (level PO, dikerjakan inline). po = PO tempat transaksi ini bernaung (null bila belum).
   // PENTING: visibilitas panel PO diturunkan dari STATUS PO + role, BUKAN current_stage. No. SPP
@@ -689,7 +705,7 @@ export default function TransaksiDetailPage() {
                 style={{ width: `${Math.max(progressPct, 4)}%` }}
               />
             </div>
-            <p className="mt-2.5 text-xs leading-5 text-slate-500">Setiap tahap mengisi data, tahap berikutnya mengecek dengan aksi Terima atau Tolak. Pengadaan &amp; Keuangan dikerjakan langsung di sini; Operasi &amp; Gudang dilanjutkan di halaman masing-masing.</p>
+            <p className="mt-2.5 text-xs leading-5 text-slate-500">Setiap tahap mengisi data, tahap berikutnya mengecek dengan aksi Terima atau Tolak. Pengadaan &amp; Keuangan dikerjakan langsung di sini.</p>
           </div>
 
           {actionError && <div className="alert-danger mb-4">{actionError}</div>}
@@ -707,7 +723,6 @@ export default function TransaksiDetailPage() {
               // karena current_stage transaksi sudah pindah ke 'keuangan' begitu PO dibuat.
               const isComplete = stage.id === 'pengadaan' ? pengadaanComplete
                 : stage.id === 'keuangan' ? keuanganComplete
-                : stage.id === 'makloon_terima' ? transaksi.data_makloon_mpp?.status === 'diterima'
                 : (!!data && data.status === 'diterima')
               const isCurrent = stage.id === 'pengadaan' ? pengadaanCurrent
                 : stage.id === 'keuangan' ? keuanganCurrent
@@ -715,14 +730,9 @@ export default function TransaksiDetailPage() {
               const isFuture = stage.id === 'pengadaan' ? (!po && !pengadaanCurrent && !pengadaanComplete)
                 : stage.id === 'keuangan' ? (!keuanganCurrent && !keuanganComplete)
                 : (currentIndex >= 0 && index > currentIndex && !data)
-              // Makloon Terima tidak punya tabel sendiri (dataKeys kosong) -- data yang dicek dan
-              // dokumen yang diunggah di tahap ini menempel di record MPP milik Makloon Kirim.
-              // Dipisah dari `data` supaya status kartu (menunggu review/ditolak/giliran Anda)
-              // tetap dihitung seperti semula, hanya isi detailnya yang ikut ditampilkan.
-              const detailData = stage.id === 'makloon_terima'
-                ? (['menunggu_review', 'diterima'].includes(String(transaksi.data_makloon_mpp?.status)) ? transaksi.data_makloon_mpp : null)
-                : data
+              const detailData = data
               const canReviewThis = canAct && !!pendingData?.data && stage.id === pendingData.stageId
+              const showMakloonTerimaForm = stage.id === 'makloon_terima' && canFillMakloonTerima
               const showJemputPanganForm = stage.id === 'jemput_pangan' && canFillJemputPangan
               const showMakloonForm = (stage.id === 'makloon' || stage.id === 'makloon_kirim') && canFillMakloon
               const showUbForm = stage.id === 'ub_jastasma' && canFillUb
@@ -781,7 +791,7 @@ export default function TransaksiDetailPage() {
                       />
                     ) : (
                       <>
-                        {!showJemputPanganForm && !showMakloonForm && !showUbForm && <StageReadOnly data={detailData} collapsed={!isCurrent} />}
+                        {!showJemputPanganForm && !showMakloonForm && !showMakloonTerimaForm && !showUbForm && <StageReadOnly data={detailData} collapsed={!isCurrent} />}
                         <FotoLinks transaksiId={transaksi.id_transaksi} fields={photoFieldsFor(stage.id, transaksi.skema)} />
                       </>
                     ))}
@@ -790,31 +800,45 @@ export default function TransaksiDetailPage() {
                     {showMakloonForm && (transaksi.skema === 'MPP' ? <MakloonMppForm form={makloonMppForm} setForm={setMakloonMppForm} mutation={simpanMakloon} error={makloonError} fotos={fotosMakloon} setFotos={setFotosMakloon} progress={progressMakloon} fotoGagal={fotoMakloonGagal} fotoTersimpan={fotoMakloonTersimpan} /> : <MakloonTjpForm form={makloonForm} setForm={setMakloonForm} mutation={simpanMakloon} error={makloonError} fotos={fotosMakloon} setFotos={setFotosMakloon} progress={progressMakloon} fotoGagal={fotoMakloonGagal} fotoTersimpan={fotoMakloonTersimpan} />)}
                     {showUbForm && <UbForm form={ubForm} setForm={setUbForm} mutation={simpanUb} error={ubError} fotos={fotosUb} setFotos={setFotosUb} progress={progressUb} fotoGagal={fotoUbGagal} fotoTersimpan={fotoUbTersimpan} />}
 
+                    {/* Form tahap Makloon Terima. Baru muncul setelah data Makloon Kirim diterima --
+                        sebelum itu tidak ada yang boleh dicatat sebagai hasil timbang. */}
+                    {showMakloonTerimaForm && (
+                      <div className="mt-4 space-y-4 border-t border-border pt-4">
+                        <div>
+                          <div className="section-title mb-2">Catat hasil bongkar</div>
+                          <p className="page-subtitle mb-2">Isi kuantum bongkar dan unggah kedua dokumen, lalu kirim ke UB Jastasma untuk diperiksa.</p>
+                          <div className="grid gap-4 @md:grid-cols-2">
+                            <Field label="Kuantum bongkar (kg)"><AngkaInput required placeholder="0" value={kuantumBongkarMpp} onChange={setKuantumBongkarMpp} /></Field>
+                          </div>
+                        </div>
+                        <DokumenGrid
+                          fields={MAKLOON_TERIMA_FOTO_FIELDS}
+                          fotos={fotosMakloonTerima}
+                          setFotos={setFotosMakloonTerima}
+                          progress={progressMakloonTerima}
+                          fotoGagal={[]}
+                          fotoTersimpan={fotoMakloonTersimpan}
+                        />
+                        {makloonTerimaKurang.length > 0 && (
+                          <div className="alert-warning">Belum lengkap: {makloonTerimaKurang.join(', ')}.</div>
+                        )}
+                        <div className="flex flex-wrap items-center justify-end gap-3 border-t border-border pt-4">
+                          <button type="button" className="btn btn-outline" disabled={simpanMakloonTerima.isPending} onClick={() => simpanMakloonTerima.mutate('draft')}>
+                            Simpan draft
+                          </button>
+                          <button type="button" className="btn btn-primary" disabled={simpanMakloonTerima.isPending || makloonTerimaKurang.length > 0} onClick={() => simpanMakloonTerima.mutate('submit')}>
+                            {simpanMakloonTerima.isPending ? 'Mengirim...' : 'Kirim ke UB Jastasma'}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
                     {canReviewThis && (
                       <>
-                        {stage.id === 'makloon_terima' && (
-                          <div className="mt-4 space-y-4 border-t border-border pt-4">
-                            <div>
-                              <div className="section-title mb-2">Catat hasil bongkar</div>
-                              <p className="page-subtitle mb-2">Isi kuantum bongkar dan unggah kedua dokumen di bawah, lalu tekan Simpan &amp; Terima.</p>
-                              <div className="grid gap-4 @md:grid-cols-2">
-                                <Field label="Kuantum bongkar (kg)"><AngkaInput required placeholder="0" value={kuantumBongkarMpp} onChange={setKuantumBongkarMpp} /></Field>
-                              </div>
-                            </div>
-                            <DokumenGrid
-                              fields={MAKLOON_TERIMA_FOTO_FIELDS}
-                              fotos={fotosMakloonTerima}
-                              setFotos={setFotosMakloonTerima}
-                              progress={progressMakloonTerima}
-                              fotoGagal={[]}
-                              fotoTersimpan={fotoMakloonTersimpan}
-                            />
-                          </div>
-                        )}
                         <ReviewActions
                           stageLabel={stage.label}
-                          acceptLabel={stage.id === 'makloon_terima' ? 'Simpan & Terima' : 'Terima & Lanjutkan'}
-                          blokir={stage.id === 'makloon_terima' ? makloonTerimaKurang : []}
+                          acceptLabel="Terima & Lanjutkan"
+                          blokir={[]}
                           catatan={catatan}
                           setCatatan={setCatatan}
                           onAccept={() => terima.mutate(stage.label)}

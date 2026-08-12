@@ -16,7 +16,6 @@ use Illuminate\Database\Seeder;
 
 /**
  * Data demo alur transaksi TJP -> PO -> keuangan. Idempoten — aman dijalankan ulang.
- * Akun operasi/gudang tetap dibuat walau modul Pengolahan sudah dihapus (role-nya masih ada).
  * Jalankan manual: php artisan db:seed --class=DemoSeeder
  */
 class DemoSeeder extends Seeder
@@ -30,8 +29,6 @@ class DemoSeeder extends Seeder
         $this->user('ubj_demo', 'ub_jastasma');
         $pengadaanUser = $this->user('pengadaan_demo', 'pengadaan');
         $this->user('keuangan_demo', 'keuangan');
-        $this->user('operasi_demo', 'operasi');
-        $this->user('gudang_demo', 'gudang');
         $makloon = $this->user('mk_jaya', 'makloon', 'PT. JAYA MANUNGGAL PANGAN', 'Cikupa', 'Tangerang');
 
         $this->seedTransaksiTjp($jp, $makloon, $pengadaanUser);

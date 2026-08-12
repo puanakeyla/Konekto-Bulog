@@ -3,6 +3,7 @@
 namespace Tests\Feature\Pengadaan;
 
 use App\Models\DataMakloonMpp;
+use App\Models\DataMakloonTerima;
 use App\Models\DataUbJastasma;
 use App\Models\Role;
 use App\Models\Transaksi;
@@ -161,7 +162,11 @@ class FilterTahapPengadaanTest extends TestCase
             'jarak_ke_makloon_km' => 5,
         ]);
 
+        // Makloon Terima kini tahap berdata sendiri: makloon menerima data Kirim, mengisi hasil
+        // timbang, lalu mengirimnya -- baru setelah itu UB Jastasma yang memeriksanya.
         $this->stageService->terima($transaksi->fresh(), $this->makloon);
+        $this->stageService->submitStage($transaksi->fresh(), $this->makloon, 'makloon_terima', DataMakloonTerima::class, ['kuantum_bongkar' => 980]);
+        $this->stageService->terima($transaksi->fresh(), $this->ubJastasma);
         $this->stageService->submitStage($transaksi->fresh(), $this->ubJastasma, 'ub_jastasma', DataUbJastasma::class, [
             'ka1' => 12.5,
             'ka2' => 12.6,

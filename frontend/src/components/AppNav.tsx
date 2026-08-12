@@ -12,8 +12,6 @@ const roleLabels: Record<string, string> = {
   ub_jastasma: 'UB Jastasma',
   pengadaan: 'Pengadaan',
   keuangan: 'Keuangan',
-  operasi: 'Operasi',
-  gudang: 'Gudang',
   makloon: 'Makloon',
 }
 
@@ -53,7 +51,7 @@ export default function AppNav() {
         <div className="ml-auto flex shrink-0 items-center gap-3">
           {user && (
             <div className="hidden text-right sm:block">
-              {/* Nama mitra/gudang, bukan username -- itu identitas yang dikenal orang. */}
+              {/* Nama mitra, bukan username -- itu identitas yang dikenal orang. */}
               <p className="max-w-[16rem] truncate text-xs font-semibold leading-tight text-white">{namaTampilan(user)}</p>
               <p className="text-[0.6875rem] capitalize leading-tight text-white/50">
                 {roleLabel}{namaTampilan(user) !== user.username ? ` · ${user.username}` : ''}
