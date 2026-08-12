@@ -3,6 +3,7 @@
 namespace Tests\Feature\Transaksi;
 
 use App\Models\DataMakloonMpp;
+use App\Models\DataMakloonTerima;
 use App\Models\DataPengadaan;
 use App\Models\JaminanMakloon;
 use App\Models\PengolahanLhpk;
@@ -167,8 +168,15 @@ class JaminanMakloonTest extends TestCase
         DataMakloonMpp::create([
             'transaksi_id' => $transaksi->id_transaksi,
             'kuantum' => $kuantum,
-            'kuantum_bongkar' => $kuantum,
             'tanggal_bongkar' => '2026-08-01',
+            'status' => 'diterima',
+        ]);/*  */
+
+        // Stok masuk dihitung dari HASIL TIMBANG milik tahap Makloon Terima, bukan kuantum
+        // kirim -- jadi baris inilah yang menentukan, bukan data_makloon_mpp di atas.
+        DataMakloonTerima::create([
+            'transaksi_id' => $transaksi->id_transaksi,
+            'kuantum_bongkar' => $kuantum,
             'status' => 'diterima',
         ]);
 

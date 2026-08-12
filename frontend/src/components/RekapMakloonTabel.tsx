@@ -64,7 +64,6 @@ const GRUP: Grup[] = [
     sel: 'bg-[#F5FBF7]',
     kolom: [
       { key: 'hgl', label: 'HGL', jenis: 'kg' },
-      { key: 'kualitas', label: 'Kualitas', jenis: 'mutu' },
       { key: 'broken', label: 'Broken', jenis: 'mutu' },
       { key: 'menir', label: 'Menir', jenis: 'mutu' },
       { key: 'katul', label: 'Katul', jenis: 'mutu' },

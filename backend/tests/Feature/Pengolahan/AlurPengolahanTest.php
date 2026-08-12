@@ -82,7 +82,6 @@ class AlurPengolahanTest extends TestCase
                 'tanggal_lhpk' => '2026-08-03',
                 'kuantum_gabah_diolah' => $gabah,
                 'kuantum_beras_hgl' => $hgl,
-                'kualitas' => 'Medium',
                 'broken' => 15,
                 'kirim' => $kirim,
             ]);

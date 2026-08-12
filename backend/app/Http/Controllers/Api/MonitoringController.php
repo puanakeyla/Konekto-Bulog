@@ -222,7 +222,6 @@ class MonitoringController extends Controller
                 DB::raw('COALESCE(pg.olah_rekap, 0) as olah_rekap'),
                 DB::raw('COALESCE(pg.olah_selesai, 0) as olah_selesai'),
                 DB::raw('COALESCE(pg.hgl, 0) as hgl'),
-                DB::raw('COALESCE(pg.kualitas, 0) as kualitas'),
                 DB::raw('COALESCE(pg.broken, 0) as broken'),
                 DB::raw('COALESCE(pg.menir, 0) as menir'),
                 DB::raw('COALESCE(pg.katul, 0) as katul'),
@@ -271,7 +270,7 @@ class MonitoringController extends Controller
             'olah_selesai' => $olahSelesai,
             'stok_real' => $sudahIn - $olahSelesai,
             'hgl' => $hgl,
-            'kualitas' => (float) $row->kualitas,
+            
             'broken' => (float) $row->broken,
             'menir' => (float) $row->menir,
             'katul' => (float) $row->katul,
@@ -304,13 +303,15 @@ class MonitoringController extends Controller
             ->selectRaw('t.id_transaksi as transaksi_id')
             ->selectRaw('COALESCE(mk.kuantum_bongkar, 0) as kuantum');
 
+        // MPP: hasil timbang milik tahap Makloon Terima, bukan data_makloon_mpp yang hanya
+        // memuat kuantum kirim. Sejalan dengan JaminanMakloonController::agregatGabahSergab().
         $mpp = DB::table('transaksi as t')
-            ->join('data_makloon_mpp as mk', 'mk.transaksi_id', '=', 't.id_transaksi')
+            ->join('data_makloon_terima as mt', 'mt.transaksi_id', '=', 't.id_transaksi')
             ->where('t.skema', 'MPP')
-            ->where('mk.status', 'diterima')
+            ->where('mt.status', 'diterima')
             ->selectRaw('t.created_by as makloon_user_id')
             ->selectRaw('t.id_transaksi as transaksi_id')
-            ->selectRaw('COALESCE(mk.kuantum_bongkar, 0) as kuantum');
+            ->selectRaw('COALESCE(mt.kuantum_bongkar, 0) as kuantum');
 
         // Status PO di-join SEKALI di luar union, bukan di dalam tiap cabangnya. Waktu ia berada
         // di dalam, MySQL memateralisasi subquery yang sama dua kali (EXPLAIN memperlihatkan
@@ -368,10 +369,7 @@ class MonitoringController extends Controller
             // "Selesai" = Nomor OUT sudah terbit; itulah penanda MO+OUT beres pada rantai ini.
             ->selectRaw("COALESCE(SUM(CASE WHEN tp.status_keseluruhan = 'selesai' THEN l.kuantum_gabah_diolah ELSE 0 END), 0) as olah_selesai")
             ->selectRaw('COALESCE(SUM(l.kuantum_beras_hgl), 0) as hgl')
-            // `kualitas` disimpan sebagai teks tapi diisi angka oleh pengguna. SUM() apa adanya
-            // dipakai karena MySQL maupun SQLite sama-sama memaksanya jadi angka, dan isian
-            // non-angka ikut terbaca sebagai nol -- bukan menggagalkan seluruh query.
-            ->selectRaw('COALESCE(SUM(l.kualitas), 0) as kualitas')
+            // Angka mutu dijumlahkan apa adanya; isian non-angka ikut terbaca sebagai nol
             ->selectRaw('COALESCE(SUM(l.broken), 0) as broken')
             ->selectRaw('COALESCE(SUM(l.menir), 0) as menir')
             ->selectRaw('COALESCE(SUM(l.katul), 0) as katul')

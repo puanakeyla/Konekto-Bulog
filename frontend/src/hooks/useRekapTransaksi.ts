@@ -77,6 +77,8 @@ export type RekapTransaksi = {
   makloon_kabupaten: string | null
   data_jemput_pangan: RekapJemputPangan | null
   data_makloon_mpp: RekapMakloonMpp | null
+  /** Hasil timbang tahap Makloon Terima (MPP). Terpisah dari data kirim di atas. */
+  data_makloon_terima: { kuantum_bongkar: string | null; status?: string | null } | null
   data_makloon_tjp: RekapMakloonTjp | null
   data_ub_jastasma: RekapUb | null
   data_pengadaan: RekapPengadaan | null

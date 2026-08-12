@@ -102,6 +102,30 @@ class AuthTest extends TestCase
         $this->postJson('/api/login', ['username' => $lain->username, 'password' => 'password'])->assertOk();
     }
 
+    /**
+     * Kolom username bercollation case-insensitive di MySQL, jadi tanpa penyaringan ulang
+     * "ADMIN" akan cocok dengan baris "admin". Untuk kredensial, "hampir sama" tidak cukup.
+     */
+    public function test_login_menolak_username_yang_beda_besar_kecil_hurufnya(): void
+    {
+        $user = $this->buatUser('makloon', ['username' => 'operator1']);
+
+        $this->postJson('/api/login', ['username' => 'Operator1', 'password' => 'password'])->assertStatus(422);
+        $this->postJson('/api/login', ['username' => 'OPERATOR1', 'password' => 'password'])->assertStatus(422);
+
+        // Ejaan yang persis tetap boleh masuk.
+        $this->postJson('/api/login', ['username' => $user->username, 'password' => 'password'])->assertOk();
+    }
+
+    public function test_login_menolak_password_yang_beda_besar_kecil_hurufnya(): void
+    {
+        $user = $this->buatUser('makloon', ['password' => bcrypt('RahasiaKu')]);
+
+        $this->postJson('/api/login', ['username' => $user->username, 'password' => 'rahasiaku'])->assertStatus(422);
+        $this->postJson('/api/login', ['username' => $user->username, 'password' => 'RAHASIAKU'])->assertStatus(422);
+        $this->postJson('/api/login', ['username' => $user->username, 'password' => 'RahasiaKu'])->assertOk();
+    }
+
     public function test_login_menolak_akun_nonaktif(): void
     {
         $user = $this->buatUser('makloon', ['is_active' => false]);

@@ -97,6 +97,7 @@ function rejectedStages(row: RekapTransaksi): RejectInfo[] {
   if (row.data_makloon_tjp?.status === 'ditolak' || row.data_makloon_mpp?.status === 'ditolak') {
     items.push({ stage: row.skema === 'MPP' ? 'makloon_kirim' : 'makloon', catatan: (row.data_makloon_tjp?.catatan_penolakan ?? row.data_makloon_mpp?.catatan_penolakan) ?? null })
   }
+  if (row.data_makloon_terima?.status === 'ditolak') items.push({ stage: 'makloon_terima', catatan: null })
   if (row.data_ub_jastasma?.status === 'ditolak') items.push({ stage: 'ub_jastasma', catatan: row.data_ub_jastasma.catatan_penolakan ?? null })
   if (row.data_pengadaan?.review_status === 'ditolak') items.push({ stage: 'pengadaan', catatan: null })
   if (row.data_pengadaan?.data_keuangan?.review_status === 'ditolak') items.push({ stage: 'keuangan', catatan: null })
@@ -157,7 +158,12 @@ const COLS_MAKLOON_MPP: SheetColumn<RekapTransaksi>[] = [
   { key: 'mk_kab', label: 'Makloon · Kabupaten', value: (r) => r.data_makloon_mpp?.kabupaten ?? null },
   { key: 'mk_tgl', label: 'Makloon · Tanggal Bongkar', value: (r) => tgl(r.data_makloon_mpp?.tanggal_bongkar) },
   { key: 'mk_kuantum', label: 'Makloon · Kuantum (kg)', value: (r) => num(r.data_makloon_mpp?.kuantum), render: (r) => r.data_makloon_mpp?.kuantum != null ? formatNumber(r.data_makloon_mpp.kuantum) : '-', align: 'right' },
-  { key: 'mk_kuantum_bongkar', label: 'Makloon · Kuantum Bongkar (kg)', value: (r) => num(r.data_makloon_mpp?.kuantum_bongkar), render: (r) => r.data_makloon_mpp?.kuantum_bongkar != null ? formatNumber(r.data_makloon_mpp.kuantum_bongkar) : '-', align: 'right' },
+]
+
+// Hasil timbang MPP milik tahap Makloon Terima, bukan Makloon Kirim -- jadi kolomnya pun
+// berdiri di grup sendiri dan baru terisi setelah tahap itu diterima.
+const COLS_MAKLOON_TERIMA: SheetColumn<RekapTransaksi>[] = [
+  { key: 'mt_kuantum_bongkar', label: 'Makloon Terima · Kuantum Bongkar (kg)', value: (r) => num(r.data_makloon_terima?.kuantum_bongkar), render: (r) => r.data_makloon_terima?.kuantum_bongkar != null ? formatNumber(r.data_makloon_terima.kuantum_bongkar) : '-', align: 'right' },
 ]
 
 const COLS_UB: SheetColumn<RekapTransaksi>[] = ([
@@ -275,6 +281,7 @@ function hanyaSetelahDiterima(
 const jpDiterima = (r: RekapTransaksi) => r.data_jemput_pangan?.status === 'diterima'
 const makloonDiterima = (r: RekapTransaksi) =>
   (r.skema === 'TJP' ? r.data_makloon_tjp?.status : r.data_makloon_mpp?.status) === 'diterima'
+const makloonTerimaDiterima = (r: RekapTransaksi) => r.data_makloon_terima?.status === 'diterima'
 const ubDiterima = (r: RekapTransaksi) => r.data_ub_jastasma?.status === 'diterima'
 const poDiterima = (r: RekapTransaksi) => r.data_pengadaan?.review_status === 'diterima'
 const keuanganDiterima = (r: RekapTransaksi) => r.data_pengadaan?.data_keuangan?.review_status === 'diterima'
@@ -297,7 +304,11 @@ function kolomUntukRoleSkema(role: string, skema: 'TJP' | 'MPP'): SheetColumn<Re
   if (batas < 0) return colsUmum
   const stageCols = STAGE_ORDER.slice(0, batas + 1).flatMap((s): SheetColumn<RekapTransaksi>[] => {
     if (s === 'jemput_pangan') return skema === 'TJP' ? hanyaSetelahDiterima(COLS_JP, jpDiterima) : []
-    if (s === 'makloon') return hanyaSetelahDiterima(skema === 'TJP' ? COLS_MAKLOON_TJP : COLS_MAKLOON_MPP, makloonDiterima)
+    if (s === 'makloon') {
+      const kirim = hanyaSetelahDiterima(skema === 'TJP' ? COLS_MAKLOON_TJP : COLS_MAKLOON_MPP, makloonDiterima)
+      // MPP punya dua tahap makloon; hasil timbangnya menyusul dengan kunci diterima sendiri.
+      return skema === 'TJP' ? kirim : [...kirim, ...hanyaSetelahDiterima(COLS_MAKLOON_TERIMA, makloonTerimaDiterima)]
+    }
     if (s === 'ub_jastasma') return hanyaSetelahDiterima(COLS_UB, ubDiterima)
     if (s === 'pengadaan') return hanyaSetelahDiterima(COLS_PENGADAAN, poDiterima)
     return hanyaSetelahDiterima(COLS_KEUANGAN, keuanganDiterima)

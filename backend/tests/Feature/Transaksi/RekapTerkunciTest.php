@@ -5,6 +5,7 @@ namespace Tests\Feature\Transaksi;
 use App\Models\DataJemputPangan;
 use App\Models\DataKeuangan;
 use App\Models\DataMakloonMpp;
+use App\Models\DataMakloonTerima;
 use App\Models\DataMakloonTjp;
 use App\Models\DataPengadaan;
 use App\Models\DataUbJastasma;
@@ -117,7 +118,38 @@ class RekapTerkunciTest extends TestCase
         $this->assertNotContains($belumTerkunci->id_transaksi, $ids);
     }
 
-    public function test_urutan_rekap_adalah_skema_lalu_kelompok_po_berdasar_id_minimum_lalu_id_transaksi(): void
+    /**
+     * Keluhan yang dilaporkan: "PO 25-27, di bawahnya 30, eh tiba-tiba ada 24."
+     *
+     * Blok PO dulu diurutkan menurut id_transaksi terkecil anggotanya, yang tidak punya
+     * hubungan apa pun dengan tanggal -- jadi blok tersusun menurut urutan pembuatan, bukan
+     * waktu kejadian. Sekarang kuncinya tanggal TERAWAL dalam satu PO.
+     */
+    public function test_blok_po_tersusun_menurut_tanggal_terawal_anggotanya(): void
+    {
+        // Dibuat dengan urutan yang SENGAJA berlawanan dengan urutan tanggalnya: kalau kunci
+        // urutnya masih id terkecil, hasilnya persis keluhan di atas (25-27, 30, lalu 24).
+        $x1 = $this->buatTjpDenganJpTerkunci('2026-07-25');
+        $x2 = $this->buatTjpDenganJpTerkunci('2026-07-27');
+        $y = $this->buatTjpDenganJpTerkunci('2026-07-30');
+        $z = $this->buatTjpDenganJpTerkunci('2026-07-24');
+
+        $this->pasangPo('PO-X', [$x1->id_transaksi, $x2->id_transaksi]);
+        $this->pasangPo('PO-Y', [$y->id_transaksi]);
+        $this->pasangPo('PO-Z', [$z->id_transaksi]);
+
+        Sanctum::actingAs($this->buatUser('admin'));
+        $ids = collect($this->getJson('/api/transaksi/rekap')->assertOk()->json('data'))->pluck('id_transaksi')->all();
+
+        $this->assertSame([
+            $z->id_transaksi,   // PO-Z, 24 Jul -- blok paling awal walau dibuat paling akhir
+            $x1->id_transaksi,  // PO-X, 25 Jul
+            $x2->id_transaksi,  // PO-X, 27 Jul -- anggota kedua, tetap berdampingan
+            $y->id_transaksi,   // PO-Y, 30 Jul
+        ], $ids);
+    }
+
+    public function test_urutan_rekap_adalah_skema_lalu_kelompok_po_lalu_id_transaksi(): void
     {
         // Enam TJP dan satu MPP, semuanya terkunci di tahap awal supaya lolos filter admin.
         $tjpA = $this->buatTjpDenganJpTerkunci();
@@ -251,7 +283,7 @@ class RekapTerkunciTest extends TestCase
     }
 
     /** TJP dengan tahap Jemput Pangan sudah diterima Makloon (= terkunci). */
-    private function buatTjpDenganJpTerkunci(): Transaksi
+    private function buatTjpDenganJpTerkunci(string $tanggalKirim = '2026-07-09'): Transaksi
     {
         $transaksi = $this->stageService->createTransaksi($this->jemputPangan);
 
@@ -264,7 +296,7 @@ class RekapTerkunciTest extends TestCase
             'kecamatan' => 'Kecamatan',
             'kabupaten' => 'Kabupaten',
             'makloon_user_id' => $this->makloon->id,
-            'tanggal_kirim' => '2026-07-09',
+            'tanggal_kirim' => $tanggalKirim,
             'kuantum' => 100,
             'jarak_ke_makloon_km' => 5,
         ]);
@@ -291,8 +323,11 @@ class RekapTerkunciTest extends TestCase
             'jarak_ke_makloon_km' => 7,
         ]);
 
-        // Tahap "Makloon Terima" (MPP) dikerjakan makloon sendiri, bukan UB Jastasma.
+        // Makloon Terima kini tahap berdata sendiri: makloon menerima data Kirim, MENGISI hasil
+        // timbang, lalu mengirimnya -- baru setelah itu UB Jastasma yang memeriksanya.
         $this->stageService->terima($transaksi->fresh(), $this->makloon);
+        $this->stageService->submitStage($transaksi->fresh(), $this->makloon, 'makloon_terima', DataMakloonTerima::class, ['kuantum_bongkar' => 980]);
+        $this->stageService->terima($transaksi->fresh(), $this->ubJastasma);
 
         return $transaksi->fresh();
     }

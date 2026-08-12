@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
@@ -37,9 +38,32 @@ class AuthController extends Controller
             ])->status(429);
         }
 
-        $user = User::where('username', $credentials['username'])->first();
+        /*
+         | Pencocokan username HARUS persis huruf besar-kecilnya.
+         |
+         | Kolom MySQL proyek ini bercollation *_ci (case-insensitive), jadi
+         | `where('username', 'ADMIN')` cocok dengan baris 'admin' -- dan Auth::attempt()
+         | memakai query yang sama, sehingga "admin"/"Admin"/"ADMIN" semuanya bisa masuk.
+         | Penyaringan ulang di PHP di bawah ini yang menegakkan kesamaan sebenarnya, tanpa
+         | perlu SQL khusus driver (BINARY tidak ada di SQLite yang dipakai test).
+         |
+         | Passwordnya sendiri tidak pernah case-insensitive: bcrypt membandingkan hash.
+         */
+        $user = User::where('username', $credentials['username'])
+            ->get()
+            ->firstWhere(fn (User $kandidat) => $kandidat->username === $credentials['username']);
 
-        if (! $user || ! $user->is_active || ! Auth::guard('web')->attempt($credentials)) {
+        // Login lewat objek user yang SUDAH dipastikan, bukan Auth::attempt() yang akan
+        // menjalankan query case-insensitive itu lagi dari nol.
+        $lolos = $user
+            && $user->is_active
+            && Hash::check($credentials['password'], $user->password);
+
+        if ($lolos) {
+            Auth::guard('web')->login($user);
+        }
+
+        if (! $lolos) {
             // Hanya kegagalan yang menambah hitungan. Login yang benar tidak pernah memakai
             // jatah, jadi berapa pun banyaknya orang masuk bersamaan tidak ada yang terkunci.
             RateLimiter::hit($kunci);

@@ -12,7 +12,6 @@ import { ambilFotoPengolahan, useFotoPengolahanUrl } from '../hooks/useFotoTrans
 import api from '../lib/api'
 import { labelFoto } from '../lib/fotoDokumen'
 import { pesanError } from '../lib/pesanError'
-import { formatAngkaTeks } from '../lib/poFormat'
 
 function num(value: string | number | null | undefined) {
   if (value === null || value === undefined || value === '') return 0
@@ -58,9 +57,6 @@ const COLS_LHPK: Kolom[] = [
   { key: 'stok_gudang', label: 'Stok Gudang saat LHPK', value: (r) => fmt(num(r.data_lhpk?.kuantum_stok_gudang)), align: 'right' },
   { key: 'gabah_diolah', label: 'Gabah Diolah', value: (r) => fmt(num(r.data_lhpk?.kuantum_gabah_diolah)), align: 'right' },
   { key: 'beras_hgl', label: 'Beras HGL', value: (r) => fmt(num(r.data_lhpk?.kuantum_beras_hgl)), align: 'right' },
-  // Kualitas diisi angka kilogram di lapangan; formatAngkaTeks memberinya pemisah ribuan tapi
-  // tetap meloloskan isian huruf apa adanya.
-  { key: 'kualitas', label: 'Kualitas', value: (r) => formatAngkaTeks(r.data_lhpk?.kualitas), filterable: true, align: 'right' },
   { key: 'broken', label: 'Broken', value: (r) => fmt(num(r.data_lhpk?.broken)), align: 'right' },
   { key: 'menir', label: 'Menir', value: (r) => fmt(num(r.data_lhpk?.menir)), align: 'right' },
   { key: 'katul', label: 'Katul', value: (r) => fmt(num(r.data_lhpk?.katul)), align: 'right' },
@@ -285,7 +281,6 @@ function isiForm(row: PengolahanItem): FormEdit {
     l_tanggal_lhpk: teks(row.data_lhpk?.tanggal_lhpk).slice(0, 10),
     l_kuantum_gabah_diolah: teks(row.data_lhpk?.kuantum_gabah_diolah),
     l_kuantum_beras_hgl: teks(row.data_lhpk?.kuantum_beras_hgl),
-    l_kualitas: teks(row.data_lhpk?.kualitas),
     l_broken: teks(row.data_lhpk?.broken),
     l_menir: teks(row.data_lhpk?.menir),
     l_katul: teks(row.data_lhpk?.katul),
@@ -318,7 +313,6 @@ function payloadEdit(form: FormEdit, blok: TahapPengolahan[]) {
       tanggal_lhpk: teks(form.l_tanggal_lhpk),
       kuantum_gabah_diolah: angka(form.l_kuantum_gabah_diolah),
       kuantum_beras_hgl: angka(form.l_kuantum_beras_hgl),
-      kualitas: teks(form.l_kualitas),
       broken: angka(form.l_broken),
       menir: angka(form.l_menir),
       katul: angka(form.l_katul),
@@ -556,7 +550,6 @@ function ModalEditPengolahan({ row, role, form, blok, isSaving, onChange, onClos
                 <FieldEdit type="date" label="Tanggal LHPK" value={form.l_tanggal_lhpk} onChange={(v) => onChange('l_tanggal_lhpk', v)} />
                 <FieldEdit type="number" label="Gabah Diolah (kg)" value={form.l_kuantum_gabah_diolah} onChange={(v) => onChange('l_kuantum_gabah_diolah', v)} />
                 <FieldEdit type="number" label="Beras HGL (kg)" value={form.l_kuantum_beras_hgl} onChange={(v) => onChange('l_kuantum_beras_hgl', v)} />
-                <FieldEdit label="Kualitas" value={form.l_kualitas} onChange={(v) => onChange('l_kualitas', v)} />
                 <FieldEdit type="number" label="Broken" value={form.l_broken} onChange={(v) => onChange('l_broken', v)} />
                 <FieldEdit type="number" label="Menir" value={form.l_menir} onChange={(v) => onChange('l_menir', v)} />
                 <FieldEdit type="number" label="Katul" value={form.l_katul} onChange={(v) => onChange('l_katul', v)} />

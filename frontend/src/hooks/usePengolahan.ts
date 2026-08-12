@@ -29,7 +29,6 @@ export type DataLhpk = {
   kuantum_stok_gudang: string | null
   kuantum_gabah_diolah: string | null
   kuantum_beras_hgl: string | null
-  kualitas: string | null
   broken: string | null
   menir: string | null
   katul: string | null
@@ -54,6 +53,8 @@ export type PengolahanItem = {
   makloon?: { id: number; nama_maklon: string | null } | null
   /** Hanya ada di response detail: stok berjalan gudang ini (dihitung server). */
   stok_gudang_berjalan?: number
+  /** Hanya ada di response detail. Baca-saja, tidak pernah dikirim balik ke server. */
+  neraca_makloon?: { stok_real: number; belum_adm_belum_olah: number }
   current_stage: TahapPengolahan
   /** Klasifikasi antrean dari server (KerjaanPengolahan), ikut tiap baris daftar. */
   kerjaan?: KerjaanId

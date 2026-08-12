@@ -21,7 +21,6 @@ export type BarisRekapMakloon = {
   olah_selesai: number
   stok_real: number
   hgl: number
-  kualitas: number
   broken: number
   menir: number
   katul: number

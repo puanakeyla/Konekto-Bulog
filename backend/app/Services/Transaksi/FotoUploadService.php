@@ -4,6 +4,7 @@ namespace App\Services\Transaksi;
 
 use App\Models\DataJemputPangan;
 use App\Models\DataMakloonMpp;
+use App\Models\DataMakloonTerima;
 use App\Models\DataMakloonTjp;
 use App\Models\DataUbJastasma;
 use App\Models\Transaksi;
@@ -50,7 +51,7 @@ class FotoUploadService
             $role = $roleOverride;
         }
 
-        $model = $this->resolveTargetModel($transaksi, $role);
+        $model = $this->resolveTargetModel($transaksi, $role, $jenisFoto);
 
         if (! $model) {
             abort(422, "Tidak ada data {$role} untuk transaksi ini.");
@@ -79,13 +80,17 @@ class FotoUploadService
     /**
      * @return (Model&HasMedia)|null
      */
-    private function resolveTargetModel(Transaksi $transaksi, string $role): (Model&HasMedia)|null
+    private function resolveTargetModel(Transaksi $transaksi, string $role, string $jenisFoto = ''): (Model&HasMedia)|null
     {
         return match ($role) {
             'jemput_pangan' => DataJemputPangan::where('transaksi_id', $transaksi->id_transaksi)->first(),
-            'makloon' => $transaksi->skema === 'MPP'
-                ? DataMakloonMpp::where('transaksi_id', $transaksi->id_transaksi)->first()
-                : DataMakloonTjp::where('transaksi_id', $transaksi->id_transaksi)->first(),
+            // MPP punya DUA tahap milik role makloon, jadi role saja tidak cukup menentukan
+            // pemiliknya -- surat jalan & nota timbang milik Makloon Terima, sisanya Kirim.
+            'makloon' => $transaksi->skema !== 'MPP'
+                ? DataMakloonTjp::where('transaksi_id', $transaksi->id_transaksi)->first()
+                : (in_array($jenisFoto, DataMakloonTerima::FOTO, true)
+                    ? DataMakloonTerima::where('transaksi_id', $transaksi->id_transaksi)->first()
+                    : DataMakloonMpp::where('transaksi_id', $transaksi->id_transaksi)->first()),
             'ub_jastasma' => DataUbJastasma::where('transaksi_id', $transaksi->id_transaksi)->first(),
             default => null,
         };

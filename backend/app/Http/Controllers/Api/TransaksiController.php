@@ -7,6 +7,7 @@ use App\Http\Resources\TransaksiResource;
 use App\Models\DataJemputPangan;
 use App\Models\DataKeuangan;
 use App\Models\DataMakloonMpp;
+use App\Models\DataMakloonTerima;
 use App\Models\DataMakloonTjp;
 use App\Models\DataUbJastasma;
 use App\Models\Role;
@@ -62,7 +63,7 @@ class TransaksiController extends Controller
             // Pengadaan, sehingga chip "Perlu diperbaiki" berangka tapi panelnya tidak memuat
             // apa-apa. Tiga query tambahan per halaman (bukan N+1), halaman dibatasi 20 baris.
             ->with([
-                'dataJemputPangan.makloon', 'dataMakloonMpp', 'dataMakloonTjp', 'dataUbJastasma', 'creator',
+                'dataJemputPangan.makloon', 'dataMakloonMpp', 'dataMakloonTerima', 'dataMakloonTjp', 'dataUbJastasma', 'creator',
                 'poDetail.dataPengadaan.poDetail',
                 'poDetail.dataPengadaan.dataKeuangan',
             ])
@@ -151,6 +152,7 @@ class TransaksiController extends Controller
             ->with([
                 'dataJemputPangan.makloon',
                 'dataMakloonMpp',
+                'dataMakloonTerima',
                 'dataMakloonTjp',
                 'dataUbJastasma',
                 'poDetail.dataPengadaan.poDetail',
@@ -163,17 +165,20 @@ class TransaksiController extends Controller
             // alfabetis, sehingga 'MPP' < 'TJP' dan blok MPP malah nongol di depan. CASE
             // eksplisit ini menghasilkan urutan yang sama persis di kedua engine.
             ->orderByRaw("CASE skema WHEN 'TJP' THEN 0 WHEN 'MPP' THEN 1 ELSE 2 END")
-            // Kunci urut satu PO = id_transaksi TERKECIL di antara anggotanya (lewat
-            // po_detail), BUKAN no_po. `no_po` adalah teks bebas yang diketik user ("PO lala",
-            // "jaja", "PO1234", dst) -- mengurutkannya secara alfabetis tidak punya hubungan
-            // dengan urutan id_transaksi, sehingga blok PO bisa muncul tidak berurutan walau
-            // id_transaksi-nya sendiri sudah urut (ini defect yang dilaporkan: "ID Transaksi
-            // belum urut tapi skemanya sudah"). Transaksi tanpa PO memakai id_transaksi-nya
-            // sendiri lewat COALESCE, jadi tidak perlu penanganan NULL terpisah. Baris-baris
-            // satu PO tetap berdampingan karena semua anggotanya memakai kunci yang sama --
-            // itu prasyarat sel gabungan di tabel frontend. JANGAN disederhanakan balik ke
-            // `orderBy('no_po')`.
-            ->orderByRaw('COALESCE(kunci_po.kunci, transaksi.id_transaksi)')
+            // Kunci urut satu PO = TANGGAL TERAWAL di antara anggotanya, BUKAN no_po dan bukan
+            // pula id_transaksi terkecil seperti dulu. `no_po` teks bebas yang diketik user
+            // ("PO lala", "jaja", "PO1234") -- alfabetisnya tidak berhubungan dengan waktu.
+            // Sedangkan id terkecil membuat blok PO tersusun acak menurut tanggal: satu blok
+            // 25-27 Juli bisa disusul blok 30 Juli lalu tiba-tiba 24 Juli.
+            //
+            // Seluruh anggota satu PO memakai kunci yang SAMA, jadi mereka tetap berdampingan
+            // -- itu prasyarat sel gabungan No. PO/Harga/Total di tabel frontend. Yang berubah
+            // cuma urutan antar-blok. Transaksi tanpa PO memakai tanggalnya sendiri lewat
+            // COALESCE. JANGAN disederhanakan jadi orderBy tanggal per baris: itu memecah
+            // anggota satu PO dan membuat angka PO tampil berulang.
+            ->orderByRaw('COALESCE(kunci_po.kunci, '.self::tanggalUrut().')')
+            // Di dalam satu blok PO, baris ikut urut tanggal lalu id.
+            ->orderByRaw(self::tanggalUrut())
             ->orderBy('id_transaksi');
 
         // Role Jemput Pangan hanya relevan dengan skema TJP (MPP tidak punya tahap JP).
@@ -201,6 +206,10 @@ class TransaksiController extends Controller
         $total = (clone $query)->reorder()->count();
 
         $items = $query
+            // Join khusus pengurutan, dipasang di sini saja supaya COUNT di atas tidak ikut
+            // menanggungnya. Keduanya satu-baris-per-transaksi, jadi tidak menggandakan baris.
+            ->leftJoin('data_jemput_pangan as ur_jp', 'ur_jp.transaksi_id', '=', 'transaksi.id_transaksi')
+            ->leftJoin('data_makloon_mpp as ur_mpp', 'ur_mpp.transaksi_id', '=', 'transaksi.id_transaksi')
             ->leftJoinSub($this->kunciUrutPo(), 'kunci_po', 'kunci_po.transaksi_id', '=', 'transaksi.id_transaksi')
             ->forPage($halaman, $perPage)
             ->get();
@@ -222,12 +231,27 @@ class TransaksiController extends Controller
      * di halamanRekap() tidak pernah menggandakan baris andai satu transaksi tercatat di lebih
      * dari satu PO.
      */
+    /**
+     * Tanggal yang memandu urutan rekap: tanggal KIRIM untuk TJP (milik tahap Jemput Pangan),
+     * tanggal BONGKAR untuk MPP. MPP tidak lewat Jemput Pangan sehingga tidak punya tanggal
+     * kirim, dan bongkar adalah satu-satunya tanggal lapangan yang dimilikinya. Jatuh ke
+     * tanggal transaksi dibuat kalau keduanya belum diisi, supaya baris yang datanya masih
+     * kosong tidak menumpuk di depan sebagai NULL.
+     */
+    private static function tanggalUrut(string $transaksi = 'transaksi', string $jp = 'ur_jp', string $mpp = 'ur_mpp'): string
+    {
+        return "COALESCE({$jp}.tanggal_kirim, {$mpp}.tanggal_bongkar, DATE({$transaksi}.created_at))";
+    }
+
     private function kunciUrutPo(): \Illuminate\Database\Query\Builder
     {
-        $minPerPo = DB::table('po_detail')
-            ->groupBy('data_pengadaan_id')
-            ->select('data_pengadaan_id')
-            ->selectRaw('MIN(transaksi_id) as kunci');
+        $minPerPo = DB::table('po_detail as pdx')
+            ->join('transaksi as tx', 'tx.id_transaksi', '=', 'pdx.transaksi_id')
+            ->leftJoin('data_jemput_pangan as jpx', 'jpx.transaksi_id', '=', 'tx.id_transaksi')
+            ->leftJoin('data_makloon_mpp as mppx', 'mppx.transaksi_id', '=', 'tx.id_transaksi')
+            ->groupBy('pdx.data_pengadaan_id')
+            ->select('pdx.data_pengadaan_id')
+            ->selectRaw('MIN('.self::tanggalUrut('tx', 'jpx', 'mppx').') as kunci');
 
         return DB::table('po_detail as pd')
             ->joinSub($minPerPo, 'm', 'm.data_pengadaan_id', '=', 'pd.data_pengadaan_id')
@@ -288,6 +312,7 @@ class TransaksiController extends Controller
         $transaksi->load([
             'dataJemputPangan.makloon',
             'dataMakloonMpp',
+                'dataMakloonTerima',
             'dataMakloonTjp',
             'dataUbJastasma',
             'creator',
@@ -313,7 +338,8 @@ class TransaksiController extends Controller
      */
     private const SCOPE_EDIT_REKAP = [
         'jemput_pangan' => ['data_jemput_pangan' => null],
-        'makloon' => ['data_makloon_tjp' => null, 'data_makloon_mpp' => null],
+        // Makloon Terima ikut blok 'makloon': pelakunya role yang sama, cuma tahapnya beda.
+        'makloon' => ['data_makloon_tjp' => null, 'data_makloon_mpp' => null, 'data_makloon_terima' => null],
         'ub_jastasma' => ['data_ub_jastasma' => null],
         'pengadaan' => ['data_pengadaan' => ['no_po', 'no_in', 'harga']],
         'keuangan' => ['data_pengadaan' => ['no_spp', 'tanggal_bayar']],
@@ -363,8 +389,11 @@ class TransaksiController extends Controller
             'data_makloon_mpp.kabupaten' => ['nullable', 'string', 'max:255'],
             'data_makloon_mpp.tanggal_bongkar' => ['nullable', 'date'],
             'data_makloon_mpp.kuantum' => ['nullable', 'integer', 'min:0', 'max:9999999999999'],
-            'data_makloon_mpp.kuantum_bongkar' => ['nullable', 'integer', 'min:0', 'max:9999999999999'],
             'data_makloon_mpp.jarak_ke_makloon_km' => ['nullable', 'numeric', 'min:0', 'max:99999999.99'],
+
+            // Hasil timbang pindah ke tahapnya sendiri; koreksinya pun ikut ke sana.
+            'data_makloon_terima' => ['sometimes', 'array'],
+            'data_makloon_terima.kuantum_bongkar' => ['nullable', 'integer', 'min:0', 'max:9999999999999'],
 
             'data_ub_jastasma' => ['sometimes', 'array'],
             'data_ub_jastasma.ka1' => ['nullable', 'numeric', 'min:0', 'max:100'],
@@ -398,6 +427,10 @@ class TransaksiController extends Controller
 
             if (array_key_exists('data_makloon_tjp', $validated) && $transaksi->dataMakloonTjp) {
                 $transaksi->dataMakloonTjp->update($validated['data_makloon_tjp']);
+            }
+
+            if (array_key_exists('data_makloon_terima', $validated) && $transaksi->dataMakloonTerima) {
+                $transaksi->dataMakloonTerima->update($validated['data_makloon_terima']);
             }
 
             if (array_key_exists('data_makloon_mpp', $validated) && $transaksi->dataMakloonMpp) {
@@ -447,7 +480,7 @@ class TransaksiController extends Controller
             // kuncinya balik seperti semula tanpa admin harus ingat menutupnya.
             $user->pakaiJatahEdit();
 
-            $transaksi->load(['dataJemputPangan.makloon', 'dataMakloonMpp', 'dataMakloonTjp', 'dataUbJastasma', 'poDetail.dataPengadaan.poDetail', 'poDetail.dataPengadaan.dataKeuangan', 'creator']);
+            $transaksi->load(['dataJemputPangan.makloon', 'dataMakloonMpp', 'dataMakloonTerima', 'dataMakloonTjp', 'dataUbJastasma', 'poDetail.dataPengadaan.poDetail', 'poDetail.dataPengadaan.dataKeuangan', 'creator']);
 
             return response()->json(['data' => new TransaksiResource($transaksi)]);
         });
@@ -550,7 +583,7 @@ class TransaksiController extends Controller
 
     private function adminSnapshot(Transaksi $transaksi): array
     {
-        $transaksi->loadMissing(['dataJemputPangan', 'dataMakloonMpp', 'dataMakloonTjp', 'dataUbJastasma', 'poDetail.dataPengadaan.dataKeuangan']);
+        $transaksi->loadMissing(['dataJemputPangan', 'dataMakloonMpp', 'dataMakloonTerima', 'dataMakloonTjp', 'dataUbJastasma', 'poDetail.dataPengadaan.dataKeuangan']);
         $pengadaan = $transaksi->poDetail->first()?->dataPengadaan;
 
         return [
@@ -560,7 +593,8 @@ class TransaksiController extends Controller
             'status_keseluruhan' => $transaksi->status_keseluruhan,
             'data_jemput_pangan' => $transaksi->dataJemputPangan?->only(['id_pemasok', 'supir', 'plat_mobil', 'nama_poktan_gapoktan', 'desa', 'kecamatan', 'kabupaten', 'makloon_user_id', 'tanggal_kirim', 'kuantum', 'jarak_ke_makloon_km']),
             'data_makloon_tjp' => $transaksi->dataMakloonTjp?->only(['tanggal_bongkar', 'kuantum_bongkar']),
-            'data_makloon_mpp' => $transaksi->dataMakloonMpp?->only(['id_pemasok', 'supir', 'plat_mobil', 'desa', 'kecamatan', 'kabupaten', 'tanggal_bongkar', 'kuantum', 'kuantum_bongkar', 'jarak_ke_makloon_km']),
+            'data_makloon_mpp' => $transaksi->dataMakloonMpp?->only(['id_pemasok', 'supir', 'plat_mobil', 'desa', 'kecamatan', 'kabupaten', 'tanggal_bongkar', 'kuantum', 'jarak_ke_makloon_km']),
+            'data_makloon_terima' => $transaksi->dataMakloonTerima?->only(['kuantum_bongkar']),
             'data_ub_jastasma' => $transaksi->dataUbJastasma?->only(['ka1', 'ka2', 'ka3', 'hampa', 'butir_hijau']),
             'data_pengadaan' => $pengadaan ? [
                 'no_po' => $pengadaan->no_po,
@@ -657,6 +691,39 @@ class TransaksiController extends Controller
         return response()->json(['data' => $record]);
     }
 
+    /**
+     * Tahap Makloon Terima (MPP): hasil timbang setelah bongkar, beserta surat jalan & nota
+     * timbang. Baru bisa diisi setelah data Makloon Kirim diterima -- penjagaannya ada di
+     * TransaksiStageService lewat current_stage, sama seperti tahap lain.
+     *
+     * Kapasitas jaminan TIDAK dicek lagi di sini: gerbangnya sekali saja, saat Makloon Kirim,
+     * memakai kuantum kirim. Lihat pastikanKapasitasJaminanMakloon().
+     */
+    public function makloonTerima(Request $request, Transaksi $transaksi)
+    {
+        if ($transaksi->skema !== 'MPP') {
+            abort(422, 'Tahap Makloon Terima hanya ada pada skema MPP.');
+        }
+
+        $aksi = $this->aksiSimpan($request);
+        $required = $aksi === 'submit' ? 'required' : 'nullable';
+
+        $data = $request->validate([
+            'aksi' => ['sometimes', Rule::in(['draft', 'submit'])],
+            'kuantum_bongkar' => [$required, 'integer', 'min:0', 'max:9999999999999'],
+        ]);
+        unset($data['aksi']);
+
+        if ($aksi === 'draft') {
+            $record = $this->service->saveDraft($transaksi, $request->user(), 'makloon_terima', DataMakloonTerima::class, $data);
+        } else {
+            $this->pastikanDokumenLengkap($transaksi, DataMakloonTerima::class);
+            $record = $this->service->submitStage($transaksi, $request->user(), 'makloon_terima', DataMakloonTerima::class, $data);
+        }
+
+        return response()->json(['data' => $record]);
+    }
+
     public function ubJastasma(Request $request, Transaksi $transaksi)
     {
         $aksi = $this->aksiSimpan($request);
@@ -725,29 +792,17 @@ class TransaksiController extends Controller
         'foto_lhpk_hpk' => 'Foto LHPK/HPK',
     ];
 
+    /**
+     * Terima polos untuk SEMUA tahap.
+     *
+     * Dulu ada cabang khusus di sini: pada MPP, aksi Terima sekaligus menuntut dokumen tahap
+     * Makloon Terima dan menyimpan kuantum bongkarnya -- satu tombol untuk tiga pekerjaan.
+     * Sejak Makloon Terima punya tabel sendiri, ia mengisi dan mengirim lewat endpoint
+     * makloonTerima() seperti tahap lain, dan Terima kembali berarti satu hal saja: menerima
+     * data tahap sebelumnya.
+     */
     public function terima(Request $request, Transaksi $transaksi)
     {
-        // Makloon Terima (MPP): tahap ini punya dokumennya sendiri (surat jalan & nota timbang)
-        // yang wajib ada sebelum data dikunci, lalu simpan kuantum_bongkar opsional.
-        if ($transaksi->skema === 'MPP' && $transaksi->current_stage === 'makloon_terima') {
-            $this->pastikanDokumenLengkap($transaksi, DataMakloonMpp::class, DataMakloonMpp::FOTO_TAHAP_TERIMA);
-
-            if ($request->has('kuantum_bongkar')) {
-                $validated = $request->validate([
-                    'kuantum_bongkar' => ['required', 'integer', 'min:0', 'max:9999999999999'],
-                ]);
-                $mpp = DataMakloonMpp::where('transaksi_id', $transaksi->id_transaksi)->first();
-                if ($mpp) {
-                    $this->pastikanKapasitasJaminanMakloon($request, $transaksi, [
-                        'tanggal_bongkar' => $mpp->tanggal_bongkar,
-                        'kuantum_bongkar' => $validated['kuantum_bongkar'],
-                    ]);
-                    $mpp->kuantum_bongkar = $validated['kuantum_bongkar'];
-                    $mpp->save();
-                }
-            }
-        }
-
         $record = $this->service->terima($transaksi, $request->user());
 
         return response()->json(['data' => $record, 'transaksi' => $transaksi->fresh()]);

@@ -11,7 +11,12 @@ import PoProgressInfo from './PoProgressInfo'
 import PoTransaksiRows from './PoTransaksiRows'
 
 /** Langkah SPP. Menyimpan No. SPP langsung menyerahkan PO ke Keuangan. */
-export default function PoSppForm({ po, onChanged }: { po: PoItem; onChanged?: () => void }) {
+/**
+ * `onKembali` membuka kembali langkah No. IN. Ia duduk di BARIS TOMBOL kartu ini, bukan
+ * menggantung di bawah kartu: tautan yang melayang di luar bingkai terbaca seperti aksi lain
+ * yang tidak berhubungan -- dan sempat tertukar dengan "Batalkan PO" yang letaknya mirip.
+ */
+export default function PoSppForm({ po, onChanged, onKembali }: { po: PoItem; onChanged?: () => void; onKembali?: () => void }) {
   const queryClient = useQueryClient()
   const navigate = useNavigate()
   const [noSpp, setNoSpp] = useState(po.no_spp ?? '')
@@ -69,6 +74,11 @@ export default function PoSppForm({ po, onChanged }: { po: PoItem; onChanged?: (
       </label>
 
       <div className="mt-4 flex flex-wrap items-center justify-end gap-3 border-t border-border pt-4">
+        {onKembali && (
+          <button type="button" onClick={onKembali} className="mr-auto text-xs font-semibold text-slate-500 transition-colors hover:text-primary">
+            &larr; Kembali ke isi No. IN
+          </button>
+        )}
         <button type="submit" disabled={!noSpp.trim() || mutation.isPending} className="btn btn-primary">
           {mutation.isPending ? 'Mengirim...' : ditolak ? 'Kirim ulang ke Keuangan' : 'Simpan & Kirim ke Keuangan'}
         </button>

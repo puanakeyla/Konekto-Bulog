@@ -22,6 +22,8 @@ export type TransaksiListItem = {
   makloon_kecamatan: string | null
   makloon_kabupaten: string | null
   data_makloon_mpp?: { id_pemasok: string; tanggal_bongkar: string; kuantum: string; kuantum_bongkar?: string | null; status?: string; catatan_penolakan?: string | null } | null
+  /** Tahap Makloon Terima (MPP): hasil timbang setelah bongkar, punya siklus statusnya sendiri. */
+  data_makloon_terima?: { kuantum_bongkar?: string | null; status?: string; catatan_penolakan?: string | null; locked_at?: string | null } | null
   data_makloon_tjp?: { tanggal_bongkar: string; kuantum_bongkar: string; status?: string; catatan_penolakan?: string | null } | null
   data_jemput_pangan?: { id_pemasok: string; makloon_user_id: number; tanggal_kirim?: string | null; status?: string; catatan_penolakan?: string | null } | null
   data_ub_jastasma?: { status?: string; catatan_penolakan?: string | null } | null

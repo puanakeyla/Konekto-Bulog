@@ -30,7 +30,6 @@ class PengolahanLhpk extends Model implements HasMedia
         'kuantum_stok_gudang',
         'kuantum_gabah_diolah',
         'kuantum_beras_hgl',
-        'kualitas',
         'broken',
         'menir',
         'katul',

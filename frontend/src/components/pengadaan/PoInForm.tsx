@@ -9,7 +9,8 @@ import type { PoItem } from '../../hooks/usePoList'
 import ConfirmDialog from '../ConfirmDialog'
 import PoProgressInfo from './PoProgressInfo'
 
-export default function PoInForm({ po, onChanged }: { po: PoItem; onChanged?: () => void }) {
+/** `onKembali` hanya terisi saat kartu ini dibuka ulang dari langkah No. SPP. */
+export default function PoInForm({ po, onChanged, onKembali }: { po: PoItem; onChanged?: () => void; onKembali?: () => void }) {
   const queryClient = useQueryClient()
   const navigate = useNavigate()
   const [values, setValues] = useState<Record<number, string>>(() => Object.fromEntries(po.po_detail.map((detail) => [detail.id, detail.no_in ?? ''])))
@@ -87,7 +88,14 @@ export default function PoInForm({ po, onChanged }: { po: PoItem; onChanged?: ()
         </table>
       </div>
       <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4">
-        <button type="button" className="btn btn-outline-danger" onClick={() => setConfirmBatal(true)}>Batalkan PO</button>
+        <div className="flex flex-wrap items-center gap-3">
+          <button type="button" className="btn btn-outline-danger" onClick={() => setConfirmBatal(true)}>Batalkan PO</button>
+          {onKembali && (
+            <button type="button" onClick={onKembali} className="text-xs font-semibold text-slate-500 transition-colors hover:text-primary">
+              Batal, kembali ke No. SPP
+            </button>
+          )}
+        </div>
         <button type="submit" disabled={!semuaLengkap || mutation.isPending} className="btn btn-primary">{mutation.isPending ? 'Menyimpan...' : 'Simpan IN'}</button>
       </div>
 

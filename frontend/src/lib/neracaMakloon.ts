@@ -18,7 +18,6 @@ export const KOLOM_DIJUMLAH = [
   'olah_selesai',
   'stok_real',
   'hgl',
-  'kualitas',
   'broken',
   'menir',
   'katul',

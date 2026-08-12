@@ -19,7 +19,6 @@ function baris(isi: Partial<BarisRekapMakloon>): BarisRekapMakloon {
     olah_selesai: 0,
     stok_real: 0,
     hgl: 0,
-    kualitas: 0,
     broken: 0,
     menir: 0,
     katul: 0,

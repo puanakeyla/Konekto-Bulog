@@ -31,7 +31,7 @@ class Transaksi extends Model
     protected static function booted(): void
     {
         static::deleting(function (self $transaksi) {
-            foreach (['dataJemputPangan', 'dataMakloonMpp', 'dataMakloonTjp', 'dataUbJastasma'] as $relasi) {
+            foreach (['dataJemputPangan', 'dataMakloonMpp', 'dataMakloonTerima', 'dataMakloonTjp', 'dataUbJastasma'] as $relasi) {
                 $transaksi->{$relasi}?->delete();
             }
         });
@@ -67,6 +67,12 @@ class Transaksi extends Model
     public function dataMakloonMpp(): HasOne
     {
         return $this->hasOne(DataMakloonMpp::class, 'transaksi_id', 'id_transaksi');
+    }
+
+    /** Hasil timbang tahap Makloon Terima (khusus MPP). */
+    public function dataMakloonTerima(): HasOne
+    {
+        return $this->hasOne(DataMakloonTerima::class, 'transaksi_id', 'id_transaksi');
     }
 
     public function dataMakloonTjp(): HasOne

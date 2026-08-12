@@ -139,6 +139,27 @@ class PengolahanController extends Controller
      * menjawab. Angka ringkasannya TIDAK dihitung dari halaman yang kebetulan terbuka melainkan
      * dari seluruh himpunan, jadi kartu totalnya tetap benar di halaman berapa pun.
      */
+    /**
+     * Tanggal yang memandu urutan Rekap Pengolahan: tanggal masuk gudang. Jatuh ke tanggal
+     * baris dibuat selama tahap Gudang belum diisi -- di skema UBJ, Gudang berjalan setelah
+     * UB Jastasma, jadi baris UBJ yang masih di tahap awal memang belum punya tanggal itu.
+     */
+    private static function tanggalUrut(string $pengolahan = 'transaksi_pengolahan', string $gudang = 'ur_g'): string
+    {
+        return "COALESCE({$gudang}.tanggal_masuk_gudang, DATE({$pengolahan}.created_at))";
+    }
+
+    /** Tanggal masuk gudang terawal per MO, dihitung sekali lalu dipetakan ke tiap anggotanya. */
+    private function kunciUrutMo(): \Illuminate\Database\Query\Builder
+    {
+        return DB::table('pengolahan_mo_detail as mdx')
+            ->join('transaksi_pengolahan as tpx', 'tpx.id_pengolahan', '=', 'mdx.transaksi_pengolahan_id')
+            ->leftJoin('pengolahan_gudang as gx', 'gx.transaksi_pengolahan_id', '=', 'mdx.transaksi_pengolahan_id')
+            ->groupBy('mdx.pengolahan_mo_id')
+            ->select('mdx.pengolahan_mo_id')
+            ->selectRaw('MIN('.self::tanggalUrut('tpx', 'gx').') as kunci');
+    }
+
     public function rekap(Request $request)
     {
         $this->assertPembaca($request);
@@ -177,9 +198,16 @@ class PengolahanController extends Controller
             ->select('transaksi_pengolahan.*')
             ->leftJoin('pengolahan_mo_detail as rk_md', 'rk_md.transaksi_pengolahan_id', '=', 'transaksi_pengolahan.id_pengolahan')
             ->leftJoin('pengolahan_mo as rk_mo', 'rk_mo.id', '=', 'rk_md.pengolahan_mo_id')
-            ->orderByRaw('COALESCE(rk_mo.created_at, transaksi_pengolahan.created_at) DESC')
+            // Kunci blok MO = TANGGAL MASUK GUDANG TERAWAL anggotanya, bukan created_at MO.
+            // created_at menyusun blok menurut kapan MO dibuat di aplikasi, yang tidak ada
+            // hubungannya dengan kapan gabahnya masuk gudang -- sama persis dengan keluhan
+            // blok PO acak di Rekap Sergab. Anggota satu MO tetap memakai kunci yang sama,
+            // jadi keberdampingannya (prasyarat sel gabungan No. MO/TM/OUT) tidak berubah.
+            ->leftJoin('pengolahan_gudang as ur_g', 'ur_g.transaksi_pengolahan_id', '=', 'transaksi_pengolahan.id_pengolahan')
+            ->leftJoinSub($this->kunciUrutMo(), 'kunci_mo', 'kunci_mo.pengolahan_mo_id', '=', 'rk_md.pengolahan_mo_id')
+            ->orderByRaw('COALESCE(kunci_mo.kunci, '.self::tanggalUrut().') DESC')
             ->orderBy('rk_md.pengolahan_mo_id')
-            ->orderByDesc('transaksi_pengolahan.created_at')
+            ->orderByRaw(self::tanggalUrut().' DESC')
             ->with(['gudang', 'makloon:id,nama_maklon', 'dataGudang.gudang', 'dataLhpk.gudangTujuan', 'moDetail.mo'])
             ->forPage($nomorHalaman, $perPage)
             ->get();
@@ -282,7 +310,6 @@ class PengolahanController extends Controller
             'data_lhpk.tanggal_lhpk' => ['nullable', 'date'],
             'data_lhpk.kuantum_gabah_diolah' => ['nullable', 'numeric', 'min:0', 'max:9999999999.99'],
             'data_lhpk.kuantum_beras_hgl' => ['nullable', 'numeric', 'min:0', 'max:9999999999.99'],
-            'data_lhpk.kualitas' => ['nullable', 'string', 'max:50'],
             'data_lhpk.broken' => ['nullable', 'numeric', 'min:0'],
             'data_lhpk.menir' => ['nullable', 'numeric', 'min:0'],
             'data_lhpk.katul' => ['nullable', 'numeric', 'min:0'],
@@ -368,7 +395,7 @@ class PengolahanController extends Controller
             'skema' => $pengolahan->skema,
             'current_stage' => $pengolahan->current_stage,
             'data_gudang' => $pengolahan->dataGudang?->only(['tanggal_masuk_gudang', 'kuantum_hgl', 'plat_mobil', 'supir']),
-            'data_lhpk' => $pengolahan->dataLhpk?->only(['no_lhpk', 'tanggal_lhpk', 'kuantum_gabah_diolah', 'kuantum_beras_hgl', 'kualitas', 'broken', 'menir', 'katul', 'ka1', 'ka2', 'ka3', 'reject']),
+            'data_lhpk' => $pengolahan->dataLhpk?->only(['no_lhpk', 'tanggal_lhpk', 'kuantum_gabah_diolah', 'kuantum_beras_hgl', 'broken', 'menir', 'katul', 'ka1', 'ka2', 'ka3', 'reject']),
             'mo' => $pengolahan->moDetail?->mo?->only(['no_mo', 'no_tm_ada', 'no_tm_gudang', 'no_out', 'tanggal_out']),
         ];
     }
@@ -393,6 +420,12 @@ class PengolahanController extends Controller
                 // Angka yang akan disnapshot ke LHPK saat disimpan -- ditampilkan read-only di form
                 // supaya pengisi melihat nilai yang sama dengan yang nanti tersimpan.
                 'stok_gudang_berjalan' => Gudang::stokBerjalan($pengolahan->gudang_id),
+                // Dua angka neraca makloon, BACA-SAJA: tidak pernah dikirim balik dan tidak
+                // disimpan ke LHPK. Gunanya memberi UB Jastasma konteks stok mitra yang sedang
+                // ia proses, dengan definisi yang sama persis dengan neraca gabah admin.
+                'neraca_makloon' => $pengolahan->makloon_user_id
+                    ? JaminanMakloonController::neracaMakloon($pengolahan->makloon_user_id)
+                    : ['stok_real' => 0.0, 'belum_adm_belum_olah' => 0.0],
             ],
         ]);
     }
@@ -505,7 +538,6 @@ class PengolahanController extends Controller
             'tanggal_lhpk' => ['nullable', 'date'],
             'kuantum_gabah_diolah' => ['nullable', 'numeric', 'min:0'],
             'kuantum_beras_hgl' => ['nullable', 'numeric', 'min:0'],
-            'kualitas' => ['nullable', 'string', 'max:50'],
             'broken' => ['nullable', 'numeric', 'min:0'],
             'menir' => ['nullable', 'numeric', 'min:0'],
             'katul' => ['nullable', 'numeric', 'min:0'],

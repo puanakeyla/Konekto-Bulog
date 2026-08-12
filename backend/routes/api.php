@@ -96,6 +96,8 @@ Route::middleware(['auth:sanctum', 'user.aktif'])->group(function () {
         ->middleware('role:jemput_pangan|admin');
     Route::patch('/transaksi/{transaksi}/makloon', [TransaksiController::class, 'makloon'])
         ->middleware('role:makloon|admin');
+    Route::patch('/transaksi/{transaksi}/makloon-terima', [TransaksiController::class, 'makloonTerima'])
+        ->middleware('role:makloon|admin');
     Route::patch('/transaksi/{transaksi}/ub-jastasma', [TransaksiController::class, 'ubJastasma'])
         ->middleware('role:ub_jastasma|admin');
     Route::post('/transaksi/{transaksi}/terima', [TransaksiController::class, 'terima']);

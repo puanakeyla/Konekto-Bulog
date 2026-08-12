@@ -3,6 +3,7 @@
 namespace Tests\Feature\Transaksi;
 
 use App\Models\DataJemputPangan;
+use App\Models\DataMakloonTerima;
 use App\Models\DataMakloonTjp;
 use App\Models\DataPengadaan;
 use App\Models\PoDetail;
@@ -72,6 +73,36 @@ class AksesEditRekapTest extends TestCase
         ])->assertOk();
 
         $this->assertSame('Supir Baru', $transaksi->dataJemputPangan->fresh()->supir);
+    }
+
+    /**
+     * Hasil timbang MPP pindah ke tabel tahap Makloon Terima, jadi koreksinya pun harus
+     * mendarat di sana. Kalau blok ini salah sasaran, penyimpanannya tetap menjawab 200 sambil
+     * tidak mengubah angka yang dibaca rekap maupun gerbang jaminan.
+     */
+    public function test_koreksi_kuantum_bongkar_mpp_mendarat_di_tabel_makloon_terima(): void
+    {
+        $transaksi = Transaksi::create([
+            'id_transaksi' => '00009/08/2026/MPP',
+            'skema' => 'MPP',
+            'current_stage' => 'ub_jastasma',
+            'status_keseluruhan' => 'berjalan',
+            'created_by' => $this->makloon->id,
+        ]);
+        DataMakloonTerima::create([
+            'transaksi_id' => $transaksi->id_transaksi,
+            'kuantum_bongkar' => 900,
+            'status' => 'diterima',
+        ]);
+
+        $this->bukaAkses($this->makloon);
+        Sanctum::actingAs($this->makloon);
+
+        $this->patchJson($this->urlRekap($transaksi), [
+            'data_makloon_terima' => ['kuantum_bongkar' => 1234],
+        ])->assertOk();
+
+        $this->assertEquals(1234, DataMakloonTerima::where('transaksi_id', $transaksi->id_transaksi)->value('kuantum_bongkar'));
     }
 
     public function test_jatah_satu_kali_habis_setelah_sekali_simpan(): void

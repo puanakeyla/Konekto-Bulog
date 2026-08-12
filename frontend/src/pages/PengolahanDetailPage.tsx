@@ -46,7 +46,6 @@ const FIELD_LHPK: FieldDef[] = [
   { key: 'tanggal_lhpk', label: 'Tanggal LHPK', type: 'date' },
   { key: 'kuantum_gabah_diolah', label: 'Kuantum gabah yang sudah diolah (kg)', ribuan: true },
   { key: 'kuantum_beras_hgl', label: 'Kuantum beras HGL (kg)', ribuan: true },
-  { key: 'kualitas', label: 'Kualitas' },
   // Angka mutu BUKAN persen -- nilainya ditulis apa adanya (mis. 6,5 / 18,5). Hanya rendemen
   // yang benar-benar persen karena ia rasio beras HGL terhadap gabah diolah.
   { key: 'broken', label: 'Broken', type: 'number' },
@@ -55,7 +54,9 @@ const FIELD_LHPK: FieldDef[] = [
   { key: 'ka1', label: 'KA1', type: 'number' },
   { key: 'ka2', label: 'KA2', type: 'number' },
   { key: 'ka3', label: 'KA3', type: 'number' },
-  { key: 'reject', label: 'Reject', type: 'number' },
+  // Reject beda sendiri dari angka mutu di atasnya: nilainya kilogram berskala jutaan dan
+  // tidak pernah berkoma, jadi ia memakai input berpemisah ribuan seperti kolom kuantum.
+  { key: 'reject', label: 'Reject (kg)', ribuan: true },
 ]
 
 const STATUS_LABEL: Record<StatusTahap, string> = {
@@ -639,7 +640,6 @@ function TahapSummary({ tahap, transaksi }: { tahap: TahapPengolahan; transaksi:
           ['Rendemen', fmt(data?.rendemen, '%')],
           // fmt() sudah meloloskan isian non-angka apa adanya, jadi "Medium" tetap "Medium"
           // sementara angka kilogram dapat pemisah ribuannya.
-          ['Kualitas', fmt(data?.kualitas)],
           ['Broken / Menir / Katul', `${fmt(data?.broken)} / ${fmt(data?.menir)} / ${fmt(data?.katul)}`],
           ['KA1 / KA2 / KA3', `${fmt(data?.ka1)} / ${fmt(data?.ka2)} / ${fmt(data?.ka3)}`],
           ['Reject', fmt(data?.reject)],
@@ -1345,6 +1345,34 @@ function FormTahap({
               readOnly
             />
           </div>
+        )}
+
+        {/* Dua angka neraca mitra, BACA-SAJA: tidak ikut terkirim dan tidak tersimpan ke LHPK.
+            Gunanya memberi UB Jastasma gambaran stok makloon yang sedang ia proses, dengan
+            definisi yang sama persis dengan kolom senama di neraca gabah admin. */}
+        {tahap === 'ub_jastasma' && (
+          <>
+            <div>
+              <label className="label" htmlFor="stok-real">Kuantum stok gudang real (kg)</label>
+              <input
+                id="stok-real"
+                className="input bg-white text-muted"
+                value={fmt(transaksi.neraca_makloon?.stok_real ?? 0)}
+                readOnly
+              />
+              <p className="mt-1 text-xs text-muted">Gabah sudah IN dikurangi yang sudah diolah dan sudah teradministrasi.</p>
+            </div>
+            <div>
+              <label className="label" htmlFor="stok-belum-olah">Kuantum stok gudang belum diolah (kg)</label>
+              <input
+                id="stok-belum-olah"
+                className="input bg-white text-muted"
+                value={fmt(transaksi.neraca_makloon?.belum_adm_belum_olah ?? 0)}
+                readOnly
+              />
+              <p className="mt-1 text-xs text-muted">Gabah sudah IN dikurangi seluruh yang sudah diolah.</p>
+            </div>
+          </>
         )}
 
         {fields.map((field) => {

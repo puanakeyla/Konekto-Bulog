@@ -155,7 +155,9 @@ class JaminanMakloonController extends Controller
             ->where('mk.tanggal_bongkar', $tanggal)
             ->whereNotIn('mk.status', ['ditolak'])
             ->when($excludeTransaksiId, fn ($q) => $q->where('t.id_transaksi', '<>', $excludeTransaksiId))
-            ->selectRaw('COALESCE(SUM(COALESCE(mk.kuantum_bongkar, mk.kuantum)), 0) as total')
+            // Kuantum KIRIM, bukan bongkar: gerbang kapasitas berjalan saat Makloon Kirim
+            // menekan Kirim, dan angka bongkar baru ada satu tahap sesudahnya.
+            ->selectRaw('COALESCE(SUM(mk.kuantum), 0) as total')
             ->value('total');
 
         return (float) $tjp + (float) $mpp;
@@ -167,10 +169,28 @@ class JaminanMakloonController extends Controller
         // diisi (dan keduanya sudah), Laravel mengabaikan nama yang diminta lalu mengembalikan
         // kolom PERTAMA -- yaitu makloon_user_id. Gerbang ini pernah membandingkan ID user
         // dengan batas kilogram karenanya, dan tidak ada yang tampak salah dari luar.
-        $sg = (float) (self::agregatGabahSergab($makloonUserId)->first()->gabah_sudah_in ?? 0);
-        $pg = (float) (self::agregatOlahPengolahan($makloonUserId)->first()->olah_rekap ?? 0);
+        return self::neracaMakloon($makloonUserId)['belum_adm_belum_olah'];
+    }
 
-        return $sg - $pg;
+    /**
+     * Dua angka neraca satu makloon, definisinya SAMA PERSIS dengan kolom senama di neraca
+     * gabah admin (MonitoringController::rekapMakloon) supaya tidak ada dua versi kebenaran:
+     *
+     * - stok_real            = gabah sudah IN - yang sudah diolah DAN sudah teradministrasi
+     * - belum_adm_belum_olah = gabah sudah IN - seluruh yang sudah diolah
+     *
+     * Keduanya dipakai baca-saja di tahap UB Jastasma, dan yang kedua juga jadi dasar gerbang
+     * kapasitas jaminan.
+     */
+    public static function neracaMakloon(int $makloonUserId): array
+    {
+        $sudahIn = (float) (self::agregatGabahSergab($makloonUserId)->first()->gabah_sudah_in ?? 0);
+        $olah = self::agregatOlahPengolahan($makloonUserId)->first();
+
+        return [
+            'stok_real' => $sudahIn - (float) ($olah->olah_selesai ?? 0),
+            'belum_adm_belum_olah' => $sudahIn - (float) ($olah->olah_rekap ?? 0),
+        ];
     }
 
     /**
@@ -196,13 +216,16 @@ class JaminanMakloonController extends Controller
 
         // MPP: pemiliknya pembuat transaksi, bukan data_jemput_pangan (skema ini tidak punya
         // tahap JP) -- jadi kolom penyaringnya pun beda.
+        // Stok memakai hasil TIMBANG, jadi sumbernya tahap Makloon Terima -- bukan kuantum
+        // kirim di data_makloon_mpp. Statusnya pun status tahap itu: selama hasil timbangnya
+        // belum diterima, angkanya belum final dan belum layak dihitung sebagai stok masuk.
         $mpp = DB::table('transaksi as t')
-            ->join('data_makloon_mpp as mk', 'mk.transaksi_id', '=', 't.id_transaksi')
+            ->join('data_makloon_terima as mt', 'mt.transaksi_id', '=', 't.id_transaksi')
             ->where('t.skema', 'MPP')
-            ->where('mk.status', 'diterima')
+            ->where('mt.status', 'diterima')
             ->when($makloonUserId !== null, fn ($q) => $q->where('t.created_by', $makloonUserId))
             ->selectRaw('t.created_by as makloon_user_id')
-            ->selectRaw('COALESCE(mk.kuantum_bongkar, 0) as kuantum');
+            ->selectRaw('COALESCE(mt.kuantum_bongkar, 0) as kuantum');
         self::batasiKeSudahIn($mpp);
 
         return DB::query()
