@@ -475,6 +475,7 @@ export default function TransaksiDetailPage() {
       invalidate()
       toast.success(aksi === 'draft' ? 'Data Jemput Pangan tersimpan sebagai draft.' : 'Data Jemput Pangan dikirim ulang ke Makloon.')
       gagal.forEach((f) => toast.error(`Foto "${fotoLabel(f)}" gagal diupload, coba ulangi.`))
+      navigate('/dashboard')
     },
     onError: (err) => toast.error(apiErrorMessage(err, 'Gagal menyimpan data Jemput Pangan.')),
   })
@@ -506,6 +507,7 @@ export default function TransaksiDetailPage() {
       invalidate()
       toast.success(aksi === 'draft' ? 'Data Makloon tersimpan sebagai draft.' : transaksi?.skema === 'MPP' ? 'Data Makloon dikirim untuk proses Makloon Terima.' : 'Data Makloon dikirim, transaksi diteruskan ke UB Jastasma.')
       gagal.forEach((f) => toast.error(`Foto "${fotoLabel(f)}" gagal diupload, coba ulangi.`))
+      navigate('/dashboard')
     },
     onError: (err) => toast.error(apiErrorMessage(err, 'Gagal menyimpan data Makloon.')),
   })
@@ -542,10 +544,7 @@ export default function TransaksiDetailPage() {
         ? 'Data Makloon Terima tersimpan sebagai draft.'
         : 'Data Makloon Terima dikirim, transaksi diteruskan ke UB Jastasma.')
       gagal.forEach((f) => toast.error(`Foto "${fotoLabel(f)}" gagal diupload, coba ulangi.`))
-
-      // Sudah terkirim = tidak ada lagi yang bisa dikerjakan makloon di halaman ini, jadi
-      // pulang ke dashboard. Draft sengaja TIDAK ikut: pengisiannya belum tentu selesai.
-      if (aksi === 'submit' && gagal.length === 0) navigate('/dashboard')
+      navigate('/dashboard')
     },
     onError: (err) => toast.error(apiErrorMessage(err, 'Gagal menyimpan data Makloon Terima.')),
   })
@@ -580,6 +579,7 @@ export default function TransaksiDetailPage() {
       invalidate()
       toast.success(aksi === 'draft' ? 'Data UB Jastasma tersimpan sebagai draft.' : 'Data UB Jastasma dikirim, transaksi diteruskan ke Pengadaan.')
       gagal.forEach((f) => toast.error(`Foto "${fotoLabel(f)}" gagal diupload, coba ulangi.`))
+      navigate('/dashboard')
     },
     onError: (err) => toast.error(apiErrorMessage(err, 'Gagal menyimpan data UB Jastasma.')),
   })

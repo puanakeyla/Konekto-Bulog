@@ -56,6 +56,8 @@ const angkaAtauNull = (value: string) => value === '' ? null : Number(value)
 const fotoKurang = (fotos: Record<string, File | null>) =>
   FOTO_FIELDS.filter(({ key }) => !fotos[key]).map(({ label }) => label)
 
+const terisi = (value: string) => value.trim() !== ''
+
 export default function TransaksiJemputPanganPage() {
   const navigate = useNavigate()
   const [form, setForm] = useState<FormState>(initialState)
@@ -97,7 +99,7 @@ export default function TransaksiJemputPanganPage() {
       setFotoGagal(gagal)
       toast.success(aksi === 'draft' ? `Transaksi ${idTransaksi} tersimpan sebagai draft.` : `Transaksi ${idTransaksi} dibuat & dikirim ke Makloon.`)
       gagal.forEach((f) => toast.error(`Foto "${fotoLabel(f)}" gagal diupload, coba ulangi.`))
-      if (gagal.length === 0) navigate('/dashboard')
+      navigate('/dashboard')
     },
     onError: (err) => toast.error(apiErrorMessage(err, 'Gagal membuat transaksi Jemput Pangan.')),
     onSettled: () => setAksiBerjalan(null),
@@ -109,8 +111,9 @@ export default function TransaksiJemputPanganPage() {
   const errorMessage =
     (mutation.error as { response?: { data?: { message?: string } } } | null)?.response?.data
       ?.message
-  const dataLengkap = !!(form.id_pemasok && form.supir && form.plat_mobil && form.nama_poktan_gapoktan && form.desa && form.kecamatan && form.kabupaten && form.makloon_user_id && form.tanggal_kirim && form.kuantum && form.jarak_ke_makloon_km)
+  const dataLengkap = !!(terisi(form.id_pemasok) && terisi(form.supir) && terisi(form.plat_mobil) && terisi(form.nama_poktan_gapoktan) && terisi(form.desa) && terisi(form.kecamatan) && terisi(form.kabupaten) && form.makloon_user_id && terisi(form.tanggal_kirim) && terisi(form.kuantum) && terisi(form.jarak_ke_makloon_km))
   const dokumenKurang = fotoKurang(fotos)
+  const kirimNonaktif = mutation.isPending || !dataLengkap || dokumenKurang.length > 0
 
   const simpan = (aksi: AksiSimpan) => {
     if (aksi === 'submit') {
@@ -282,9 +285,9 @@ export default function TransaksiJemputPanganPage() {
               </button>
               <button
                 type="button"
-                disabled={mutation.isPending}
+                disabled={kirimNonaktif}
                 onClick={() => simpan('submit')}
-                className={`rounded-lg bg-accent px-6 py-2.5 text-sm font-bold text-primary-dark shadow-sm transition-all hover:bg-primary hover:text-white hover:shadow-md disabled:cursor-not-allowed disabled:opacity-60 ${(!dataLengkap || dokumenKurang.length > 0) ? 'opacity-70' : ''}`}
+                className="rounded-lg bg-accent px-6 py-2.5 text-sm font-bold text-primary-dark shadow-sm transition-all hover:bg-primary hover:text-white hover:shadow-md disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {mutation.isPending && aksiBerjalan === 'submit' ? 'Mengirim...' : 'Kirim'}
               </button>
