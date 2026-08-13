@@ -11,6 +11,7 @@ class JaminanMakloon extends Model
 
     protected $fillable = [
         'makloon_user_id',
+        'bentuk_jaminan',
         'jaminan_rp',
         'kapasitas_per_hari_kg',
         'batas_hari',

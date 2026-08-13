@@ -71,6 +71,10 @@ class JaminanMakloonTest extends TestCase
     {
         $transaksi = $this->buatTransaksi();
 
+        // Draft WAJIB lebih dulu: foto menempel pada record tahap, dan sebelum recordnya lahir
+        // FotoUploadService menolak dengan "Tidak ada data makloon untuk transaksi ini."
+        $this->patchJson("/api/transaksi/{$transaksi->id_transaksi}/makloon", $this->dataMpp('draft'))
+            ->assertOk();
         $this->lengkapiFotoKirim($transaksi);
 
         $this->patchJson("/api/transaksi/{$transaksi->id_transaksi}/makloon", $this->dataMpp('submit'))
@@ -97,7 +101,77 @@ class JaminanMakloonTest extends TestCase
         // muncul adalah soal kapasitas -- bukan "Dokumen belum lengkap" yang menyesatkan.
         $this->patchJson("/api/transaksi/{$transaksi->id_transaksi}/makloon-terima", $this->dataMakloonTerima('submit'))
             ->assertStatus(422)
-            ->assertJsonPath('message', fn (string $pesan) => str_contains($pesan, 'kapasitas harian'));
+            ->assertJsonPath('message', fn (string $pesan) => str_contains($pesan, 'Kuota harian'));
+    }
+
+    /**
+     * Sisa kuota harian HANGUS saat ganti hari, tidak digulung. Kalau digulung, makloon yang
+     * hari ini cuma pakai 2.000 dari 3.000 akan bisa memasukkan 4.000 besok -- dan itu bukan
+     * aturannya.
+     */
+    public function test_sisa_kuota_harian_tidak_digulung_ke_hari_berikutnya(): void
+    {
+        $this->buatJaminan(kapasitasPerHari: 3_000);
+        $this->stokBelumSelesai('2026-08-01', 2_000);
+
+        $transaksi = $this->buatTransaksi();
+        DataMakloonMpp::create([
+            'transaksi_id' => $transaksi->id_transaksi,
+            'kuantum' => 4_000,
+            'tanggal_bongkar' => '2026-08-02',
+            'status' => 'diterima',
+        ]);
+        $transaksi->update(['current_stage' => 'makloon_terima']);
+
+        // 1.000 kg sisa tanggal 01 TIDAK menambah jatah tanggal 02.
+        $this->patchJson("/api/transaksi/{$transaksi->id_transaksi}/makloon-terima", [...$this->dataMakloonTerima('submit'), 'kuantum_bongkar' => 3_500])
+            ->assertStatus(422)
+            ->assertJsonPath('message', fn (string $pesan) => str_contains($pesan, 'Kuota harian')
+                && str_contains($pesan, 'sisa 3.000 kg'));
+    }
+
+    /**
+     * Yang membuka kuota adalah UB MENGIRIM LHPK, bukan LHPK diterima pemeriksa. Menunggu
+     * sampai diterima berarti makloon tertahan oleh antrean orang lain.
+     */
+    public function test_lhpk_yang_baru_dikirim_sudah_membuka_kuota(): void
+    {
+        $this->buatJaminan(kapasitasPerHari: 100, batasHari: 1);
+        $this->stokBelumSelesai('2026-08-01', 980);
+
+        $transaksi = $this->buatTransaksi();
+
+        $tertahan = fn () => $this->patchJson(
+            "/api/transaksi/{$transaksi->id_transaksi}/makloon-terima",
+            [...$this->dataMakloonTerima('submit'), 'kuantum_bongkar' => 1],
+        );
+
+        $tertahan()->assertStatus(422)
+            ->assertJsonPath('message', fn (string $pesan) => str_contains($pesan, 'belum diolah UB'));
+
+        $pengolahan = TransaksiPengolahan::create([
+            'id_pengolahan' => '00001/08/2026/GDG',
+            'skema' => 'GDG',
+            'makloon_user_id' => $this->makloon->id,
+            'current_stage' => 'operasi',
+            'status_keseluruhan' => 'berjalan',
+            'created_by' => $this->makloon->id,
+        ]);
+        $lhpk = PengolahanLhpk::create([
+            'transaksi_pengolahan_id' => $pengolahan->id_pengolahan,
+            'kuantum_gabah_diolah' => 980,
+            'status' => 'draft',
+        ]);
+
+        // Masih draft di meja UB -- belum dikirim, jadi belum membuka apa pun.
+        $tertahan()->assertStatus(422)
+            ->assertJsonPath('message', fn (string $pesan) => str_contains($pesan, 'belum diolah UB'));
+
+        // Dikirim (menunggu_review), BELUM diterima siapa pun -- kuota sudah terbuka.
+        $lhpk->update(['status' => 'menunggu_review']);
+
+        $tertahan()->assertStatus(422)
+            ->assertJsonPath('message', fn (string $pesan) => ! str_contains($pesan, 'belum diolah UB'));
     }
 
     public function test_submit_lolos_kalau_masih_di_dalam_kapasitas(): void
@@ -162,25 +236,6 @@ class JaminanMakloonTest extends TestCase
         $this->assertNotNull($transaksi);
     }
 
-    public function test_submit_ditolak_pada_hari_keempat_meski_kapasitas_masih_tersisa(): void
-    {
-        $this->buatJaminan(kapasitasPerHari: 1_000, batasHari: 3);
-        $this->stokBelumSelesai('2026-08-01', 100);
-
-        $transaksi = $this->buatTransaksi();
-
-        DataMakloonMpp::create([
-            'transaksi_id' => $transaksi->id_transaksi,
-            'kuantum' => 50,
-            'tanggal_bongkar' => '2026-08-04',
-            'status' => 'diterima',
-        ]);
-        $transaksi->update(['current_stage' => 'makloon_terima']);
-
-        $this->patchJson("/api/transaksi/{$transaksi->id_transaksi}/makloon-terima", [...$this->dataMakloonTerima('submit'), 'kuantum_bongkar' => 50])
-            ->assertStatus(422)
-            ->assertJsonPath('message', fn (string $pesan) => str_contains($pesan, 'Batas hari jaminan sudah lewat'));
-    }
 
     /** Satu transaksi MPP milik makloon ini yang sudah diterima DAN sudah ber-No IN. */
     private function stokSudahIn(float $kuantum): Transaksi
@@ -235,9 +290,14 @@ class JaminanMakloonTest extends TestCase
             'status' => 'diterima',
         ]);
 
+        // kuantum_bongkar HARUS terisi, bukan 0. "Belum tuntas" diukur sebagai
+        // kuantum_bongkar > jumlah LHPK yang sudah diterima (lihat
+        // JaminanMakloonController::tanggalBongkarTertuaBelumTuntas); dengan 0 baris ini
+        // terbaca sebagai sudah selesai diolah, sehingga tenggat batas hari tidak pernah
+        // terpicu dan helper ini tidak menghasilkan stok menggantung sama sekali.
         DataMakloonTerima::create([
             'transaksi_id' => $transaksi->id_transaksi,
-            'kuantum_bongkar' => 0,
+            'kuantum_bongkar' => $kuantum,
             'status' => 'diterima',
         ]);
 
@@ -258,7 +318,7 @@ class JaminanMakloonTest extends TestCase
 
         $this->postJson('/api/operasi/jaminan-makloon', $payload)
             ->assertOk()
-            ->assertJsonPath('data.jaminan.kapasitas_total_kg', 10_000);
+            ->assertJsonPath('data.jaminan.plafon_tunggakan_kg', 10_000);
 
         $this->postJson('/api/operasi/jaminan-makloon', [...$payload, 'batas_hari' => 20])
             ->assertOk()
@@ -266,6 +326,33 @@ class JaminanMakloonTest extends TestCase
 
         // Satu baris per makloon -- simpan kedua menimpa, bukan menambah.
         $this->assertSame(1, JaminanMakloon::where('makloon_user_id', $this->makloon->id)->count());
+    }
+
+    /**
+     * Panel read-only di form Makloon. Endpoint ini TIDAK menerima makloon_user_id -- kalau
+     * bisa ditembak per id, ia jadi jalan keluar baru dari isolasi makloon.
+     */
+    public function test_jaminan_saya_hanya_mengembalikan_milik_pemanggil(): void
+    {
+        $this->buatJaminan(kapasitasPerHari: 3_000, batasHari: 3);
+        $this->stokBelumSelesai('2026-08-01', 2_000);
+
+        Sanctum::actingAs($this->makloon);
+        $data = $this->getJson('/api/jaminan-saya?tanggal=2026-08-01')->assertOk()->json('data');
+
+        // assertEquals, bukan assertSame: JSON mengembalikan 3000 (int) untuk float bulat.
+        $this->assertEquals(3000, $data['kapasitas_per_hari_kg']);
+        $this->assertEquals(2000, $data['terpakai_kg']);
+        $this->assertEquals(1000, $data['sisa_harian_kg']);
+        $this->assertEquals(9000, $data['plafon_tunggakan_kg']);
+
+        // Makloon lain: jaminannya sendiri belum diatur, jadi null -- bukan jaminan makloon ini.
+        $lain = User::factory()->create([
+            'role_id' => Role::where('nama_role', 'makloon')->value('id'),
+            'nama_maklon' => 'PT. MAKLOON LAIN',
+        ]);
+        Sanctum::actingAs($lain);
+        $this->getJson('/api/jaminan-saya')->assertOk()->assertJsonPath('data', null);
     }
 
     public function test_makloon_tidak_boleh_mengatur_jaminannya_sendiri(): void
@@ -299,6 +386,15 @@ class JaminanMakloonTest extends TestCase
         );
     }
 
+    /**
+     * Bawa satu transaksi MPP sampai tahap Makloon Terima BENAR-BENAR siap diisi.
+     *
+     * Mengirim Makloon Kirim saja tidak cukup: `current_stage` memang sudah pindah ke
+     * `makloon_terima`, tapi data Kirim-nya masih menunggu diperiksa. Selama belum diterima,
+     * submitStage() menolak dengan "Data tahap sebelumnya belum diterima." -- persis seperti
+     * di aplikasi, form Makloon Terima baru muncul setelah data Kirim diterima. Di skema MPP
+     * yang menerima adalah makloon itu sendiri.
+     */
     private function mppSampaiMakloonTerima(): Transaksi
     {
         $transaksi = $this->buatTransaksi();
@@ -306,6 +402,8 @@ class JaminanMakloonTest extends TestCase
         $this->patchJson("/api/transaksi/{$transaksi->id_transaksi}/makloon", $this->dataMpp('draft'))->assertOk();
         $this->lengkapiFotoKirim($transaksi);
         $this->patchJson("/api/transaksi/{$transaksi->id_transaksi}/makloon", $this->dataMpp('submit'))->assertOk();
+
+        $this->postJson("/api/transaksi/{$transaksi->id_transaksi}/terima")->assertOk();
 
         return $transaksi->fresh();
     }

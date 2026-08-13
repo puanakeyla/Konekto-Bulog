@@ -161,6 +161,11 @@ Route::middleware(['auth:sanctum', 'user.aktif'])->group(function () {
     Route::post('/operasi/jaminan-makloon', [JaminanMakloonController::class, 'store'])
         ->middleware('role:operasi');
 
+    // Aturan jaminan MILIK PEMANGGIL sendiri, untuk panel read-only di form Makloon. Tanpa
+    // parameter makloon_user_id -- lihat JaminanMakloonController::saya().
+    Route::get('/jaminan-saya', [JaminanMakloonController::class, 'saya'])
+        ->middleware('role:makloon|admin');
+
     Route::post('/mo/{mo}/terima', [MoController::class, 'terima'])
         ->middleware('role:pengadaan');
     Route::post('/mo/{mo}/tolak', [MoController::class, 'tolak'])

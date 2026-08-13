@@ -177,6 +177,39 @@ class IsolasiMakloonTest extends TestCase
     }
 
     /** Transaksi TJP yang makloon tujuannya $makloon. `terkunci` = tahap Makloon sudah diterima. */
+    /**
+     * Notifikasi disiarkan per ROLE (NotifikasiService::kirimKeRole), sedangkan transaksi
+     * dibatasi per PEMILIK. Tanpa gerbang di service itu, Makloon B ikut menerima kabar
+     * transaksi Makloon A beserta id transaksinya -- dan mengkliknya berujung 404 karena
+     * test di atas memang menutup jalur detailnya.
+     */
+    public function test_notifikasi_transaksi_makloon_a_tidak_dikirim_ke_makloon_b(): void
+    {
+        $milikA = $this->transaksiUntuk($this->makloonA);
+
+        $this->assertDatabaseHas('notifikasi', [
+            'user_id' => $this->makloonA->id,
+            'transaksi_id' => $milikA->id_transaksi,
+        ]);
+
+        $this->assertDatabaseMissing('notifikasi', [
+            'user_id' => $this->makloonB->id,
+            'transaksi_id' => $milikA->id_transaksi,
+        ]);
+    }
+
+    /** Admin mengawasi seluruh mitra, jadi gerbang di atas tidak boleh ikut membungkamnya. */
+    public function test_notifikasi_transaksi_makloon_tetap_sampai_ke_admin(): void
+    {
+        $admin = $this->buatUser('admin');
+        $milikA = $this->transaksiUntuk($this->makloonA);
+
+        $this->assertDatabaseHas('notifikasi', [
+            'user_id' => $admin->id,
+            'transaksi_id' => $milikA->id_transaksi,
+        ]);
+    }
+
     private function transaksiUntuk(User $makloon, bool $terkunci = false): Transaksi
     {
         $transaksi = $this->stageService->createTransaksi($this->jemputPangan);

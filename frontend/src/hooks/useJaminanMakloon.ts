@@ -9,25 +9,64 @@ export type JaminanMakloonItem = {
   kabupaten: string | null
   jaminan: null | {
     id: number
+    bentuk_jaminan: string | null
     jaminan_rp: number
     kapasitas_per_hari_kg: number
     batas_hari: number
-    kapasitas_total_kg: number
+    /** kapasitas_per_hari x batas_hari — batas gabah yang boleh menumpuk belum diolah. */
+    plafon_tunggakan_kg: number
+    berlaku_mulai: string | null
+    berlaku_sampai: string | null
   }
   pantauan: {
     gabah_sudah_in: number
+    olah_dikirim: number
     olah_rekap: number
     olah_selesai: number
-    belum_adm_belum_olah: number
+    /** Kuantum bongkar yang belum ditutup olahan UB. Inilah yang dibandingkan ke plafon. */
+    tunggakan_kg: number
     melewati_batas: boolean
   }
 }
 
 export type SimpanJaminanMakloonPayload = {
   makloon_user_id: number
+  bentuk_jaminan: string | null
   jaminan_rp: number
   kapasitas_per_hari_kg: number
   batas_hari: number
+}
+
+/** Aturan jaminan milik makloon yang sedang login — panel read-only di form tahap Makloon. */
+export type JaminanSaya = {
+  bentuk_jaminan: string | null
+  jaminan_rp: number
+  kapasitas_per_hari_kg: number
+  batas_hari: number
+  berlaku_mulai: string | null
+  berlaku_sampai: string | null
+  tanggal: string
+  terpakai_kg: number
+  sisa_harian_kg: number
+  tunggakan_kg: number
+  plafon_tunggakan_kg: number
+}
+
+/**
+ * `tanggal` mengikuti tanggal bongkar yang sedang diketik, supaya angka terpakai/sisa di layar
+ * bergerak saat makloon mengubahnya. Dimatikan bila tanggalnya belum diisi.
+ */
+export function useJaminanSaya(tanggal: string | null, aktif = true) {
+  return useQuery({
+    queryKey: ['jaminan-saya', tanggal],
+    enabled: aktif,
+    queryFn: async () => {
+      const { data } = await api.get<{ data: JaminanSaya | null }>('/api/jaminan-saya', {
+        params: tanggal ? { tanggal } : undefined,
+      })
+      return data.data
+    },
+  })
 }
 
 export function useJaminanMakloon(q = '') {

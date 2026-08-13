@@ -13,6 +13,7 @@ const formatRp = (value: number) => new Intl.NumberFormat('id-ID', { style: 'cur
 
 type FormState = {
   makloon_user_id: number | null
+  bentuk_jaminan: string
   jaminan_rp: string
   kapasitas_per_hari_kg: string
   batas_hari: string
@@ -20,9 +21,18 @@ type FormState = {
 
 const initialForm: FormState = {
   makloon_user_id: null,
+  bentuk_jaminan: '',
   jaminan_rp: '',
   kapasitas_per_hari_kg: '',
   batas_hari: '',
+}
+
+/** "13 - 15 Agu 2026". Rentang berlaku dihitung server, di sini tinggal dirapikan. */
+function rentangBerlaku(mulai: string | null, sampai: string | null) {
+  if (!mulai || !sampai) return '-'
+  const f = (iso: string, pakaiTahun: boolean) =>
+    new Date(iso).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', ...(pakaiTahun ? { year: 'numeric' } : {}) })
+  return `${f(mulai, false)} - ${f(sampai, true)}`
 }
 
 export default function JaminanMakloonPage() {
@@ -44,6 +54,7 @@ export default function JaminanMakloonPage() {
     const item = data.find((row) => row.makloon_user_id === id)
     setForm({
       makloon_user_id: id,
+      bentuk_jaminan: item?.jaminan?.bentuk_jaminan ?? '',
       jaminan_rp: item?.jaminan ? String(Math.round(item.jaminan.jaminan_rp)) : '',
       kapasitas_per_hari_kg: item?.jaminan ? String(Math.round(item.jaminan.kapasitas_per_hari_kg)) : '',
       batas_hari: item?.jaminan ? String(item.jaminan.batas_hari) : '',
@@ -60,6 +71,7 @@ export default function JaminanMakloonPage() {
 
     mutation.mutate({
       makloon_user_id: form.makloon_user_id,
+      bentuk_jaminan: form.bentuk_jaminan.trim() || null,
       jaminan_rp: Number(form.jaminan_rp),
       kapasitas_per_hari_kg: Number(form.kapasitas_per_hari_kg),
       batas_hari: Number(form.batas_hari),
@@ -78,7 +90,7 @@ export default function JaminanMakloonPage() {
       <TautanDashboard className="mb-4" />
       <div className="mb-6">
         <h1 className="section-title">Jaminan Makloon</h1>
-        <p className="page-subtitle">Atur jaminan, kapasitas harian, dan batas hari untuk makloon aktif.</p>
+        <p className="page-subtitle">Atur bentuk jaminan, kapasitas harian, dan batas hari untuk makloon aktif.</p>
       </div>
 
       <div className="mb-3 flex flex-wrap items-center justify-end gap-3">
@@ -93,6 +105,9 @@ export default function JaminanMakloonPage() {
             <Field label="Makloon">
               <MakloonCombobox value={form.makloon_user_id} onChange={pilihMakloon} />
             </Field>
+            <Field label="Bentuk jaminan">
+              <input className="input" placeholder="Bank Garansi BNI No. 0012/BG/2026" value={form.bentuk_jaminan} onChange={(e) => setForm((prev) => ({ ...prev, bentuk_jaminan: e.target.value }))} />
+            </Field>
             <Field label="Jaminan (Rp)">
               <AngkaInput required prefix="Rp " value={form.jaminan_rp} onChange={(value) => setForm((prev) => ({ ...prev, jaminan_rp: value }))} />
             </Field>
@@ -105,11 +120,14 @@ export default function JaminanMakloonPage() {
 
             {selected && (
               <div className="rounded-lg border border-border bg-primary-tint/40 p-3 text-xs text-slate-600">
-                <div className="flex justify-between gap-4"><span>Kapasitas total</span><strong className="text-primary-dark">{formatKg(Number(form.kapasitas_per_hari_kg || 0) * Number(form.batas_hari || 0))}</strong></div>
+                <div className="flex justify-between gap-4"><span>Plafon tunggakan</span><strong className="text-primary-dark">{formatKg(Number(form.kapasitas_per_hari_kg || 0) * Number(form.batas_hari || 0))}</strong></div>
                 <div className="mt-2 flex justify-between gap-4">
-                  <span>Belum Administrasi, Belum Olah</span>
-                  <strong className={selected.pantauan.melewati_batas ? 'text-danger' : 'text-primary-dark'}>{formatKg(selected.pantauan.belum_adm_belum_olah)}</strong>
+                  <span>Belum diolah UB</span>
+                  <strong className={selected.pantauan.melewati_batas ? 'text-danger' : 'text-primary-dark'}>{formatKg(selected.pantauan.tunggakan_kg)}</strong>
                 </div>
+                <p className="mt-2 text-[0.6875rem] leading-relaxed text-slate-500">
+                  Kuota makloon terbuka kembali setiap UB Jastasma mengirim hasil olahan. Berganti hari tidak membukanya.
+                </p>
               </div>
             )}
 
@@ -128,11 +146,11 @@ export default function JaminanMakloonPage() {
               <thead className="bg-primary-tint text-left text-xs uppercase text-slate-500">
                 <tr>
                   <th className="px-4 py-3">Makloon</th>
+                  <th className="px-4 py-3">Bentuk Jaminan</th>
                   <th className="px-4 py-3 text-right">Jaminan</th>
                   <th className="px-4 py-3 text-right">Kapasitas/Hari</th>
-                  <th className="px-4 py-3 text-right">Batas Hari</th>
-                  <th className="px-4 py-3 text-right">Batas Total</th>
-                  <th className="px-4 py-3 text-right">Belum Administrasi, Belum Olah</th>
+                  <th className="px-4 py-3">Berlaku</th>
+                  <th className="px-4 py-3 text-right">Belum Diolah UB</th>
                 </tr>
               </thead>
               <tbody>
@@ -145,11 +163,17 @@ export default function JaminanMakloonPage() {
                         <button type="button" className="text-left font-semibold text-primary-dark hover:text-primary" onClick={() => pilihMakloon(item.makloon_user_id)}>{item.nama_maklon}</button>
                         <div className="text-xs text-slate-500">{[item.kecamatan, item.kabupaten].filter(Boolean).join(', ') || item.username}</div>
                       </td>
+                      <td className="px-4 py-3 text-slate-600">{j?.bentuk_jaminan || '-'}</td>
                       <td className="px-4 py-3 text-right">{j ? formatRp(j.jaminan_rp) : '-'}</td>
                       <td className="px-4 py-3 text-right">{j ? formatKg(j.kapasitas_per_hari_kg) : '-'}</td>
-                      <td className="px-4 py-3 text-right">{j ? j.batas_hari : '-'}</td>
-                      <td className="px-4 py-3 text-right">{j ? formatKg(j.kapasitas_total_kg) : '-'}</td>
-                      <td className={`px-4 py-3 text-right font-semibold ${item.pantauan.melewati_batas ? 'text-danger' : 'text-primary-dark'}`}>{formatKg(item.pantauan.belum_adm_belum_olah)}</td>
+                      <td className="px-4 py-3 text-slate-600">
+                        {j ? rentangBerlaku(j.berlaku_mulai, j.berlaku_sampai) : '-'}
+                        {j && <div className="text-xs text-slate-500">{j.batas_hari} hari</div>}
+                      </td>
+                      <td className={`px-4 py-3 text-right font-semibold ${item.pantauan.melewati_batas ? 'text-danger' : 'text-primary-dark'}`}>
+                        {formatKg(item.pantauan.tunggakan_kg)}
+                        {j && <div className="text-xs font-normal text-slate-500">dari {formatKg(j.plafon_tunggakan_kg)}</div>}
+                      </td>
                     </tr>
                   )
                 })}
