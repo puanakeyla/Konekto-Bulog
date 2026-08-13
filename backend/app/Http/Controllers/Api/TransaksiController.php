@@ -67,7 +67,8 @@ class TransaksiController extends Controller
             ])
             ->orderByRaw('COALESCE(data_makloon_mpp.tanggal_bongkar, data_makloon_tjp.tanggal_bongkar, data_jemput_pangan.tanggal_kirim, DATE(transaksi.created_at))')
             ->orderByRaw("COALESCE(data_makloon_mpp.id_pemasok, data_jemput_pangan.id_pemasok, '')")
-            ->orderBy('transaksi.id_transaksi');
+            // Kunci kronologis, bukan urutan teks -- lihat kunciUrut().
+            ->orderByRaw($this->kunciUrut('transaksi.id_transaksi'));
 
         // Klasifikasi kerjaan dihitung SEKALI di SQL lalu ikut tiap baris, bukan dihitung ulang
         // di browser. Frontend tidak memuat data PO, jadi dulu ia terpaksa melempar Pengadaan &
@@ -174,12 +175,12 @@ class TransaksiController extends Controller
             // itu prasyarat sel gabungan di tabel frontend. JANGAN disederhanakan balik ke
             // `orderBy('no_po')`.
             ->orderByRaw('COALESCE((
-                SELECT MIN(pd2.transaksi_id)
+                SELECT MIN('.$this->kunciUrut('pd2.transaksi_id').')
                 FROM po_detail pd1
                 JOIN po_detail pd2 ON pd2.data_pengadaan_id = pd1.data_pengadaan_id
                 WHERE pd1.transaksi_id = transaksi.id_transaksi
-            ), transaksi.id_transaksi)')
-            ->orderBy('id_transaksi');
+            ), '.$this->kunciUrut('transaksi.id_transaksi').')')
+            ->orderByRaw($this->kunciUrut('transaksi.id_transaksi'));
 
         // Role Jemput Pangan hanya relevan dengan skema TJP (MPP tidak punya tahap JP).
         if ($role === 'jemput_pangan') {
@@ -191,6 +192,26 @@ class TransaksiController extends Controller
         $transaksi = $query->paginate($request->integer('per_page', 100));
 
         return TransaksiResource::collection($transaksi);
+    }
+
+    /**
+     * Kunci urut numerik untuk `id_transaksi`, yang formatnya `NNNNN/BB/TTTT/SKEMA`
+     * (mis. `00006/07/2026/TJP`).
+     *
+     * Mengurutkan kolom itu apa adanya SALAH: perbandingan teks membaca nomor urut lebih
+     * dulu, padahal bagian paling menentukan (tahun & bulan) justru ada di belakang. Karena
+     * nomor urut di-reset tiap bulan, hasilnya bulan-bulan saling menyisip:
+     *
+     *     00001/01/2026 -> 00001/07/2026 -> 00001/08/2026 -> 00002/01/2026 -> ...
+     *
+     * Disusun ulang jadi satu bilangan TTTTBBNNNNN (20260800001) supaya urut secara kronologis.
+     * SUBSTR dikalikan langsung tanpa CAST -- MySQL dan SQLite sama-sama mengubah teks jadi
+     * angka di dalam operasi aritmetika, sedangkan sintaks CAST keduanya berbeda
+     * (`AS SIGNED` vs `AS INTEGER`). Sudah diuji menghasilkan urutan identik di kedua engine.
+     */
+    private function kunciUrut(string $kolom): string
+    {
+        return "SUBSTR($kolom, 10, 4) * 10000000 + SUBSTR($kolom, 7, 2) * 100000 + SUBSTR($kolom, 1, 5)";
     }
 
     /**

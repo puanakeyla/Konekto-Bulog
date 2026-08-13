@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import api from '../../lib/api'
@@ -10,6 +11,7 @@ import PoProgressInfo from './PoProgressInfo'
 
 export default function PoInForm({ po, onChanged }: { po: PoItem; onChanged?: () => void }) {
   const queryClient = useQueryClient()
+  const navigate = useNavigate()
   const [values, setValues] = useState<Record<number, string>>(() => Object.fromEntries(po.po_detail.map((detail) => [detail.id, detail.no_in ?? ''])))
   const [confirmIn, setConfirmIn] = useState(false)
   const [confirmBatal, setConfirmBatal] = useState(false)
@@ -28,14 +30,15 @@ export default function PoInForm({ po, onChanged }: { po: PoItem; onChanged?: ()
         .map((detail) => ({ po_detail_id: detail.id, no_in: (values[detail.id] ?? detail.no_in ?? '').trim() }))
         .filter((item) => item.no_in !== ''),
     }),
-    // Sengaja TIDAK pindah halaman: daftar PO di-invalidate sehingga langkah berikutnya
-    // (form SPP) langsung menggantikan kartu ini di tempat, tanpa mengeluarkan pengguna dari
-    // halaman pengisian yang sedang dikerjakannya.
+    // Kembali ke dashboard setelah IN tersimpan, sama seperti tahap-tahap lain yang
+    // memulangkan pengguna begitu datanya dikunci. Langkah berikutnya (No. SPP) diambil
+    // lagi dari daftar kerjaan di dashboard, jadi titik awal tiap langkah selalu sama.
     onSuccess: () => {
       setConfirmIn(false)
       setValues({})
       afterChange()
       toast.success(`Nomor IN PO ${po.no_po} tersimpan dan dikunci. Lanjut isi No. SPP.`)
+      navigate('/dashboard')
     },
     onError: (err) => toast.error(apiErrorMessage(err, 'Gagal menyimpan nomor IN.')),
   })

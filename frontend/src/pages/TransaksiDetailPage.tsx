@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import api from '../lib/api'
@@ -304,6 +304,7 @@ export default function TransaksiDetailPage() {
   const { id } = useParams<{ id: string }>()
   const { user } = useAuth()
   const queryClient = useQueryClient()
+  const navigate = useNavigate()
   const [catatan, setCatatan] = useState('')
   const [expandedStages, setExpandedStages] = useState<Set<string>>(new Set())
   const toggleStage = (stageId: string) =>
@@ -330,6 +331,11 @@ export default function TransaksiDetailPage() {
   const [progressUb, setProgressUb] = useState<Record<string, number>>({})
   const [fotoUbGagal, setFotoUbGagal] = useState<string[]>([])
   const [kuantumBongkarMpp, setKuantumBongkarMpp] = useState('')
+  // Peringatan "Belum lengkap" tahap Makloon Terima. Sengaja disimpan sebagai state dan
+  // BUKAN diturunkan langsung dari isi form: kalau diturunkan, peringatannya sudah menyala
+  // sejak form pertama kali dibuka -- padahal pengguna belum sempat mengisi apa pun. Pola
+  // ini sama dengan ReviewActions: baru muncul setelah tombol kirim ditekan.
+  const [makloonTerimaWarning, setMakloonTerimaWarning] = useState<string | null>(null)
   // Dokumen milik tahap Makloon Terima (surat jalan & nota timbang), diunggah bersama aksi Terima.
   const [fotosMakloonTerima, setFotosMakloonTerima] = useState<Record<string, File | null>>({})
   const [progressMakloonTerima, setProgressMakloonTerima] = useState<Record<string, number>>({})
@@ -410,6 +416,18 @@ export default function TransaksiDetailPage() {
     queryClient.invalidateQueries({ queryKey: ['foto-url', id] })
   }
 
+  /**
+   * Aturan navigasi yang sama untuk SEMUA tahap dan semua role:
+   * - "Kirim" berhasil  -> pulang ke dashboard, karena giliran sudah pindah ke role
+   *   berikutnya dan tidak ada lagi yang bisa dikerjakan di halaman ini.
+   * - "Simpan draft"    -> TETAP di halaman, pekerjaannya memang belum selesai.
+   * - Ada foto yang gagal terunggah -> tetap di halaman walau aksinya "kirim", supaya
+   *   pengguna melihat foto mana yang gagal dan bisa mengulanginya di tempat.
+   */
+  const kembaliKeDashboardBilaTerkirim = ({ gagal, aksi }: { gagal: string[]; aksi: AksiSimpan }) => {
+    if (aksi === 'submit' && gagal.length === 0) navigate('/dashboard')
+  }
+
   // Terima kini SATU pekerjaan untuk semua tahap: menerima data tahap sebelumnya. Dokumen dan
   // kuantum tahap Makloon Terima tidak lagi menumpang di sini -- keduanya dikirim lewat formnya
   // sendiri (simpanMakloonTerima), persis seperti tahap lain.
@@ -459,6 +477,7 @@ export default function TransaksiDetailPage() {
       invalidate()
       toast.success(aksi === 'draft' ? 'Data Jemput Pangan tersimpan sebagai draft.' : 'Data Jemput Pangan dikirim ulang ke Makloon.')
       gagal.forEach((f) => toast.error(`Foto "${fotoLabel(f)}" gagal diupload, coba ulangi.`))
+      kembaliKeDashboardBilaTerkirim({ gagal, aksi })
     },
     onError: (err) => toast.error(apiErrorMessage(err, 'Gagal menyimpan data Jemput Pangan.')),
   })
@@ -490,6 +509,7 @@ export default function TransaksiDetailPage() {
       invalidate()
       toast.success(aksi === 'draft' ? 'Data Makloon tersimpan sebagai draft.' : transaksi?.skema === 'MPP' ? 'Data Makloon dikirim untuk proses Makloon Terima.' : 'Data Makloon dikirim, transaksi diteruskan ke UB Jastasma.')
       gagal.forEach((f) => toast.error(`Foto "${fotoLabel(f)}" gagal diupload, coba ulangi.`))
+      kembaliKeDashboardBilaTerkirim({ gagal, aksi })
     },
     onError: (err) => toast.error(apiErrorMessage(err, 'Gagal menyimpan data Makloon.')),
   })
@@ -525,6 +545,7 @@ export default function TransaksiDetailPage() {
         ? 'Data Makloon Terima tersimpan sebagai draft.'
         : 'Data Makloon Terima dikirim, transaksi diteruskan ke UB Jastasma.')
       gagal.forEach((f) => toast.error(`Foto "${fotoLabel(f)}" gagal diupload, coba ulangi.`))
+      kembaliKeDashboardBilaTerkirim({ gagal, aksi })
     },
     onError: (err) => toast.error(apiErrorMessage(err, 'Gagal menyimpan data Makloon Terima.')),
   })
@@ -559,6 +580,7 @@ export default function TransaksiDetailPage() {
       invalidate()
       toast.success(aksi === 'draft' ? 'Data UB Jastasma tersimpan sebagai draft.' : 'Data UB Jastasma dikirim, transaksi diteruskan ke Pengadaan.')
       gagal.forEach((f) => toast.error(`Foto "${fotoLabel(f)}" gagal diupload, coba ulangi.`))
+      kembaliKeDashboardBilaTerkirim({ gagal, aksi })
     },
     onError: (err) => toast.error(apiErrorMessage(err, 'Gagal menyimpan data UB Jastasma.')),
   })
@@ -819,14 +841,28 @@ export default function TransaksiDetailPage() {
                           fotoGagal={[]}
                           fotoTersimpan={fotoMakloonTersimpan}
                         />
-                        {makloonTerimaKurang.length > 0 && (
-                          <div className="alert-warning">Belum lengkap: {makloonTerimaKurang.join(', ')}.</div>
-                        )}
+                        {makloonTerimaWarning && <div className="alert-warning">{makloonTerimaWarning}</div>}
                         <div className="flex flex-wrap items-center justify-end gap-3 border-t border-border pt-4">
                           <button type="button" className="btn btn-outline" disabled={simpanMakloonTerima.isPending} onClick={() => simpanMakloonTerima.mutate('draft')}>
                             Simpan draft
                           </button>
-                          <button type="button" className="btn btn-primary" disabled={simpanMakloonTerima.isPending || makloonTerimaKurang.length > 0} onClick={() => simpanMakloonTerima.mutate('submit')}>
+                          {/* Tidak di-disable keras: pengguna perlu bisa menekannya dan
+                              diberi tahu APA yang masih kurang, bukan menghadapi tombol
+                              mati tanpa penjelasan. Pola sama dengan ReviewActions. */}
+                          <button
+                            type="button"
+                            className={`btn btn-primary ${makloonTerimaKurang.length > 0 ? 'opacity-80' : ''}`}
+                            disabled={simpanMakloonTerima.isPending}
+                            onClick={() => {
+                              if (makloonTerimaKurang.length > 0) {
+                                setMakloonTerimaWarning(`Belum lengkap: ${makloonTerimaKurang.join(', ')}.`)
+                                toast.error('Belum lengkap, data belum bisa dikirim.')
+                                return
+                              }
+                              setMakloonTerimaWarning(null)
+                              simpanMakloonTerima.mutate('submit')
+                            }}
+                          >
                             {simpanMakloonTerima.isPending ? 'Mengirim...' : 'Kirim ke UB Jastasma'}
                           </button>
                         </div>

@@ -120,9 +120,11 @@ export default function MonitoringPage() {
             <input className="input mb-4" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Cari nama makloon" />
             {loadingMakloon && <SkeletonMakloonGroups />}
             {!loadingMakloon && filteredGroups.length === 0 && <div className="empty-state"><div className="empty-title">Tidak ada makloon sesuai filter</div></div>}
+            {/* <details> sengaja TANPA atribut `open`: grup wilayah mulai tertutup supaya
+                seluruh daftar wilayah terlihat sekaligus, bukan satu wilayah memenuhi layar. */}
             <div className="space-y-4">
               {filteredGroups.map((group) => (
-                <details key={group.wilayah} className="rounded-lg border border-border bg-white" open>
+                <details key={group.wilayah} className="rounded-lg border border-border bg-white">
                   <summary className="cursor-pointer px-4 py-3 text-sm font-bold text-primary-dark">{group.wilayah} ({group.makloon.length} makloon)</summary>
                   <div className="data-table-wrap mx-4 mb-4">
                     <table className="data-table">

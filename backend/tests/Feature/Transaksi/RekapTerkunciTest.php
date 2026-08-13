@@ -165,6 +165,48 @@ class RekapTerkunciTest extends TestCase
     }
 
     /**
+     * Nomor urut transaksi di-reset tiap bulan, sedangkan `id_transaksi` menaruh nomor urut
+     * itu di DEPAN (`NNNNN/BB/TTTT/SKEMA`). Mengurutkannya sebagai teks membuat bulan-bulan
+     * saling menyisip: 00001/07 -> 00001/08 -> 00002/07. Test ini menyeberangi batas bulan
+     * DAN tahun, yang tidak dilakukan test urutan di atas -- itulah kenapa defect ini lolos.
+     */
+    public function test_urutan_rekap_kronologis_walau_menyeberangi_bulan_dan_tahun(): void
+    {
+        $this->travelTo('2026-07-15 08:00:00');
+        $juli1 = $this->buatTjpDenganJpTerkunci();
+        $juli2 = $this->buatTjpDenganJpTerkunci();
+
+        // Nomor urut kembali ke 00001 di bulan baru -- sumber penyisipan itu.
+        $this->travelTo('2026-08-15 08:00:00');
+        $agustus1 = $this->buatTjpDenganJpTerkunci();
+
+        $this->travelTo('2027-01-15 08:00:00');
+        $januari2027 = $this->buatTjpDenganJpTerkunci();
+
+        $this->travelBack();
+
+        $this->assertSame('00001/07/2026/TJP', $juli1->id_transaksi);
+        $this->assertSame('00002/07/2026/TJP', $juli2->id_transaksi);
+        $this->assertSame('00001/08/2026/TJP', $agustus1->id_transaksi);
+        $this->assertSame('00001/01/2027/TJP', $januari2027->id_transaksi);
+
+        Sanctum::actingAs($this->buatUser('admin'));
+
+        $ids = collect($this->getJson('/api/transaksi/rekap')->assertOk()->json('data'))
+            ->pluck('id_transaksi')
+            ->all();
+
+        // Urutan teks polos akan menghasilkan 00001/01/2027, 00001/07/2026, 00001/08/2026,
+        // 00002/07/2026 -- Januari 2027 justru di paling depan.
+        $this->assertSame([
+            $juli1->id_transaksi,
+            $juli2->id_transaksi,
+            $agustus1->id_transaksi,
+            $januari2027->id_transaksi,
+        ], $ids);
+    }
+
+    /**
      * Buat PO minimal lalu kaitkan transaksi-transaksi ke dalamnya lewat po_detail.
      * `$reviewStatus` mengendalikan apakah tahap Pengadaan dianggap terkunci.
      */

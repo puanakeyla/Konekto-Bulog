@@ -42,9 +42,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await queryClient.invalidateQueries({ queryKey: ['me'] })
   }
 
+  /**
+   * JANGAN diganti kembali jadi `setQueryData(['me'], undefined)`.
+   *
+   * TanStack Query memperlakukan nilai `undefined` sebagai "batalkan update" -- lihat
+   * queryClient.setQueryData(): `if (data === void 0) return`. Jadi baris itu TIDAK
+   * menghapus apa pun: cache `me` tetap berisi user lama, ProtectedRoute masih melihat
+   * user yang sudah logout, dan halaman baru berpindah ke /login jauh kemudian, saat ada
+   * request lain yang kebetulan kena 401 lalu dipaksa reload penuh oleh interceptor axios.
+   * Itulah penyebab "logout lama banget".
+   *
+   * clear() membuang seluruh cache, bukan cuma `me` -- sekaligus mencegah user berikutnya
+   * yang login di browser sama melihat sisa data transaksi/dashboard milik user sebelumnya.
+   */
   const logout = async () => {
     await api.post('/api/logout')
-    queryClient.setQueryData(['me'], undefined)
+    queryClient.clear()
   }
 
   return (

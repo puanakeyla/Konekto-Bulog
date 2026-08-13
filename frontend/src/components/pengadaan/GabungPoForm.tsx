@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import api from '../../lib/api'
@@ -52,6 +53,7 @@ export default function GabungPoForm({
   onSelectionChange?: (count: number, totalKuantum: number) => void
 }) {
   const queryClient = useQueryClient()
+  const navigate = useNavigate()
   const [selected, setSelected] = useState<Set<string>>(() => new Set(preselectId ? [preselectId] : []))
   const [noPo, setNoPo] = useState('')
   const [harga, setHarga] = useState('6500')
@@ -118,8 +120,8 @@ export default function GabungPoForm({
         no_po: noPo,
         harga: harga ? Number(harga) : undefined,
       }),
-    // Tetap di halaman pengisian: daftar transaksi & PO di-invalidate sehingga form IN untuk PO
-    // yang baru dibuat langsung muncul di tempat, tanpa memaksa pengguna berpindah lalu kembali.
+    // Kembali ke dashboard setelah PO terbentuk, sama seperti PoInForm dan tahap-tahap
+    // transaksi lain. Langkah berikutnya (isi nomor IN) diambil lagi dari daftar kerjaan.
     onSuccess: () => {
       toast.success(`PO ${noPo} dibuat dari ${selected.size} transaksi. Lanjut isi nomor IN.`)
       setConfirmGabung(false)
@@ -130,6 +132,7 @@ export default function GabungPoForm({
       queryClient.invalidateQueries({ queryKey: ['po-list'] })
       queryClient.invalidateQueries({ queryKey: ['dashboard-ringkasan'] })
       onChanged?.()
+      navigate('/dashboard')
     },
     onError: (err) => toast.error(apiErrorMessage(err, 'Gagal menggabungkan PO.')),
   })
