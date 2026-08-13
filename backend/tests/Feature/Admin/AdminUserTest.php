@@ -132,17 +132,20 @@ class AdminUserTest extends TestCase
         $this->assertNull($user->fresh()->nama_maklon);
     }
 
-    public function test_admin_dapat_reset_password_user(): void
+    public function test_admin_dapat_mengganti_password_user(): void
     {
         Sanctum::actingAs($this->admin);
         $user = $this->buatUser('keuangan');
 
-        $response = $this->patchJson("/api/admin/users/{$user->id}/reset-password", [
+        // Ganti password lewat form Edit User yang sama dengan yang dipakai frontend --
+        // tidak ada endpoint reset password terpisah.
+        $this->patchJson("/api/admin/users/{$user->id}", [
+            'username' => $user->username,
+            'role_id' => $user->role_id,
             'password' => 'password-baru',
             'password_confirmation' => 'password-baru',
-        ]);
+        ])->assertOk();
 
-        $response->assertNoContent();
         $this->assertTrue(Hash::check('password-baru', $user->fresh()->password));
     }
 
@@ -229,14 +232,10 @@ class AdminUserTest extends TestCase
         $this->assertSame(1, User::where('nama_maklon', 'Mekar Jaya')->count());
     }
 
-    public function test_admin_dapat_nonaktifkan_dan_hapus_user(): void
+    public function test_admin_dapat_menghapus_user(): void
     {
         Sanctum::actingAs($this->admin);
         $user = $this->buatUser('ub_jastasma');
-
-        $this->patchJson("/api/admin/users/{$user->id}/deactivate")
-            ->assertOk()
-            ->assertJsonPath('data.is_active', false);
 
         // "Hapus" = soft delete (nonaktifkan permanen dari daftar aktif). Baris user sengaja
         // dipertahankan supaya FK riwayat transaksi (created_by, locked_by, reviewed_by, dst)

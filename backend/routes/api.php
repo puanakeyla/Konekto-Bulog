@@ -47,10 +47,8 @@ Route::middleware(['auth:sanctum', 'user.aktif'])->group(function () {
         Route::get('/audit-logs', [AuditLogController::class, 'index']);
         Route::get('/roles', [AdminUserController::class, 'roles']);
         Route::post('/users/import-makloon', [AdminUserController::class, 'importMakloon']);
-        Route::patch('/users/{user}/reset-password', [AdminUserController::class, 'resetPassword']);
-        Route::patch('/users/{user}/deactivate', [AdminUserController::class, 'deactivate']);
         Route::patch('/users/{user}/akses-edit', [AdminUserController::class, 'aksesEdit']);
-        Route::apiResource('users', AdminUserController::class);
+        Route::apiResource('users', AdminUserController::class)->except('show');
     });
 
     Route::get('/transaksi', [TransaksiController::class, 'index']);
@@ -95,15 +93,7 @@ Route::middleware(['auth:sanctum', 'user.aktif'])->group(function () {
         ->middleware('role:pengadaan|admin');
     Route::get('/po', [PengadaanController::class, 'index'])
         ->middleware('role:pengadaan|keuangan|admin');
-    Route::get('/po/{dataPengadaan}', [PengadaanController::class, 'show'])
-        ->middleware('role:pengadaan|keuangan|admin');
-    Route::get('/po/{dataPengadaan}/foto', [PengadaanController::class, 'fotoIndex'])
-        ->middleware('role:pengadaan|keuangan|admin');
-    Route::post('/po/{dataPengadaan}/foto', [PengadaanController::class, 'fotoUpload'])
-        ->middleware('role:pengadaan|admin');
     Route::patch('/po/{dataPengadaan}', [PengadaanController::class, 'update'])
-        ->middleware('role:pengadaan|admin');
-    Route::patch('/po/{dataPengadaan}/anggota', [PengadaanController::class, 'ubahAnggota'])
         ->middleware('role:pengadaan|admin');
     Route::patch('/po/{dataPengadaan}/in', [PengadaanController::class, 'isiNomorIn'])
         ->middleware('role:pengadaan|admin');

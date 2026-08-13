@@ -66,7 +66,7 @@ class PoListingTest extends TestCase
         $response->assertForbidden();
     }
 
-    public function test_get_po_detail_menampilkan_po_detail_dengan_no_in(): void
+    public function test_daftar_po_ikut_membawa_po_detail_beserta_no_in(): void
     {
         $po = $this->buatPo('PO-LIST-002');
         $detail = $po->poDetail->first();
@@ -75,11 +75,11 @@ class PoListingTest extends TestCase
         ]);
 
         Sanctum::actingAs($this->pengadaan);
-        $response = $this->getJson("/api/po/{$po->id}");
+        $response = $this->getJson('/api/po?q=PO-LIST-002');
 
         $response->assertOk();
-        $response->assertJsonPath('data.no_po', 'PO-LIST-002');
-        $response->assertJsonPath('data.po_detail.0.no_in', 'IN-LIST-1');
+        $response->assertJsonPath('data.0.no_po', 'PO-LIST-002');
+        $response->assertJsonPath('data.0.po_detail.0.no_in', 'IN-LIST-1');
     }
 
     private function buatUser(string $role): User

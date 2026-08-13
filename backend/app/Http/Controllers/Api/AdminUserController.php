@@ -129,11 +129,6 @@ class AdminUserController extends Controller
         return response()->json(['data' => new AdminUserResource($user)], 201);
     }
 
-    public function show(User $user)
-    {
-        return response()->json(['data' => new AdminUserResource($user->load('role'))]);
-    }
-
     public function update(Request $request, User $user)
     {
         $validated = $this->validateUser($request, $user);
@@ -152,34 +147,6 @@ class AdminUserController extends Controller
             'before' => $before,
             'after' => $user->fresh()->only(['username', 'role_id', 'nama_maklon', 'kecamatan', 'kabupaten', 'is_active']),
             'password_changed' => array_key_exists('password', $validated),
-        ]);
-
-        return response()->json(['data' => new AdminUserResource($user->fresh('role'))]);
-    }
-
-    public function resetPassword(Request $request, User $user)
-    {
-        $validated = $request->validate([
-            'password' => ['required', 'string', 'min:8', 'confirmed'],
-        ]);
-
-        $user->update(['password' => $validated['password']]);
-
-        $this->auditLog->log($request->user(), 'admin_user_reset_password', null, [
-            'target_user_id' => $user->id,
-            'username' => $user->username,
-        ]);
-
-        return response()->noContent();
-    }
-
-    public function deactivate(Request $request, User $user)
-    {
-        $user->update(['is_active' => false]);
-
-        $this->auditLog->log($request->user(), 'admin_user_deactivate', null, [
-            'target_user_id' => $user->id,
-            'username' => $user->username,
         ]);
 
         return response()->json(['data' => new AdminUserResource($user->fresh('role'))]);

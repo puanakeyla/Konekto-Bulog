@@ -14,18 +14,10 @@ use App\Services\Pengadaan\PoReviewService;
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\URL;
 use Illuminate\Validation\Rule;
 
 class PengadaanController extends Controller
 {
-    private const FOTO_SERGAB = [
-        'foto_barang',
-        'foto_serah_terima',
-        'foto_bukti_pembayaran',
-        'foto_surat_pernyataan_usia_panen',
-    ];
-
     public function __construct(
         private PoGroupingService $service,
         private PoLifecycleService $lifecycleService,
@@ -53,13 +45,6 @@ class PengadaanController extends Controller
             ->paginate($request->integer('per_page', 20));
 
         return DataPengadaanResource::collection($dataPengadaan);
-    }
-
-    public function show(Request $request, DataPengadaan $dataPengadaan)
-    {
-        $dataPengadaan->load(['poDetail.transaksi.riwayatPenolakan.penolak', 'dataKeuangan', 'makloon']);
-
-        return response()->json(['data' => new DataPengadaanResource($dataPengadaan)]);
     }
 
     public function gabungkanPo(Request $request)
@@ -179,31 +164,6 @@ class PengadaanController extends Controller
         });
     }
 
-    public function ubahAnggota(Request $request, DataPengadaan $dataPengadaan)
-    {
-        $validated = $request->validate([
-            'transaksi_ids' => ['required', 'array', 'min:1'],
-            'transaksi_ids.*' => ['required', 'string', Rule::exists('transaksi', 'id_transaksi')],
-            'harga' => ['sometimes', 'integer', 'min:0', 'max:9999999999999'],
-            'no_po' => ['sometimes', 'string', 'max:255', Rule::unique('data_pengadaan', 'no_po')->ignore($dataPengadaan->id)],
-        ]);
-
-        $dataPengadaan = $this->service->ubahAnggota(
-            $dataPengadaan,
-            $validated['transaksi_ids'],
-            $validated['harga'] ?? null,
-            $validated['no_po'] ?? null,
-        );
-
-        $this->auditLog->logMany($request->user(), 'update_po', $validated['transaksi_ids'], [
-            'data_pengadaan_id' => $dataPengadaan->id,
-            'no_po' => $dataPengadaan->no_po,
-            'anggota' => $validated['transaksi_ids'],
-        ]);
-
-        return response()->json(['data' => $dataPengadaan]);
-    }
-
     public function isiNomorIn(Request $request, DataPengadaan $dataPengadaan)
     {
         $validated = $request->validate([
@@ -286,58 +246,6 @@ class PengadaanController extends Controller
         ]);
 
         return response()->json(['data' => $dataPengadaan->fresh('poDetail')]);
-    }
-
-    public function fotoIndex(Request $request, DataPengadaan $dataPengadaan)
-    {
-        return response()->json([
-            'data' => collect(self::FOTO_SERGAB)
-                ->map(function (string $jenisFoto) use ($dataPengadaan) {
-                    $media = $dataPengadaan->getFirstMedia($jenisFoto);
-                    if (! $media) {
-                        return null;
-                    }
-
-                    return [
-                        'jenis_foto' => $jenisFoto,
-                        'thumb_url' => URL::temporarySignedRoute('foto.stream', now()->addMinutes(5), [
-                            'media' => $media->id,
-                            'conversion' => 'thumb',
-                        ]),
-                    ];
-                })
-                ->filter()
-                ->values()
-                ->all(),
-        ]);
-    }
-
-    public function fotoUpload(Request $request, DataPengadaan $dataPengadaan)
-    {
-        $validated = $request->validate([
-            'jenis_foto' => ['required', Rule::in(self::FOTO_SERGAB)],
-            'foto' => ['required', 'file', 'mimes:jpeg,png', 'max:5120'],
-        ]);
-
-        if ($dataPengadaan->review_status === 'diterima') {
-            abort(422, 'Data Pengadaan sudah diterima dan foto tidak dapat diubah.');
-        }
-
-        if ($dataPengadaan->status === 'dibatalkan') {
-            abort(422, 'PO sudah dibatalkan dan foto tidak dapat diubah.');
-        }
-
-        $media = $dataPengadaan
-            ->addMedia($request->file('foto'))
-            ->toMediaCollection($validated['jenis_foto']);
-
-        return response()->json(['data' => [
-            'id' => $media->id,
-            'collection_name' => $media->collection_name,
-            'file_name' => $media->file_name,
-            'size' => $media->size,
-            'mime_type' => $media->mime_type,
-        ]], 201);
     }
 
     public function pembayaran(Request $request, DataPengadaan $dataPengadaan)
