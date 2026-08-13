@@ -131,13 +131,19 @@ class JaminanMakloonTest extends TestCase
     }
 
     /**
-     * Yang membuka kuota adalah UB MENGIRIM LHPK, bukan LHPK diterima pemeriksa. Menunggu
-     * sampai diterima berarti makloon tertahan oleh antrean orang lain.
+     * Kuota baru terbuka setelah LHPK MASUK REKAP (status `diterima`) -- keputusan pemilik,
+     * supaya angka gerbang identik dengan kolom neraca "Belum Administrasi, Belum Olah".
+     * LHPK yang baru dikirim (menunggu_review) BELUM membuka apa pun.
      */
-    public function test_lhpk_yang_baru_dikirim_sudah_membuka_kuota(): void
+    public function test_hanya_lhpk_yang_sudah_masuk_rekap_yang_membuka_kuota(): void
     {
         $this->buatJaminan(kapasitasPerHari: 100, batasHari: 1);
-        $this->stokBelumSelesai('2026-08-01', 980);
+
+        // stokSudahIn(), BUKAN stokBelumSelesai(): tunggakan diukur dari `gabah_sudah_in`, yang
+        // baru terisi setelah Pengadaan menerbitkan No IN. Gabah yang cuma dibongkar tanpa PO
+        // tidak membebani plafon sama sekali -- konsekuensi yang disadari dari menyamakan angka
+        // gerbang dengan kolom neraca.
+        $this->stokSudahIn(980);
 
         $transaksi = $this->buatTransaksi();
 
@@ -163,15 +169,86 @@ class JaminanMakloonTest extends TestCase
             'status' => 'draft',
         ]);
 
-        // Masih draft di meja UB -- belum dikirim, jadi belum membuka apa pun.
+        // Masih draft di meja UB -- belum membuka apa pun.
         $tertahan()->assertStatus(422)
             ->assertJsonPath('message', fn (string $pesan) => str_contains($pesan, 'belum diolah UB'));
 
-        // Dikirim (menunggu_review), BELUM diterima siapa pun -- kuota sudah terbuka.
+        // Sudah DIKIRIM tapi belum diperiksa: tetap belum membuka. Gabah baru dianggap terolah
+        // setelah masuk rekap, supaya angka gerbang identik dengan kolom neraca.
         $lhpk->update(['status' => 'menunggu_review']);
+        $tertahan()->assertStatus(422)
+            ->assertJsonPath('message', fn (string $pesan) => str_contains($pesan, 'belum diolah UB'));
 
+        // Masuk rekap -- barulah kuota terbuka.
+        $lhpk->update(['status' => 'diterima']);
         $tertahan()->assertStatus(422)
             ->assertJsonPath('message', fn (string $pesan) => ! str_contains($pesan, 'belum diolah UB'));
+    }
+
+    /**
+     * MPP: masa berlaku diperiksa SEJAK tahap Makloon Kirim, tempat tanggal bongkar diketik.
+     *
+     * Gerbang kuantum (kuota harian & plafon) memang menunggu Makloon Terima karena hasil
+     * timbang baru ada di sana -- tapi kalau tanggalnya saja sudah di luar masa berlaku, tidak
+     * ada gunanya membiarkan makloon menyelesaikan seluruh tahap Kirim untuk kemudian ditolak
+     * satu tahap kemudian. Itulah keluhan "cuma diperingatkan tapi datanya tetap terkirim".
+     */
+    public function test_mpp_makloon_kirim_ditolak_kalau_tanggal_di_luar_masa_berlaku(): void
+    {
+        $this->buatJaminan(kapasitasPerHari: 100_000, batasHari: 1, berlakuMulai: '2026-08-01');
+        $transaksi = $this->buatTransaksi();
+
+        $kirim = fn (string $tanggal) => $this->patchJson(
+            "/api/transaksi/{$transaksi->id_transaksi}/makloon",
+            [...$this->dataMpp('submit'), 'tanggal_bongkar' => $tanggal],
+        );
+
+        $diLuar = fn (string $pesan) => str_contains($pesan, 'di luar masa berlaku');
+
+        $kirim('2026-08-13')->assertStatus(422)->assertJsonPath('message', $diLuar);
+
+        // Tanggal yang sah lolos gerbang jaminan; yang menahan tinggal kelengkapan dokumen.
+        $kirim('2026-08-01')->assertStatus(422)->assertJsonPath('message', fn (string $p) => ! $diLuar($p));
+    }
+
+    /**
+     * Gerbang masa berlaku: tanggal bongkar di luar rentang jaminan ditolak walau kuota harian
+     * dan plafon masih longgar. Inilah yang membuat angka "batas hari" benar-benar bekerja --
+     * sebelumnya tanggal 13 masih bisa diinput padahal jaminan berakhir tanggal 11.
+     */
+    public function test_tanggal_bongkar_di_luar_masa_berlaku_ditolak(): void
+    {
+        // Disimpan 01 Agu, berlaku 3 hari -> 01, 02, dan 03 Agu.
+        $this->buatJaminan(kapasitasPerHari: 3_000, batasHari: 3, berlakuMulai: '2026-08-01');
+
+        $kirimPada = function (string $tanggalBongkar) {
+            $transaksi = $this->buatTransaksi();
+            DataMakloonMpp::create([
+                'transaksi_id' => $transaksi->id_transaksi,
+                'kuantum' => 10,
+                'tanggal_bongkar' => $tanggalBongkar,
+                'status' => 'diterima',
+            ]);
+            $transaksi->update(['current_stage' => 'makloon_terima']);
+
+            return $this->patchJson(
+                "/api/transaksi/{$transaksi->id_transaksi}/makloon-terima",
+                [...$this->dataMakloonTerima('submit'), 'kuantum_bongkar' => 10],
+            );
+        };
+
+        $diLuar = fn (string $pesan) => str_contains($pesan, 'di luar masa berlaku');
+
+        // Sebelum masa berlaku: gabahnya belum dijamin apa pun.
+        $kirimPada('2026-07-31')->assertStatus(422)->assertJsonPath('message', $diLuar);
+
+        // Hari pertama & hari terakhir masih di dalam: lolos gerbang jaminan, tertahan
+        // pemeriksaan dokumen -- bukan lagi soal tanggal.
+        $kirimPada('2026-08-01')->assertStatus(422)->assertJsonPath('message', fn (string $p) => ! $diLuar($p));
+        $kirimPada('2026-08-03')->assertStatus(422)->assertJsonPath('message', fn (string $p) => ! $diLuar($p));
+
+        // Hari keempat: sudah lewat.
+        $kirimPada('2026-08-04')->assertStatus(422)->assertJsonPath('message', $diLuar);
     }
 
     public function test_submit_lolos_kalau_masih_di_dalam_kapasitas(): void
@@ -367,14 +444,24 @@ class JaminanMakloonTest extends TestCase
         ])->assertForbidden();
     }
 
-    private function buatJaminan(float $kapasitasPerHari, int $batasHari = 30): void
+    /**
+     * Masa berlaku jaminan dihitung dari `updated_at` (kapan Operasi terakhir menyimpan), jadi
+     * test harus menambatkannya ke tanggal tetap -- kalau dibiarkan "sekarang", seluruh test
+     * yang memakai tanggal bongkar Agustus 2026 akan tertolak gerbang masa berlaku begitu
+     * tanggal sistem bergeser.
+     */
+    private function buatJaminan(float $kapasitasPerHari, int $batasHari = 30, string $berlakuMulai = '2026-08-01'): void
     {
-        JaminanMakloon::create([
+        $jaminan = JaminanMakloon::create([
             'makloon_user_id' => $this->makloon->id,
             'jaminan_rp' => 100_000_000,
             'kapasitas_per_hari_kg' => $kapasitasPerHari,
             'batas_hari' => $batasHari,
         ]);
+
+        $jaminan->timestamps = false;
+        $jaminan->updated_at = \Carbon\Carbon::parse($berlakuMulai);
+        $jaminan->save();
     }
 
     private function buatTransaksi(): Transaksi

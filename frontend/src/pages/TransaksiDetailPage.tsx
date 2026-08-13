@@ -834,9 +834,14 @@ export default function TransaksiDetailPage() {
                     ))}
                     {isRejected && <div className="alert-danger mt-4">Tahap ini ditolak. Perbaiki data pada role terkait lalu kirim ulang.</div>}
                     {showJemputPanganForm && <JemputPanganForm form={jemputPanganForm} setForm={setJemputPanganForm} mutation={simpanJemputPangan} error={jemputPanganError} fotos={fotosJemputPangan} setFotos={setFotosJemputPangan} progress={progressJemputPangan} fotoGagal={fotoJemputPanganGagal} fotoTersimpan={fotoJemputPanganTersimpan} />}
-                    {/* Aturan jaminan ditampilkan di tahap tempat gerbangnya benar-benar jalan:
-                        TJP di tahap Makloon, MPP di tahap Makloon Terima (lihat blok di bawah). */}
-                    {showMakloonForm && transaksi.skema === 'TJP' && <PanelJaminanMakloon tanggalBongkar={makloonForm.tanggal_bongkar || null} />}
+                    {/* Aturan jaminan ditampilkan di SETIAP tahap tempat makloon mengetik tanggal
+                        bongkar. Untuk MPP itu tahap Kirim (masa berlaku sudah diperiksa di sana)
+                        dan tahap Terima (kuota & plafon, lihat blok di bawah). */}
+                    {showMakloonForm && (
+                      <PanelJaminanMakloon
+                        tanggalBongkar={(transaksi.skema === 'MPP' ? makloonMppForm.tanggal_bongkar : makloonForm.tanggal_bongkar) || null}
+                      />
+                    )}
                     {showMakloonForm && (transaksi.skema === 'MPP' ? <MakloonMppForm form={makloonMppForm} setForm={setMakloonMppForm} mutation={simpanMakloon} error={makloonError} fotos={fotosMakloon} setFotos={setFotosMakloon} progress={progressMakloon} fotoGagal={fotoMakloonGagal} fotoTersimpan={fotoMakloonTersimpan} /> : <MakloonTjpForm form={makloonForm} setForm={setMakloonForm} mutation={simpanMakloon} error={makloonError} fotos={fotosMakloon} setFotos={setFotosMakloon} progress={progressMakloon} fotoGagal={fotoMakloonGagal} fotoTersimpan={fotoMakloonTersimpan} />)}
                     {showUbForm && <UbForm form={ubForm} setForm={setUbForm} mutation={simpanUb} error={ubError} fotos={fotosUb} setFotos={setFotosUb} progress={progressUb} fotoGagal={fotoUbGagal} fotoTersimpan={fotoUbTersimpan} />}
 

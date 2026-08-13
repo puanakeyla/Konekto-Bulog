@@ -42,11 +42,23 @@ export default function PanelJaminanMakloon({ tanggalBongkar }: { tanggalBongkar
           nilai={`${kg(data.tunggakan_kg)} dari batas ${kg(data.plafon_tunggakan_kg)}`}
           bahaya={lewatPlafon}
         />
+        <Baris label="Sisa dapat dikirim" nilai={kg(data.sisa_dapat_diinput_kg)} bahaya={data.sisa_dapat_diinput_kg <= 0} />
       </dl>
 
+      {/* Diukur terhadap tanggal bongkar yang sedang diketik -- tanggal yang sama dengan yang
+          dipakai gerbang di server. Jadi kalau kotak ini menyala, kiriman PASTI ditolak; kalau
+          tidak menyala, tanggalnya pasti diterima. Peringatan yang tidak cocok dengan kenyataan
+          lebih buruk daripada tidak ada peringatan. */}
+      {!data.masih_berlaku && (
+        <div className="alert-danger mt-3">
+          Tanggal bongkar {tanggalPendek(data.tanggal, true)} di luar masa berlaku jaminan. Kiriman akan
+          ditolak &mdash; hubungi Operasi untuk memperbarui jaminan.
+        </div>
+      )}
+
       <p className="mt-3 border-t border-border pt-3 text-xs leading-relaxed text-slate-600">
-        Sisa kuota harian tidak dibawa ke hari berikutnya. Kuota terbuka kembali setiap UB Jastasma
-        mengirim hasil olahan &mdash; tidak perlu menunggu sampai masuk rekap.
+        Sisa kuota harian tidak dibawa ke hari berikutnya. Kuota terbuka kembali setelah hasil olahan
+        UB Jastasma masuk rekap.
       </p>
     </div>
   )

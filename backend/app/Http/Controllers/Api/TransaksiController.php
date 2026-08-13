@@ -681,6 +681,13 @@ class TransaksiController extends Controller
             if ($transaksi->skema === 'TJP') {
                 // TJP baru punya kuantum final di tahap Makloon, jadi gerbang jaminan tetap di sini.
                 $this->pastikanKapasitasJaminanMakloon($request, $transaksi, $data);
+            } else {
+                // MPP: gerbang KUANTUM (kuota harian & plafon) memang menunggu Makloon Terima,
+                // karena hasil timbang baru ada di sana. TAPI tanggal bongkar sudah diketik DI
+                // SINI, jadi masa berlakunya diperiksa sekarang juga. Tanpa ini makloon
+                // menyelesaikan seluruh tahap Kirim beserta unggah fotonya, lalu baru tertolak
+                // satu tahap kemudian -- terasa seperti "cuma diperingatkan tapi tetap terkirim".
+                JaminanMakloonController::pastikanMasihBerlaku($request->user(), $data['tanggal_bongkar'] ?? null);
             }
             // MPP: surat jalan & nota timbang bukan dokumen tahap Makloon Kirim -- keduanya
             // diunggah nanti di tahap Makloon Terima, jadi jangan dituntut di sini.

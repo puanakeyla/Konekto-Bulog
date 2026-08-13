@@ -143,18 +143,27 @@ export default function JaminanMakloonPage() {
           </div>
           <div className="overflow-x-auto">
             <table className="min-w-full text-sm">
-              <thead className="bg-primary-tint text-left text-xs uppercase text-slate-500">
-                <tr>
-                  <th className="px-4 py-3">Makloon</th>
-                  <th className="px-4 py-3">Bentuk Jaminan</th>
-                  <th className="px-4 py-3 text-right">Jaminan</th>
-                  <th className="px-4 py-3 text-right">Kapasitas/Hari</th>
-                  <th className="px-4 py-3">Berlaku</th>
-                  <th className="px-4 py-3 text-right">Belum Diolah UB</th>
+              {/* Dua baris kepala: baris atas mengelompokkan kolom jadi tiga blok
+                  (identitas / aturan Operasi / posisi makloon saat ini) supaya tabelnya
+                  tidak terbaca sebagai deretan angka datar. */}
+              <thead className="text-left text-xs uppercase text-slate-500">
+                <tr className="bg-primary-tint/60">
+                  <th className="px-4 pt-3 pb-1" />
+                  <th className="border-l border-border px-4 pt-3 pb-1 font-bold text-primary-dark" colSpan={4}>Aturan dari Operasi</th>
+                  <th className="border-l border-border px-4 pt-3 pb-1 font-bold text-primary-dark" colSpan={2}>Posisi Makloon</th>
+                </tr>
+                <tr className="bg-primary-tint">
+                  <th className="px-4 pb-3 pt-1">Makloon</th>
+                  <th className="border-l border-border px-4 pb-3 pt-1">Bentuk Jaminan</th>
+                  <th className="px-4 pb-3 pt-1 text-right">Nilai</th>
+                  <th className="px-4 pb-3 pt-1 text-right">Kuota/Hari</th>
+                  <th className="px-4 pb-3 pt-1">Berlaku</th>
+                  <th className="border-l border-border px-4 pb-3 pt-1 text-right">Belum Diolah</th>
+                  <th className="px-4 pb-3 pt-1 text-right">Sisa Dapat Dikirim</th>
                 </tr>
               </thead>
               <tbody>
-                {isLoading && <tr><td colSpan={6} className="px-4 py-8 text-center text-slate-500">Memuat data...</td></tr>}
+                {isLoading && <tr><td colSpan={7} className="px-4 py-8 text-center text-slate-500">Memuat data...</td></tr>}
                 {!isLoading && data.map((item) => {
                   const j = item.jaminan
                   return (
@@ -163,24 +172,45 @@ export default function JaminanMakloonPage() {
                         <button type="button" className="text-left font-semibold text-primary-dark hover:text-primary" onClick={() => pilihMakloon(item.makloon_user_id)}>{item.nama_maklon}</button>
                         <div className="text-xs text-slate-500">{[item.kecamatan, item.kabupaten].filter(Boolean).join(', ') || item.username}</div>
                       </td>
-                      <td className="px-4 py-3 text-slate-600">{j?.bentuk_jaminan || '-'}</td>
-                      <td className="px-4 py-3 text-right">{j ? formatRp(j.jaminan_rp) : '-'}</td>
-                      <td className="px-4 py-3 text-right">{j ? formatKg(j.kapasitas_per_hari_kg) : '-'}</td>
+                      <td className="border-l border-border px-4 py-3 text-slate-600">{j?.bentuk_jaminan || <span className="text-slate-400">belum dicatat</span>}</td>
+                      <td className="px-4 py-3 text-right tabular-nums">{j ? formatRp(j.jaminan_rp) : '-'}</td>
+                      <td className="px-4 py-3 text-right tabular-nums">{j ? formatKg(j.kapasitas_per_hari_kg) : '-'}</td>
                       <td className="px-4 py-3 text-slate-600">
-                        {j ? rentangBerlaku(j.berlaku_mulai, j.berlaku_sampai) : '-'}
-                        {j && <div className="text-xs text-slate-500">{j.batas_hari} hari</div>}
+                        {j ? (
+                          <>
+                            <div className="whitespace-nowrap">{rentangBerlaku(j.berlaku_mulai, j.berlaku_sampai)}</div>
+                            <span className={`badge ${j.masih_berlaku ? 'badge-success' : 'badge-danger'}`}>
+                              {j.masih_berlaku ? `Aktif - ${j.batas_hari} hari` : 'Kedaluwarsa'}
+                            </span>
+                          </>
+                        ) : '-'}
                       </td>
-                      <td className={`px-4 py-3 text-right font-semibold ${item.pantauan.melewati_batas ? 'text-danger' : 'text-primary-dark'}`}>
+                      <td className={`border-l border-border px-4 py-3 text-right tabular-nums font-semibold ${item.pantauan.melewati_batas ? 'text-danger' : 'text-primary-dark'}`}>
                         {formatKg(item.pantauan.tunggakan_kg)}
-                        {j && <div className="text-xs font-normal text-slate-500">dari {formatKg(j.plafon_tunggakan_kg)}</div>}
+                        {j && <div className="text-xs font-normal text-slate-500">plafon {formatKg(j.plafon_tunggakan_kg)}</div>}
+                      </td>
+                      <td className="px-4 py-3 text-right tabular-nums">
+                        {j ? (
+                          <>
+                            <strong className={item.pantauan.sisa_dapat_diinput_kg <= 0 ? 'text-danger' : 'text-success'}>
+                              {formatKg(item.pantauan.sisa_dapat_diinput_kg)}
+                            </strong>
+                            <div className="text-xs text-slate-500">hari ini terpakai {formatKg(item.pantauan.terpakai_hari_ini_kg)}</div>
+                          </>
+                        ) : <span className="text-slate-400">jaminan belum diatur</span>}
                       </td>
                     </tr>
                   )
                 })}
-                {!isLoading && data.length === 0 && <tr><td colSpan={6} className="px-4 py-8 text-center text-slate-500">Tidak ada makloon aktif.</td></tr>}
+                {!isLoading && data.length === 0 && <tr><td colSpan={7} className="px-4 py-8 text-center text-slate-500">Tidak ada makloon aktif.</td></tr>}
               </tbody>
             </table>
           </div>
+          <p className="border-t border-border bg-surface px-5 py-3 text-xs leading-relaxed text-slate-500">
+            <strong>Belum Diolah</strong> = Gabah Sudah IN &minus; Sudah Diolah, rumus yang sama persis dengan kolom
+            &ldquo;Belum Administrasi, Belum Olah&rdquo; di neraca makloon &mdash; karena itu bisa bernilai minus.
+            <strong className="ml-2">Sisa Dapat Dikirim</strong> = yang terkecil antara sisa kuota hari ini dan sisa plafon.
+          </p>
         </section>
       </main>
     </div>

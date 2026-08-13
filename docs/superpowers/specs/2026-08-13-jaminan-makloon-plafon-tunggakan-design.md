@@ -81,13 +81,10 @@ Gabah menunggak paling lama sejak 10/08/2026.
 
 | | Sekarang | Revisi |
 |---|---|---|
-| Gabah masuk | `gabah_sudah_in`, butuh No IN dari Pengadaan | **kuantum bongkar** langsung, TJP + MPP |
-| Gabah keluar | LHPK `status = 'diterima'` saja | `menunggu_review` **atau** `diterima` |
 | Kaitan ke makloon | id `/GDG` vs id `/MPP`, tidak pernah cocok | `transaksi_pengolahan.makloon_user_id` |
 
-Gabah masuk memakai definisi yang sudah ada di `kuantumBongkarPadaTanggal` (TJP lewat
-`data_makloon_tjp.kuantum_bongkar` + `data_jemput_pangan.makloon_user_id`; MPP lewat
-`data_makloon_terima.kuantum_bongkar` + `transaksi.created_by`), tanpa saringan tanggal.
+Hanya kaitan ke makloon yang diperbaiki. Definisi masuk & keluar sengaja dibiarkan sama dengan
+neraca (lihat Gerbang 3) -- itu keputusan pemilik demi keseragaman angka.
 
 ## Yang dihapus
 
@@ -158,8 +155,10 @@ melenceng dari isian Operasi.
 - kuota harian: penuh menolak, pas kuota lolos
 - sisa kuota **tidak menggulung**: hari ini terpakai 2.000 dari 3.000, besok tetap maksimal 3.000
 - plafon tunggakan: tertahan saat tunggakan melewati plafon
-- LHPK berstatus `menunggu_review` **sudah** membuka kuota (tidak perlu `diterima`)
-- LHPK `draft`/`ditolak` **tidak** membuka kuota
+- hanya LHPK `diterima` yang membuka kuota; `draft` dan `menunggu_review` belum
+- tanggal bongkar di luar masa berlaku ditolak (sebelum, hari pertama, hari terakhir, sesudah)
+- MPP: tahap Makloon **Kirim** sudah menolak tanggal di luar masa berlaku, tidak menunggu
+  tahap Makloon Terima
 - toleransi 10% melonggarkan, tidak memperketat
 - `GET /api/jaminan-saya` hanya mengembalikan milik pemanggil
 
@@ -167,8 +166,10 @@ melenceng dari isian Operasi.
 
 - **Tanggal bongkar, bukan tanggal input**, sebagai patokan kuota harian — supaya menunda
   input tidak memindahkan beban kuota.
-- **Tanggal berlaku tidak menggerbang apa pun.** Perannya koordinasi: makloon tahu aturan
-  mana yang sedang dipakai. `batas_hari` bekerja sebagai pengali plafon.
+- **Tanggal berlaku menggerbang** (revisi). `batas_hari` bekerja dua peran sekaligus: lama
+  masa berlaku, dan pengali plafon tunggakan.
+- **Angka gerbang disamakan dengan neraca** atas permintaan pemilik, walau berarti gerbangnya
+  bisa dilewati saat angkanya minus. Keseragaman angka dinilai lebih penting.
 - **Plafon berbasis tunggakan, bukan kalender.** Menunggu ganti hari tidak membuka kuota;
   yang membukanya hanya UB mengirim hasil olahan.
 - **Toleransi 10% satu arah** (melonggarkan). Selisih timbang bisa ke atas atau ke bawah, dan
