@@ -80,6 +80,8 @@ class JaminanMakloonController extends Controller
         $kapasitasHarian = (float) $jaminan->kapasitas_per_hari_kg;
         $kapasitasTotal = $kapasitasHarian * (int) $jaminan->batas_hari;
 
+        self::pastikanMasihDalamTenggat($makloon->id, $tanggalBongkar, (int) $jaminan->batas_hari);
+
         if ($tanggalBongkar) {
             $terpakaiHariIni = self::kuantumBongkarPadaTanggal($makloon->id, $tanggalBongkar, $transaksiId);
             if ($terpakaiHariIni + $kuantumKg > $kapasitasHarian) {
@@ -103,6 +105,72 @@ class JaminanMakloonController extends Controller
                 self::angka($kuantumKg)
             ));
         }
+    }
+
+    /**
+     * Batas hari adalah tenggat, bukan kuota tambahan.
+     *
+     * Jika jaminan diset 3 hari, maka transaksi yang masih menggantung harus sudah diolah
+     * maksimal pada hari ke-3 sejak tanggal bongkar pertamanya. Masuk di hari ke-4 tetap ditolak,
+     * walaupun kapasitas kg belum habis, karena yang dilanggar adalah waktu penuntasan.
+     */
+    private static function pastikanMasihDalamTenggat(int $makloonUserId, ?string $tanggalBaru, int $batasHari): void
+    {
+        if ($batasHari <= 0 || ! $tanggalBaru) {
+            return;
+        }
+
+        $tanggalTertua = self::tanggalBongkarTertuaBelumTuntas($makloonUserId);
+        if (! $tanggalTertua) {
+            return;
+        }
+
+        $tanggalMasuk = \Carbon\Carbon::parse($tanggalTertua)->startOfDay();
+        $tanggalInput = \Carbon\Carbon::parse($tanggalBaru)->startOfDay();
+
+        if ($tanggalInput->lt($tanggalMasuk->copy()->addDays($batasHari))) {
+            return;
+        }
+
+        abort(422, sprintf(
+            'Batas hari jaminan sudah lewat. Tenggat %d hari sejak %s, jadi input baru pada %s tidak bisa dikirim sampai stok lama selesai diolah.',
+            $batasHari,
+            $tanggalMasuk->format('d/m/Y'),
+            $tanggalInput->format('d/m/Y')
+        ));
+    }
+
+    private static function tanggalBongkarTertuaBelumTuntas(int $makloonUserId): ?string
+    {
+        $tjp = DB::table('data_makloon_tjp as mk')
+            ->join('transaksi as t', 't.id_transaksi', '=', 'mk.transaksi_id')
+            ->join('data_jemput_pangan as jp', 'jp.transaksi_id', '=', 't.id_transaksi')
+            ->leftJoin('po_detail as pd', 'pd.transaksi_id', '=', 't.id_transaksi')
+            ->leftJoin('data_pengadaan as dp', 'dp.id', '=', 'pd.data_pengadaan_id')
+            ->where('t.skema', 'TJP')
+            ->where('jp.makloon_user_id', $makloonUserId)
+            ->where('mk.status', 'diterima')
+            ->whereNotNull('mk.tanggal_bongkar')
+            ->whereRaw('COALESCE(mk.kuantum_bongkar, 0) > COALESCE((SELECT SUM(CASE WHEN dp2.status <> "dibatalkan" AND pd2.no_in IS NOT NULL AND pd2.no_in <> "" THEN pd2.kuantum_kontribusi ELSE 0 END) FROM po_detail pd2 JOIN data_pengadaan dp2 ON dp2.id = pd2.data_pengadaan_id WHERE pd2.transaksi_id = t.id_transaksi), 0)')
+            ->selectRaw('MIN(mk.tanggal_bongkar) as tanggal')
+            ->value('tanggal');
+
+        $mpp = DB::table('data_makloon_mpp as mk')
+            ->join('transaksi as t', 't.id_transaksi', '=', 'mk.transaksi_id')
+            ->join('data_makloon_terima as mt', 'mt.transaksi_id', '=', 't.id_transaksi')
+            ->where('t.skema', 'MPP')
+            ->where('t.created_by', $makloonUserId)
+            ->where('mt.status', 'diterima')
+            ->whereNotNull('mk.tanggal_bongkar')
+            ->whereRaw('COALESCE(mt.kuantum_bongkar, 0) > COALESCE((SELECT SUM(CASE WHEN l.status = "diterima" THEN l.kuantum_gabah_diolah ELSE 0 END) FROM pengolahan_lhpk l WHERE l.transaksi_pengolahan_id = t.id_transaksi), 0)')
+            ->selectRaw('MIN(mk.tanggal_bongkar) as tanggal')
+            ->value('tanggal');
+
+        if ($tjp && $mpp) {
+            return min($tjp, $mpp);
+        }
+
+        return $tjp ?: $mpp;
     }
 
     private function baris(User $user): array
@@ -150,14 +218,13 @@ class JaminanMakloonController extends Controller
 
         $mpp = DB::table('transaksi as t')
             ->join('data_makloon_mpp as mk', 'mk.transaksi_id', '=', 't.id_transaksi')
+            ->join('data_makloon_terima as mt', 'mt.transaksi_id', '=', 't.id_transaksi')
             ->where('t.skema', 'MPP')
             ->where('t.created_by', $makloonUserId)
             ->where('mk.tanggal_bongkar', $tanggal)
-            ->whereNotIn('mk.status', ['ditolak'])
+            ->whereNotIn('mt.status', ['ditolak'])
             ->when($excludeTransaksiId, fn ($q) => $q->where('t.id_transaksi', '<>', $excludeTransaksiId))
-            // Kuantum KIRIM, bukan bongkar: gerbang kapasitas berjalan saat Makloon Kirim
-            // menekan Kirim, dan angka bongkar baru ada satu tahap sesudahnya.
-            ->selectRaw('COALESCE(SUM(mk.kuantum), 0) as total')
+            ->selectRaw('COALESCE(SUM(mt.kuantum_bongkar), 0) as total')
             ->value('total');
 
         return (float) $tjp + (float) $mpp;

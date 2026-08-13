@@ -678,10 +678,10 @@ class TransaksiController extends Controller
         if ($aksi === 'draft') {
             $record = $this->service->saveDraft($transaksi, $request->user(), $stage, $model, $data);
         } else {
-            // Jaminan hanya menggerbangi PENGIRIMAN, bukan draft: draft belum menambah stok
-            // apa pun, dan memblokirnya berarti makloon tidak bisa mencatat muatan yang sudah
-            // ada di depannya cuma karena Operasi belum sempat mengisi jaminan.
-            $this->pastikanKapasitasJaminanMakloon($request, $transaksi, $data);
+            if ($transaksi->skema === 'TJP') {
+                // TJP baru punya kuantum final di tahap Makloon, jadi gerbang jaminan tetap di sini.
+                $this->pastikanKapasitasJaminanMakloon($request, $transaksi, $data);
+            }
             // MPP: surat jalan & nota timbang bukan dokumen tahap Makloon Kirim -- keduanya
             // diunggah nanti di tahap Makloon Terima, jadi jangan dituntut di sini.
             $this->pastikanDokumenLengkap($transaksi, $model, $transaksi->skema === 'MPP' ? DataMakloonMpp::FOTO_TAHAP_KIRIM : null);
@@ -696,8 +696,8 @@ class TransaksiController extends Controller
      * timbang. Baru bisa diisi setelah data Makloon Kirim diterima -- penjagaannya ada di
      * TransaksiStageService lewat current_stage, sama seperti tahap lain.
      *
-     * Kapasitas jaminan TIDAK dicek lagi di sini: gerbangnya sekali saja, saat Makloon Kirim,
-     * memakai kuantum kirim. Lihat pastikanKapasitasJaminanMakloon().
+     * Kapasitas jaminan MPP dicek DI SINI, bukan di Makloon Kirim. Kuantum kirim masih angka
+     * rencana/awal; stok dan batas harian harus memakai hasil timbang bongkar yang final.
      */
     public function makloonTerima(Request $request, Transaksi $transaksi)
     {
@@ -717,6 +717,7 @@ class TransaksiController extends Controller
         if ($aksi === 'draft') {
             $record = $this->service->saveDraft($transaksi, $request->user(), 'makloon_terima', DataMakloonTerima::class, $data);
         } else {
+            $this->pastikanKapasitasJaminanMakloon($request, $transaksi, $data);
             $this->pastikanDokumenLengkap($transaksi, DataMakloonTerima::class);
             $record = $this->service->submitStage($transaksi, $request->user(), 'makloon_terima', DataMakloonTerima::class, $data);
         }
@@ -835,6 +836,7 @@ class TransaksiController extends Controller
             $makloon = $transaksi->dataJemputPangan?->makloon;
         } else {
             $makloon = $request->user();
+            $tanggalBongkar ??= $transaksi->dataMakloonMpp?->tanggal_bongkar;
         }
 
         if (! $makloon) {
