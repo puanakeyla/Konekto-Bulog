@@ -293,6 +293,13 @@ class EditRekapPengolahanTest extends TestCase
                 'tanggal_lhpk' => '2026-08-03',
                 'kuantum_gabah_diolah' => 20000,
                 'kuantum_beras_hgl' => 12500,
+                'broken' => 15,
+                'menir' => 6.5,
+                'katul' => 6.5,
+                'ka1' => 6.5,
+                'ka2' => 6.5,
+                'ka3' => 6.5,
+                'reject' => 1000,
                 'kirim' => true,
             ])->assertOk();
 

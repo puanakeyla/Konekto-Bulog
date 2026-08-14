@@ -57,7 +57,6 @@ const COLS_GUDANG: Kolom[] = [
 const COLS_LHPK: Kolom[] = [
   { key: 'no_lhpk', label: 'No. LHPK', value: (r) => r.data_lhpk?.no_lhpk ?? '-', searchable: true },
   { key: 'tgl_lhpk', label: 'Tgl LHPK', value: (r) => tanggal(r.data_lhpk?.tanggal_lhpk) },
-  { key: 'stok_gudang', label: 'Stok Gudang saat LHPK', value: (r) => fmt(num(r.data_lhpk?.kuantum_stok_gudang)), align: 'right' },
   { key: 'gabah_diolah', label: 'Gabah Diolah', value: (r) => fmt(num(r.data_lhpk?.kuantum_gabah_diolah)), align: 'right' },
   { key: 'beras_hgl', label: 'Beras HGL', value: (r) => fmt(num(r.data_lhpk?.kuantum_beras_hgl)), align: 'right' },
   { key: 'broken', label: 'Broken', value: (r) => fmt(num(r.data_lhpk?.broken)), align: 'right' },

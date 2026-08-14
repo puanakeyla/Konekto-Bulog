@@ -27,7 +27,6 @@ class PengolahanLhpk extends Model implements HasMedia
         'gudang_tujuan_id',
         'no_lhpk',
         'tanggal_lhpk',
-        'kuantum_stok_gudang',
         'kuantum_gabah_diolah',
         'kuantum_beras_hgl',
         'broken',
@@ -49,7 +48,6 @@ class PengolahanLhpk extends Model implements HasMedia
     {
         return [
             'tanggal_lhpk' => 'date',
-            'kuantum_stok_gudang' => 'decimal:2',
             'kuantum_gabah_diolah' => 'decimal:2',
             'kuantum_beras_hgl' => 'decimal:2',
             'broken' => 'decimal:2',

@@ -37,31 +37,4 @@ class Gudang extends Model
             || PengolahanLhpk::where('gudang_tujuan_id', $this->id)->exists();
     }
 
-    /**
-     * Stok berjalan satu gudang: seluruh kuantum HGL yang sudah DITERIMA masuk ke gudang ini,
-     * dikurangi yang sudah diolah menurut LHPK yang juga sudah DITERIMA.
-     *
-     * Sumbunya GUDANG, bukan makloon dan bukan satu transaksi -- sebelumnya angka ini cuma
-     * menyalin kuantum HGL transaksinya sendiri, sehingga tidak pernah mencerminkan isi gudang.
-     *
-     * Syarat 'diterima' di kedua sisi membuat baris yang sedang dikerjakan (draft / menunggu
-     * review) otomatis tidak ikut -- termasuk LHPK yang sedang diisi saat angka ini dibaca,
-     * jadi yang tampil adalah stok SEBELUM pengolahan berjalan ini dibukukan.
-     */
-    public static function stokBerjalan(?int $gudangId): float
-    {
-        if (! $gudangId) {
-            return 0.0;
-        }
-
-        $masuk = (float) PengolahanGudang::where('gudang_id', $gudangId)
-            ->where('status', 'diterima')
-            ->sum('kuantum_hgl');
-
-        $keluar = (float) PengolahanLhpk::where('gudang_tujuan_id', $gudangId)
-            ->where('status', 'diterima')
-            ->sum('kuantum_gabah_diolah');
-
-        return $masuk - $keluar;
-    }
 }

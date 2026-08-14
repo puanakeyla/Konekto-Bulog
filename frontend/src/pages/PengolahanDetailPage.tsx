@@ -10,6 +10,7 @@ import {
   LABEL_TAHAP,
   URUTAN_TAHAP,
   useKandidatMo,
+  useNeracaMakloon,
   tahapTerlihat,
   usePengolahanDetail,
   usePengolahanMutations,
@@ -22,6 +23,7 @@ import {
 import { bukaTabBaru } from '../lib/bukaTabBaru'
 import { labelFoto } from '../lib/fotoDokumen'
 import { pesanError } from '../lib/pesanError'
+import { trimDesimal } from '../lib/poFormat'
 import { apiErrorMessage } from '../lib/apiError'
 import AngkaInput from '../components/AngkaInput'
 import ConfirmDialog from '../components/ConfirmDialog'
@@ -239,7 +241,14 @@ export default function PengolahanDetailPage() {
     const nilai: FormNilai = {}
     for (const field of fields) {
       const raw = (sumber as unknown as Record<string, unknown>)[field.key]
-      nilai[field.key] = raw === null || raw === undefined ? '' : String(raw).slice(0, field.type === 'date' ? 10 : undefined)
+      // Kolom decimal DB pulang dengan dua desimal ("3.40") -- trimDesimal mengembalikannya ke
+      // angka yang tadi diketik ("3,4"), supaya membuka draft tidak diam-diam mengubah isian.
+      nilai[field.key] =
+        raw === null || raw === undefined
+          ? ''
+          : field.type === 'date'
+            ? String(raw).slice(0, 10)
+            : trimDesimal(String(raw))
     }
 
     setForm(nilai)
@@ -635,7 +644,6 @@ function TahapSummary({ tahap, transaksi }: { tahap: TahapPengolahan; transaksi:
           ['Nomor LHPK', data?.no_lhpk ?? '-'],
           ['Tanggal LHPK', tanggal(data?.tanggal_lhpk)],
           ['Gudang', transaksi.gudang?.nama ?? '-'],
-          ['Stok gudang saat LHPK', fmt(data?.kuantum_stok_gudang, ' kg')],
           ['Gabah diolah', fmt(data?.kuantum_gabah_diolah, ' kg')],
           ['Beras HGL', fmt(data?.kuantum_beras_hgl, ' kg')],
           ['Rendemen', fmt(data?.rendemen, '%')],
@@ -1284,6 +1292,7 @@ function FormTahap({
   )
 
   const [warning, setWarning] = useState<string | null>(null)
+  const { data: neraca } = useNeracaMakloon(tahap === 'ub_jastasma' ? makloonId : null)
 
   const kurang = [
     ...(bolehPilihMakloon && !makloonId ? ['Makloon'] : []),
@@ -1330,18 +1339,18 @@ function FormTahap({
         </div>
 
         {/* Dua angka neraca mitra, BACA-SAJA: tidak ikut terkirim dan tidak tersimpan ke LHPK.
-            Gunanya memberi UB Jastasma gambaran stok makloon yang sedang ia proses, dengan
-            definisi yang sama persis dengan kolom senama di neraca gabah admin. */}
+            Sumbernya makloon yang SEDANG DIPILIH di sebelah, bukan yang tersimpan di transaksi --
+            angkanya harus sama persis dengan baris mitra itu di neraca gabah admin. */}
         {tahap === 'ub_jastasma' && (
           <>
             <div>
               <span className="label">Stok Real (kg)</span>
-              <div className="readout">{fmt(transaksi.neraca_makloon?.stok_real ?? 0)}</div>
+              <div className="readout">{neraca ? fmt(neraca.stok_real) : '-'}</div>
               <p className="mt-1 text-xs text-muted">Gabah sudah IN dikurangi yang sudah diolah dan sudah teradministrasi.</p>
             </div>
             <div>
               <span className="label">Stok Belum Administrasi, Belum Olah (kg)</span>
-              <div className="readout">{fmt(transaksi.neraca_makloon?.belum_adm_belum_olah ?? 0)}</div>
+              <div className="readout">{neraca ? fmt(neraca.belum_adm_belum_olah) : '-'}</div>
               <p className="mt-1 text-xs text-muted">Gabah sudah IN dikurangi seluruh yang sudah diolah.</p>
             </div>
           </>

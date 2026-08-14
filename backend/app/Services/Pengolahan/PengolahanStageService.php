@@ -108,6 +108,36 @@ class PengolahanStageService
         });
     }
 
+    /**
+     * Kolom yang WAJIB terisi sebelum tahap dikirim ke tahap berikutnya. Kirim tidak sama dengan
+     * simpan draft: draft memang boleh setengah jadi, yang dikirim tidak -- begitu diteruskan,
+     * tahap berikutnya tidak punya cara memperbaikinya sendiri.
+     *
+     * Layar juga menahannya, tapi itu cuma sopan santun: satu request langsung ke endpoint
+     * melewatinya, dan sebelum gerbang ini ada, LHPK kosong bisa masuk antrean review.
+     */
+    private const WAJIB_KIRIM = [
+        'gudang' => [
+            'tanggal_masuk_gudang' => 'Tanggal masuk gudang',
+            'kuantum_hgl' => 'Kuantum HGL',
+            'plat_mobil' => 'Plat mobil',
+            'supir' => 'Supir',
+        ],
+        'ub_jastasma' => [
+            'no_lhpk' => 'Nomor LHPK',
+            'tanggal_lhpk' => 'Tanggal LHPK',
+            'kuantum_gabah_diolah' => 'Kuantum gabah yang sudah diolah',
+            'kuantum_beras_hgl' => 'Kuantum beras HGL',
+            'broken' => 'Broken',
+            'menir' => 'Menir',
+            'katul' => 'Katul',
+            'ka1' => 'KA1',
+            'ka2' => 'KA2',
+            'ka3' => 'KA3',
+            'reject' => 'Reject',
+        ],
+    ];
+
     public function submitStage(TransaksiPengolahan $transaksi, User $actor, string $role, array $data): Model
     {
         [$index, $stage, $record] = $this->recordUntukDiisi($transaksi, $actor, $role);
@@ -115,6 +145,7 @@ class PengolahanStageService
 
         return DB::transaction(function () use ($record, $data, $transaksi, $actor, $index, $role) {
             $record->fill($data);
+            $this->assertLengkap($transaksi, $record, $role);
             $record->transaksi_pengolahan_id = $transaksi->id_pengolahan;
             $record->status = 'menunggu_review';
             $record->submitted_by = $actor->id;
@@ -146,6 +177,31 @@ class PengolahanStageService
 
             return $record;
         });
+    }
+
+    /**
+     * Diperiksa pada RECORD yang sudah terisi data kiriman, bukan pada kiriman itu sendiri:
+     * kolom yang sudah tersimpan di draft lalu tidak ikut dikirim ulang tetap terhitung ada.
+     */
+    private function assertLengkap(TransaksiPengolahan $transaksi, Model $record, string $role): void
+    {
+        $kurang = [];
+
+        // Makloon ditetapkan pengisi tahap pertama; tanpa itu baris ini tidak punya pemilik dan
+        // tidak akan pernah muncul di neraca gabah mana pun.
+        if ($role === PengolahanStages::stageAt($transaksi->skema, 0)['role'] && ! $transaksi->makloon_user_id) {
+            $kurang[] = 'Makloon asal';
+        }
+
+        foreach (self::WAJIB_KIRIM[$role] ?? [] as $kolom => $label) {
+            if (trim((string) $record->{$kolom}) === '') {
+                $kurang[] = $label;
+            }
+        }
+
+        if ($kurang !== []) {
+            abort(422, 'Belum lengkap: '.implode(', ', $kurang).'.');
+        }
     }
 
     public function terima(TransaksiPengolahan $transaksi, User $actor): Model

@@ -3,7 +3,6 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Models\Gudang;
 use App\Models\Role;
 use App\Models\TransaksiPengolahan;
 use App\Models\User;
@@ -417,14 +416,24 @@ class PengolahanController extends Controller
         return response()->json([
             'data' => [
                 ...$pengolahan->toArray(),
-                // Dua angka neraca makloon, BACA-SAJA: tidak pernah dikirim balik dan tidak
-                // disimpan ke LHPK. Gunanya memberi UB Jastasma konteks stok mitra yang sedang
-                // ia proses, dengan definisi yang sama persis dengan neraca gabah admin.
-                'neraca_makloon' => $pengolahan->makloon_user_id
-                    ? JaminanMakloonController::neracaMakloon($pengolahan->makloon_user_id)
-                    : ['stok_real' => 0.0, 'belum_adm_belum_olah' => 0.0],
             ],
         ]);
+    }
+
+    /**
+     * Dua angka neraca SATU makloon, BACA-SAJA: tidak pernah dikirim balik dan tidak disimpan ke
+     * LHPK. Gunanya memberi UB Jastasma konteks stok mitra yang sedang ia proses, dengan
+     * definisi yang sama persis dengan neraca gabah admin.
+     *
+     * Endpoint tersendiri, bukan menumpang show(): di skema UBJ makloon-nya baru DIPILIH di
+     * layar, jadi angka yang ikut show() akan selalu tertinggal satu langkah dari combobox --
+     * memperlihatkan neraca makloon lain (atau nol) padahal pengisi sudah memilih mitra.
+     */
+    public function neracaMakloon(Request $request, int $makloon)
+    {
+        $this->assertPembaca($request);
+
+        return response()->json(['data' => JaminanMakloonController::neracaMakloon($makloon)]);
     }
 
     public function store(Request $request)
@@ -527,8 +536,6 @@ class PengolahanController extends Controller
     {
         $lhpkId = $pengolahan->dataLhpk?->id;
 
-        // `kuantum_stok_gudang` sengaja TIDAK diterima dari klien: ia dihitung server dari stok
-        // berjalan gudangnya (lihat simpanTahap).
         $validated = $request->validate([
             'makloon_user_id' => ['nullable', 'integer', Rule::exists('users', 'id')],
             'no_lhpk' => ['nullable', 'string', 'max:100', Rule::unique('pengolahan_lhpk', 'no_lhpk')->ignore($lhpkId)],
@@ -668,9 +675,6 @@ class PengolahanController extends Controller
             $validated['gudang_id'] = $pengolahan->gudang_id;
         } else {
             $validated['gudang_tujuan_id'] = $pengolahan->gudang_id;
-            // Stok gudang adalah angka sistem, bukan ketikan: snapshot stok berjalan gudang ini
-            // pada saat LHPK disimpan.
-            $validated['kuantum_stok_gudang'] = Gudang::stokBerjalan($pengolahan->gudang_id);
         }
 
         $record = $kirim

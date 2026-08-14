@@ -82,7 +82,15 @@ class AlurPengolahanTest extends TestCase
                 'tanggal_lhpk' => '2026-08-03',
                 'kuantum_gabah_diolah' => $gabah,
                 'kuantum_beras_hgl' => $hgl,
+                // Seluruh kolom mutu ikut: sejak PengolahanStageService::assertLengkap(), kiriman
+                // setengah jadi ditolak 422 -- draft boleh bolong, yang dikirim tidak.
                 'broken' => 15,
+                'menir' => 6.5,
+                'katul' => 6.5,
+                'ka1' => 6.5,
+                'ka2' => 6.5,
+                'ka3' => 6.5,
+                'reject' => 1000,
                 'kirim' => $kirim,
             ]);
     }
@@ -439,40 +447,35 @@ class AlurPengolahanTest extends TestCase
     }
 
     /**
-     * Stok gudang adalah angka SISTEM per gudang: HGL diterima di gudang itu dikurangi gabah
-     * yang sudah diolah. Sebelumnya ia cuma menyalin kuantum HGL transaksinya sendiri.
+     * Kirim menuntut seluruh kolom tahap terisi, simpan draft tidak. Layar juga menahannya, tapi
+     * request langsung ke endpoint dulu lolos -- LHPK setengah jadi bisa masuk antrean review.
      */
-    public function test_stok_gudang_dihitung_per_gudang_bukan_per_transaksi(): void
+    public function test_kirim_ditolak_kalau_data_tahap_belum_lengkap(): void
     {
-        // Satu pengolahan GDG tuntas sampai LHPK diterima: 12.480 masuk, 20.000 diolah.
-        $selesai = $this->buat('GDG');
-        $this->isiGudang($selesai)->assertOk();
-        $this->terima($selesai, 'ub_jastasma')->assertOk();
-        $this->isiLhpk($selesai, 'LHPK/900')->assertOk();
-        $this->terima($selesai, 'operasi')->assertOk();
+        $id = $this->buat('GDG');
+        $this->isiGudang($id)->assertOk();
+        $this->terima($id, 'ub_jastasma')->assertOk();
 
-        $this->assertEqualsWithDelta(12480 - 20000, Gudang::stokBerjalan($this->gudang->id), 0.01);
+        $separuh = [
+            'no_lhpk' => 'LHPK/777',
+            'tanggal_lhpk' => '2026-08-03',
+            'kuantum_gabah_diolah' => 20000,
+            'kuantum_beras_hgl' => 12500,
+        ];
 
-        // Pengolahan berikutnya di gudang yang sama: HGL-nya baru terhitung setelah DITERIMA.
-        $berjalan = $this->buat('GDG');
-        $this->isiGudang($berjalan)->assertOk();
-        $this->assertEqualsWithDelta(12480 - 20000, Gudang::stokBerjalan($this->gudang->id), 0.01);
+        $this->actingAs($this->user['ub_jastasma'])
+            ->patchJson('/api/pengolahan/'.$id.'/lhpk', $separuh + ['kirim' => false])
+            ->assertOk();
 
-        $this->terima($berjalan, 'ub_jastasma')->assertOk();
-        $stokSetelahDiterima = 12480 * 2 - 20000;
-        $this->assertEqualsWithDelta($stokSetelahDiterima, Gudang::stokBerjalan($this->gudang->id), 0.01);
+        $this->actingAs($this->user['ub_jastasma'])
+            ->patchJson('/api/pengolahan/'.$id.'/lhpk', $separuh + ['kirim' => true])
+            ->assertStatus(422);
 
-        // Angka yang sama itulah yang disnapshot ke LHPK -- bukan angka kiriman klien.
-        $this->isiLhpk($berjalan, 'LHPK/901')->assertOk();
-        $this->assertEqualsWithDelta(
-            $stokSetelahDiterima,
-            (float) PengolahanLhpk::where('transaksi_pengolahan_id', $berjalan)->value('kuantum_stok_gudang'),
-            0.01,
-        );
+        $this->assertSame('draft', TransaksiPengolahan::find($id)->dataLhpk->status);
 
-        // Gudang lain berdiri sendiri.
-        $gudangLain = Gudang::create(['kode' => 'ADA08002', 'nama' => 'Gudang B']);
-        $this->assertEqualsWithDelta(0, Gudang::stokBerjalan($gudangLain->id), 0.01);
+        // Lengkap: lolos, dan tahapnya benar-benar berpindah ke antrean review.
+        $this->isiLhpk($id, 'LHPK/777')->assertOk();
+        $this->assertSame('menunggu_review', TransaksiPengolahan::find($id)->dataLhpk->status);
     }
 
     /** Makloon ditetapkan pengisi tahap pertama; tahap kedua mencocokkan, tidak menimpa. */

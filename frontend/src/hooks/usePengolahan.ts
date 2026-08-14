@@ -26,7 +26,6 @@ export type DataLhpk = {
   gudang_tujuan?: Gudang | null
   no_lhpk: string | null
   tanggal_lhpk: string | null
-  kuantum_stok_gudang: string | null
   kuantum_gabah_diolah: string | null
   kuantum_beras_hgl: string | null
   broken: string | null
@@ -51,8 +50,6 @@ export type PengolahanItem = {
   /** Null sampai pengisi tahap pertama menetapkannya. */
   makloon_user_id: number | null
   makloon?: { id: number; nama_maklon: string | null } | null
-  /** Hanya ada di response detail. Baca-saja, tidak pernah dikirim balik ke server. */
-  neraca_makloon?: { stok_real: number; belum_adm_belum_olah: number }
   current_stage: TahapPengolahan
   /** Klasifikasi antrean dari server (KerjaanPengolahan), ikut tiap baris daftar. */
   kerjaan?: KerjaanId
@@ -182,6 +179,24 @@ export function useKandidatMo(makloonUserId?: number | null, enabled = true) {
       const { data } = await api.get<{ data: PengolahanItem[] }>('/api/pengolahan/kandidat-mo', {
         params: makloonUserId ? { makloon_user_id: makloonUserId } : {},
       })
+      return data.data
+    },
+  })
+}
+
+/**
+ * Neraca makloon yang SEDANG DIPILIH di form (bukan yang tersimpan di transaksi), supaya dua
+ * angka baca-saja di tahap UB Jastasma bergerak mengikuti combobox dan selalu sama dengan
+ * baris makloon itu di neraca gabah admin.
+ */
+export function useNeracaMakloon(makloonUserId: number | null) {
+  return useQuery({
+    queryKey: ['neraca-makloon', makloonUserId],
+    enabled: !!makloonUserId,
+    queryFn: async () => {
+      const { data } = await api.get<{ data: { stok_real: number; belum_adm_belum_olah: number } }>(
+        `/api/pengolahan/neraca-makloon/${makloonUserId}`,
+      )
       return data.data
     },
   })

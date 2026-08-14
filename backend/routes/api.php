@@ -119,6 +119,8 @@ Route::middleware(['auth:sanctum', 'user.aktif'])->group(function () {
     Route::get('/pengolahan/rekap', [PengolahanController::class, 'rekap']);
     Route::get('/pengolahan/kandidat-mo', [PengolahanController::class, 'kandidatMo'])
         ->middleware('role:operasi');
+    Route::get('/pengolahan/neraca-makloon/{makloon}', [PengolahanController::class, 'neracaMakloon'])
+        ->whereNumber('makloon');
     Route::post('/pengolahan', [PengolahanController::class, 'store'])
         ->middleware('role:gudang|ub_jastasma');
     // Padanan /transaksi/{transaksi}/admin-rekap: tanpa `role:admin` karena role yang jatah
