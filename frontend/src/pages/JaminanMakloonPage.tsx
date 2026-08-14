@@ -208,7 +208,7 @@ export default function JaminanMakloonPage() {
           </div>
           <p className="border-t border-border bg-surface px-5 py-3 text-xs leading-relaxed text-slate-500">
             <strong>Belum Diolah</strong> = Gabah Sudah IN &minus; Sudah Diolah, rumus yang sama persis dengan kolom
-            &ldquo;Belum Administrasi, Belum Olah&rdquo; di neraca makloon &mdash; karena itu bisa bernilai minus.
+            &ldquo;Stok Belum Administrasi, Belum Olah&rdquo; di neraca makloon &mdash; karena itu bisa bernilai minus.
             <strong className="ml-2">Sisa Dapat Dikirim</strong> = yang terkecil antara sisa kuota hari ini dan sisa plafon.
           </p>
         </section>

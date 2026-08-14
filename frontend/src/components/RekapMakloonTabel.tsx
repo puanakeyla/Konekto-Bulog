@@ -53,7 +53,7 @@ const GRUP: Grup[] = [
     sel: 'bg-[#F6F9FD]',
     kolom: [
       { key: 'olah_rekap', label: 'Sudah Diolah, Belum Administrasi', jenis: 'kg' },
-      { key: 'belum_adm_belum_olah', label: 'Belum Administrasi, Belum Olah', jenis: 'kg', bisaMinus: true },
+      { key: 'belum_adm_belum_olah', label: 'Stok Belum Administrasi, Belum Olah', jenis: 'kg', bisaMinus: true },
       { key: 'olah_selesai', label: 'Sudah Diolah, Sudah Administrasi', jenis: 'kg' },
       { key: 'stok_real', label: 'Stok Real', jenis: 'kg', bisaMinus: true },
     ],
@@ -67,7 +67,8 @@ const GRUP: Grup[] = [
       { key: 'broken', label: 'Broken', jenis: 'mutu' },
       { key: 'menir', label: 'Menir', jenis: 'mutu' },
       { key: 'katul', label: 'Katul', jenis: 'mutu' },
-      { key: 'reject', label: 'Reject', jenis: 'mutu' },
+      // Reject dicatat dalam kilogram (bilangan bulat), bukan angka mutu berkoma seperti tiga di atasnya.
+      { key: 'reject', label: 'Reject', jenis: 'kg' },
     ],
   },
   {
@@ -206,24 +207,24 @@ export default function RekapMakloonTabel() {
                     menuntut offset `left` sebesar lebar kolom pertama, dan lebar itu ditentukan
                     isinya -- begitu tidak sama persis, sel kedua bergeser menutupi tepi kolom
                     berikutnya (huruf pertama angkanya terpotong). Satu sel menghapus soalnya. */}
-                <th className="sticky left-0 z-30 border-b border-r border-border bg-primary-tint px-3 py-2" />
+                <th className="sticky left-0 z-30 border-b border-r border-grid bg-primary-tint px-3 py-2" />
                 {GRUP.map((grup) => (
                   <th
                     key={grup.label}
                     colSpan={grup.kolom.length}
-                    className={`border-b border-r border-border px-3 py-2 text-center text-[0.72rem] font-extrabold uppercase tracking-[0.08em] ${grup.kepala}`}
+                    className={`border-b border-r border-grid px-3 py-2 text-center text-[0.72rem] font-extrabold uppercase tracking-[0.08em] ${grup.kepala}`}
                   >
                     {grup.label}
                   </th>
                 ))}
               </tr>
               <tr>
-                <th className="sticky left-0 z-30 border-b border-r border-border bg-primary-tint px-3 py-2 text-left font-bold text-primary-dark">Nama Makloon</th>
+                <th className="sticky left-0 z-30 border-b border-r border-grid bg-primary-tint px-3 py-2 text-left font-bold text-primary-dark">Nama Makloon</th>
                 {GRUP.flatMap((grup) =>
                   grup.kolom.map((kolom) => (
                     <th
                       key={kolom.key}
-                      className={`border-b border-r border-border px-3 py-2 text-right align-bottom font-bold ${grup.kepala}`}
+                      className={`border-b border-r border-grid px-3 py-2 text-right align-bottom font-bold ${grup.kepala}`}
                     >
                       <span className="block max-w-[9rem] whitespace-normal leading-4">{kolom.label}</span>
                       <span className="mt-0.5 block text-[0.6rem] font-semibold normal-case opacity-70">
@@ -240,7 +241,7 @@ export default function RekapMakloonTabel() {
                 // Warna hover WAJIB pekat: dua kolom pertama lengket dan mewarisi warna baris ini.
                 // Warna tembus pandang membuat sel yang tergulir di bawahnya terbaca menembusnya.
                 <tr key={row.makloon_user_id} className="odd:bg-white even:bg-surface hover:bg-primary-tint">
-                  <td className="sticky left-0 z-10 border-b border-r border-border bg-inherit px-3 py-2">
+                  <td className="sticky left-0 z-10 border-b border-r border-grid bg-inherit px-3 py-2">
                     <span className="mr-2 tabular-nums text-muted">{i + 1}</span>
                     <span className="font-semibold text-primary-dark">{row.nama_maklon}</span>
                     {row.kabupaten && <span className="ml-2 text-[0.68rem] text-muted">{row.kabupaten}</span>}
@@ -251,7 +252,7 @@ export default function RekapMakloonTabel() {
                       return (
                         <td
                           key={kolom.key}
-                          className={`border-b border-r border-border px-3 py-2 text-right tabular-nums ${grup.sel} ${
+                          className={`border-b border-r border-grid px-3 py-2 text-right tabular-nums ${grup.sel} ${
                             kolom.bisaMinus && nilai < 0 ? 'font-semibold text-danger' : ''
                           }`}
                         >
@@ -332,7 +333,7 @@ const PENJELASAN: { grup: string; kepala: string; item: Penjelasan[] }[] = [
         isi: 'Kuantum gabah yang diolah menurut LHPK UB Jastasma yang sudah diterima, sehingga sudah tampil di Rekap Pengolahan.',
       },
       {
-        judul: 'Belum Administrasi, Belum Olah',
+        judul: 'Stok Belum Administrasi, Belum Olah',
         isi: 'Gabah yang nomor IN-nya sudah ada tapi belum tercatat diolah di LHPK mana pun. Bisa minus kalau yang diolah lebih banyak daripada yang sudah ber-IN.',
         rumus: 'Gabah Sudah IN − Sudah Diolah Belum Administrasi',
       },

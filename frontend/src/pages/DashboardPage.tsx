@@ -543,7 +543,7 @@ function TransaksiRow({ t, role }: { t: TransaksiListItem; role: string }) {
   const rejected = rejectedStages(t)
   const pengadaan = role === 'pengadaan' ? pengadaanProgress(t) : null
   return (
-    <tr className={`border-t border-border/60 ${rejected.length > 0 ? 'bg-danger-bg/60' : ''}`}>
+    <tr className={`border-t border-grid/60 ${rejected.length > 0 ? 'bg-danger-bg/60' : ''}`}>
       <td className="py-3 pl-16 pr-4 font-medium text-primary-dark">{t.id_transaksi}</td>
       <td className="px-4"><SkemaBadge skema={t.skema} /></td>
       <td className="px-4 text-gray-600">{pengadaan ? pengadaan.posisi : labelTahap(t.current_stage)}</td>
@@ -592,7 +592,7 @@ function TabelTahap({ stage, rows }: { stage: string; rows: TransaksiListItem[] 
 function DashboardTableRow({ t }: { t: TransaksiListItem }) {
   const rejected = rejectedStages(t)
   return (
-    <tr className={`border-t border-border ${rejected.length > 0 ? 'bg-danger-bg/60' : ''}`}>
+    <tr className={`border-t border-grid ${rejected.length > 0 ? 'bg-danger-bg/60' : ''}`}>
       <td className="px-4 py-2 font-medium text-primary-dark">{t.id_transaksi}</td>
       <td className="px-4 py-2"><SkemaBadge skema={t.skema} /></td>
       <td className="px-4 py-2"><KerjaanBadge row={t} /></td>

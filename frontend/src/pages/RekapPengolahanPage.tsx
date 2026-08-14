@@ -12,14 +12,16 @@ import { ambilFotoPengolahan, useFotoPengolahanUrl } from '../hooks/useFotoTrans
 import api from '../lib/api'
 import { labelFoto } from '../lib/fotoDokumen'
 import { pesanError } from '../lib/pesanError'
+import { trimDesimal } from '../lib/poFormat'
 
 function num(value: string | number | null | undefined) {
   if (value === null || value === undefined || value === '') return 0
   return Number(value) || 0
 }
 
-function fmt(value: number) {
-  return new Intl.NumberFormat('id-ID', { maximumFractionDigits: 2 }).format(value)
+/** `desimal` = 0 untuk angka kilogram yang selalu bulat (mis. Reject), 2 untuk angka mutu/persen. */
+function fmt(value: number, desimal = 2) {
+  return new Intl.NumberFormat('id-ID', { maximumFractionDigits: desimal }).format(value)
 }
 
 function tanggal(value: string | null | undefined) {
@@ -50,7 +52,8 @@ const COLS_GUDANG: Kolom[] = [
   { key: 'supir', label: 'Supir', value: (r) => r.data_gudang?.supir ?? '-' },
 ]
 
-// Angka mutu (broken s/d reject) BUKAN persen -- ditampilkan apa adanya. Hanya rendemen yang persen.
+// Angka mutu (broken s/d ka3) BUKAN persen -- ditampilkan apa adanya. Hanya rendemen yang persen.
+// Reject bukan angka mutu: ia kilogram bulat, jadi dicetak tanpa desimal.
 const COLS_LHPK: Kolom[] = [
   { key: 'no_lhpk', label: 'No. LHPK', value: (r) => r.data_lhpk?.no_lhpk ?? '-', searchable: true },
   { key: 'tgl_lhpk', label: 'Tgl LHPK', value: (r) => tanggal(r.data_lhpk?.tanggal_lhpk) },
@@ -63,7 +66,7 @@ const COLS_LHPK: Kolom[] = [
   { key: 'ka1', label: 'KA1', value: (r) => fmt(num(r.data_lhpk?.ka1)), align: 'right' },
   { key: 'ka2', label: 'KA2', value: (r) => fmt(num(r.data_lhpk?.ka2)), align: 'right' },
   { key: 'ka3', label: 'KA3', value: (r) => fmt(num(r.data_lhpk?.ka3)), align: 'right' },
-  { key: 'reject', label: 'Reject', value: (r) => fmt(num(r.data_lhpk?.reject)), align: 'right' },
+  { key: 'reject', label: 'Reject (kg)', value: (r) => fmt(num(r.data_lhpk?.reject), 0), align: 'right' },
   { key: 'rendemen', label: 'Rendemen', value: (r) => `${fmt(r.data_lhpk?.rendemen ?? 0)}%`, align: 'right' },
 ]
 
@@ -269,7 +272,9 @@ function blokUntukRole(row: PengolahanItem, role: string): TahapPengolahan[] {
 type FormEdit = Record<string, string>
 
 function isiForm(row: PengolahanItem): FormEdit {
-  const teks = (value: string | number | null | undefined) => (value === null || value === undefined ? '' : String(value))
+  // trimDesimal(): kolom decimal DB selalu pulang dengan dua desimal ("1589776.00"), dan angka itu
+  // masuk mentah ke kotak isian kalau tidak dipangkas. Teks & tanggal lewat apa adanya.
+  const teks = (value: string | number | null | undefined) => (value === null || value === undefined ? '' : trimDesimal(String(value)))
   const mo = row.mo_detail?.mo
 
   return {

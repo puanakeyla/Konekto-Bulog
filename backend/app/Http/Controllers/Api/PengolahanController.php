@@ -417,9 +417,6 @@ class PengolahanController extends Controller
         return response()->json([
             'data' => [
                 ...$pengolahan->toArray(),
-                // Angka yang akan disnapshot ke LHPK saat disimpan -- ditampilkan read-only di form
-                // supaya pengisi melihat nilai yang sama dengan yang nanti tersimpan.
-                'stok_gudang_berjalan' => Gudang::stokBerjalan($pengolahan->gudang_id),
                 // Dua angka neraca makloon, BACA-SAJA: tidak pernah dikirim balik dan tidak
                 // disimpan ke LHPK. Gunanya memberi UB Jastasma konteks stok mitra yang sedang
                 // ia proses, dengan definisi yang sama persis dengan neraca gabah admin.

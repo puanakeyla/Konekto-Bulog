@@ -284,17 +284,17 @@ export default function DataSpreadsheet<T>({
           <table className="w-full border-collapse text-[0.8125rem] whitespace-nowrap">
             <thead className="sticky top-0 z-10">
               <tr className="bg-primary-tint text-primary-dark">
-                <th className="border-b border-r border-border px-3 py-2 text-right font-bold">#</th>
+                <th className="border-b border-r border-grid px-3 py-2 text-right font-bold">#</th>
                 {columns.map((c) => (
                   <th
                     key={c.key}
-                    className={`border-b border-r border-border px-3 py-2 font-bold last:border-r-0 ${c.align === 'right' ? 'text-right' : 'text-left'}`}
+                    className={`border-b border-r border-grid px-3 py-2 font-bold last:border-r-0 ${c.align === 'right' ? 'text-right' : 'text-left'}`}
                   >
                     {c.label}
                   </th>
                 ))}
                 {renderRowActions && (
-                  <th className="sticky right-0 border-b border-l border-border bg-primary-tint px-3 py-2 text-center font-bold shadow-[-8px_0_12px_rgba(15,23,42,0.06)]">
+                  <th className="sticky right-0 border-b border-l border-grid bg-primary-tint px-3 py-2 text-center font-bold shadow-[-8px_0_12px_rgba(15,23,42,0.06)]">
                     Aksi
                   </th>
                 )}
@@ -308,7 +308,7 @@ export default function DataSpreadsheet<T>({
                 // dan sel-sel yang tergulir di bawahnya terbaca menembus tombol -- terlihat
                 // seperti "tulisan hantu" tiap kali kursor mendekat untuk mengklik.
                 <tr key={rowKey(row)} className="odd:bg-white even:bg-surface hover:bg-primary-tint">
-                  <td className="border-b border-r border-border px-3 py-2 text-right text-muted tabular-nums">{i + 1}</td>
+                  <td className="border-b border-r border-grid px-3 py-2 text-right text-muted tabular-nums">{i + 1}</td>
                   {columns.map((c) => {
                     const span = rowSpans[c.key]?.[i]
                     // span === 0: sel sudah tertutup rowSpan baris di atasnya.
@@ -317,14 +317,14 @@ export default function DataSpreadsheet<T>({
                       <td
                         key={c.key}
                         rowSpan={span && span > 1 ? span : undefined}
-                        className={`border-b border-r border-border px-3 py-2 last:border-r-0 ${c.align === 'right' ? 'text-right tabular-nums' : 'text-left'} ${span && span > 1 ? 'align-middle bg-white font-semibold' : ''}`}
+                        className={`border-b border-r border-grid px-3 py-2 last:border-r-0 ${c.align === 'right' ? 'text-right tabular-nums' : 'text-left'} ${span && span > 1 ? 'align-middle bg-white font-semibold' : ''}`}
                       >
                         {c.render ? c.render(row) : (c.value(row) ?? '-')}
                       </td>
                     )
                   })}
                   {renderRowActions && (
-                    <td className="sticky right-0 border-b border-l border-border bg-inherit px-3 py-2 text-center shadow-[-8px_0_12px_rgba(15,23,42,0.05)]">
+                    <td className="sticky right-0 border-b border-l border-grid bg-inherit px-3 py-2 text-center shadow-[-8px_0_12px_rgba(15,23,42,0.05)]">
                       {renderRowActions(row)}
                     </td>
                   )}

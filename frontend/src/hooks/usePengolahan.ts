@@ -51,8 +51,6 @@ export type PengolahanItem = {
   /** Null sampai pengisi tahap pertama menetapkannya. */
   makloon_user_id: number | null
   makloon?: { id: number; nama_maklon: string | null } | null
-  /** Hanya ada di response detail: stok berjalan gudang ini (dihitung server). */
-  stok_gudang_berjalan?: number
   /** Hanya ada di response detail. Baca-saja, tidak pernah dikirim balik ke server. */
   neraca_makloon?: { stok_real: number; belum_adm_belum_olah: number }
   current_stage: TahapPengolahan

@@ -77,11 +77,12 @@ function StatusPill({ status }: { status?: StatusTahap | null }) {
   return <span className={map[status]}>{STATUS_LABEL[status]}</span>
 }
 
-function fmt(value: string | number | null | undefined, suffix = '') {
+/** `desimal` = 0 untuk angka kilogram yang selalu bulat (mis. Reject), 2 untuk angka mutu/persen. */
+function fmt(value: string | number | null | undefined, suffix = '', desimal = 2) {
   if (value === null || value === undefined || value === '') return '-'
   const angka = Number(value)
   if (Number.isNaN(angka)) return String(value)
-  return `${new Intl.NumberFormat('id-ID', { maximumFractionDigits: 2 }).format(angka)}${suffix}`
+  return `${new Intl.NumberFormat('id-ID', { maximumFractionDigits: desimal }).format(angka)}${suffix}`
 }
 
 function labelReviewMo(status: string | null | undefined) {
@@ -642,7 +643,7 @@ function TahapSummary({ tahap, transaksi }: { tahap: TahapPengolahan; transaksi:
           // sementara angka kilogram dapat pemisah ribuannya.
           ['Broken / Menir / Katul', `${fmt(data?.broken)} / ${fmt(data?.menir)} / ${fmt(data?.katul)}`],
           ['KA1 / KA2 / KA3', `${fmt(data?.ka1)} / ${fmt(data?.ka2)} / ${fmt(data?.ka3)}`],
-          ['Reject', fmt(data?.reject)],
+          ['Reject', fmt(data?.reject, ' kg', 0)],
         ]}
       />
     )
@@ -1320,32 +1321,13 @@ function FormTahap({
       {/* Gudang tidak diketik lagi di sini: ia dipilih sekali saat pengolahan dibuat. */}
       <div className="mt-4 grid gap-4 sm:grid-cols-2">
         <div>
-          <label className="label" htmlFor="makloon-tahap">Makloon asal</label>
+          <span className="label">Makloon asal</span>
           {bolehPilihMakloon ? (
             <MakloonCombobox value={makloonId} onChange={setMakloonId} reserveSpaceWhenOpen />
           ) : (
-            <input
-              id="makloon-tahap"
-              className="input bg-white text-muted"
-              value={transaksi.makloon?.nama_maklon ?? '-'}
-              readOnly
-            />
+            <div className="readout">{transaksi.makloon?.nama_maklon ?? '-'}</div>
           )}
         </div>
-
-        {tahap === 'ub_jastasma' && (
-          <div>
-            <label className="label" htmlFor="stok-gudang">Kuantum stok gudang otomatis (kg)</label>
-            {/* Angka sistem: stok berjalan gudang ini (HGL diterima - gabah yang sudah diolah).
-                Dihitung ulang server saat disimpan, jadi di sini murni tampilan. */}
-            <input
-              id="stok-gudang"
-              className="input bg-white text-muted"
-              value={fmt(transaksi.stok_gudang_berjalan ?? 0)}
-              readOnly
-            />
-          </div>
-        )}
 
         {/* Dua angka neraca mitra, BACA-SAJA: tidak ikut terkirim dan tidak tersimpan ke LHPK.
             Gunanya memberi UB Jastasma gambaran stok makloon yang sedang ia proses, dengan
@@ -1353,23 +1335,13 @@ function FormTahap({
         {tahap === 'ub_jastasma' && (
           <>
             <div>
-              <label className="label" htmlFor="stok-real">Kuantum stok gudang real (kg)</label>
-              <input
-                id="stok-real"
-                className="input bg-white text-muted"
-                value={fmt(transaksi.neraca_makloon?.stok_real ?? 0)}
-                readOnly
-              />
+              <span className="label">Stok Real (kg)</span>
+              <div className="readout">{fmt(transaksi.neraca_makloon?.stok_real ?? 0)}</div>
               <p className="mt-1 text-xs text-muted">Gabah sudah IN dikurangi yang sudah diolah dan sudah teradministrasi.</p>
             </div>
             <div>
-              <label className="label" htmlFor="stok-belum-olah">Kuantum stok gudang belum diolah (kg)</label>
-              <input
-                id="stok-belum-olah"
-                className="input bg-white text-muted"
-                value={fmt(transaksi.neraca_makloon?.belum_adm_belum_olah ?? 0)}
-                readOnly
-              />
+              <span className="label">Stok Belum Administrasi, Belum Olah (kg)</span>
+              <div className="readout">{fmt(transaksi.neraca_makloon?.belum_adm_belum_olah ?? 0)}</div>
               <p className="mt-1 text-xs text-muted">Gabah sudah IN dikurangi seluruh yang sudah diolah.</p>
             </div>
           </>
