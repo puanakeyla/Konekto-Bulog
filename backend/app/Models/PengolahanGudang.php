@@ -21,6 +21,13 @@ class PengolahanGudang extends Model implements HasMedia
 
     protected $table = 'pengolahan_gudang';
 
+    /**
+     * Rendemen acuan untuk menaksir gabah dari HGL fisik: estimasi gabah = kuantum_hgl / 51%.
+     * Angka taksiran yang dipakai memantau stok, BUKAN timbangan -- karena itu tidak pernah
+     * disimpan ke kolom mana pun, selalu dihitung ulang dari kuantum_hgl.
+     */
+    public const RENDEMEN_ESTIMASI = 0.51;
+
     protected $fillable = [
         'transaksi_pengolahan_id',
         'gudang_id',

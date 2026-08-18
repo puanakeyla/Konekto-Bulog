@@ -52,10 +52,12 @@ const GRUP: Grup[] = [
     kepala: 'bg-[#DCE7F7] text-[#1D3357]',
     sel: 'bg-[#F6F9FD]',
     kolom: [
-      { key: 'olah_rekap', label: 'Sudah Diolah, Belum Administrasi', jenis: 'kg' },
-      { key: 'belum_adm_belum_olah', label: 'Stok Belum Administrasi, Belum Olah', jenis: 'kg', bisaMinus: true },
-      { key: 'olah_selesai', label: 'Sudah Diolah, Sudah Administrasi', jenis: 'kg' },
-      { key: 'stok_real', label: 'Stok Real', jenis: 'kg', bisaMinus: true },
+      { key: 'estimasi_gabah', label: 'Estimasi Gabah', jenis: 'kg' },
+      { key: 'olah_rekap', label: 'LHPK HGL terbit', jenis: 'kg' },
+      { key: 'belum_adm_belum_olah', label: 'Stok Pengurang LHPK', jenis: 'kg', bisaMinus: true },
+      { key: 'stok_pengurang_gudang', label: 'Stok Pengurang Penerimaan Gudang', jenis: 'kg', bisaMinus: true },
+      { key: 'olah_selesai', label: 'Kuantum olah sudah divalidasi', jenis: 'kg' },
+      { key: 'stok_real', label: 'Stok ERP', jenis: 'kg', bisaMinus: true },
     ],
   },
   {
@@ -329,22 +331,32 @@ const PENJELASAN: { grup: string; kepala: string; item: Penjelasan[] }[] = [
     kepala: 'bg-[#DCE7F7] text-[#1D3357]',
     item: [
       {
-        judul: 'Sudah Diolah, Belum Administrasi',
+        judul: 'Estimasi Gabah',
+        isi: 'Taksiran gabah di balik beras HGL yang sudah ditimbang masuk gudang, dijumlah dari seluruh pengolahan mitra ini yang tahap Gudang-nya sudah diterima. Angkanya sama dengan kolom Estimasi Gabah di Rekap Pengolahan. Ini taksiran memakai rendemen acuan 51%, bukan hasil timbang gabah.',
+        rumus: 'Kuantum HGL (fisik gudang) ÷ 51%',
+      },
+      {
+        judul: 'LHPK HGL terbit',
         isi: 'Kuantum gabah yang diolah menurut LHPK UB Jastasma yang sudah diterima, sehingga sudah tampil di Rekap Pengolahan.',
       },
       {
-        judul: 'Stok Belum Administrasi, Belum Olah',
+        judul: 'Stok Pengurang LHPK',
         isi: 'Gabah yang nomor IN-nya sudah ada tapi belum tercatat diolah di LHPK mana pun. Bisa minus kalau yang diolah lebih banyak daripada yang sudah ber-IN.',
-        rumus: 'Gabah Sudah IN − Sudah Diolah Belum Administrasi',
+        rumus: 'Gabah Sudah IN − LHPK HGL terbit',
       },
       {
-        judul: 'Sudah Diolah, Sudah Administrasi',
+        judul: 'Stok Pengurang Penerimaan Gudang',
+        isi: 'Sisa gabah kalau yang dipakai sebagai pengurang adalah penerimaan fisik gudang, bukan laporan LHPK. Berguna untuk membandingkan dua sudut pandang: kalau angkanya jauh berbeda dari Stok Pengurang LHPK, ada selisih antara yang dilaporkan UB dan yang benar-benar masuk gudang. Bisa minus.',
+        rumus: 'Gabah Sudah IN − Estimasi Gabah',
+      },
+      {
+        judul: 'Kuantum olah sudah divalidasi',
         isi: 'Gabah olahan yang urusan administrasinya benar-benar tuntas: sudah masuk MO dan Nomor OUT-nya sudah terbit, sehingga pengolahannya berstatus selesai.',
       },
       {
-        judul: 'Stok Real',
+        judul: 'Stok ERP',
         isi: 'Perkiraan gabah yang masih ada di mitra: sudah ber-IN tapi administrasi olahnya belum tuntas.',
-        rumus: 'Gabah Sudah IN − Sudah Diolah Sudah Administrasi',
+        rumus: 'Gabah Sudah IN − Kuantum olah sudah divalidasi',
       },
     ],
   },
@@ -369,7 +381,7 @@ const PENJELASAN: { grup: string; kepala: string; item: Penjelasan[] }[] = [
       {
         judul: 'Rata-rata Rendemen',
         isi: 'Seberapa banyak beras yang dihasilkan dari gabah yang administrasinya sudah tuntas.',
-        rumus: 'HGL ÷ Sudah Diolah Sudah Administrasi × 100%',
+        rumus: 'HGL ÷ Kuantum olah sudah divalidasi × 100%',
       },
       {
         judul: 'Realisasi Penerimaan HGL',
@@ -383,7 +395,7 @@ const PENJELASAN: { grup: string; kepala: string; item: Penjelasan[] }[] = [
       {
         judul: '% Gabah Diolah vs Administrasi',
         isi: 'Seberapa jauh gabah yang sudah ber-IN benar-benar tuntas diolah dan diadministrasikan. Mendekati 100% berarti hampir tidak ada yang menggantung.',
-        rumus: 'Sudah Diolah Sudah Administrasi ÷ Gabah Sudah IN × 100%',
+        rumus: 'Kuantum olah sudah divalidasi ÷ Gabah Sudah IN × 100%',
       },
     ],
   },

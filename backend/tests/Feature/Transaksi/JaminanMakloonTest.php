@@ -132,7 +132,7 @@ class JaminanMakloonTest extends TestCase
 
     /**
      * Kuota baru terbuka setelah LHPK MASUK REKAP (status `diterima`) -- keputusan pemilik,
-     * supaya angka gerbang identik dengan kolom neraca "Belum Administrasi, Belum Olah".
+     * supaya angka gerbang identik dengan kolom neraca "Stok Pengurang LHPK".
      * LHPK yang baru dikirim (menunggu_review) BELUM membuka apa pun.
      */
     public function test_hanya_lhpk_yang_sudah_masuk_rekap_yang_membuka_kuota(): void

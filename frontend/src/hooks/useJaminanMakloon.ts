@@ -23,7 +23,7 @@ export type JaminanMakloonItem = {
     gabah_sudah_in: number
     olah_rekap: number
     olah_selesai: number
-    /** Rumus sama persis dengan kolom "Stok Belum Administrasi, Belum Olah" di neraca — bisa minus. */
+    /** Rumus sama persis dengan kolom "Stok Pengurang LHPK" di neraca — bisa minus. */
     tunggakan_kg: number
     terpakai_hari_ini_kg: number
     /** Yang paling dicari: berapa kg lagi yang masih boleh dikirim makloon hari ini. */

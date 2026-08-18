@@ -10,6 +10,7 @@ import KartuFoto from '../components/KartuFoto'
 import ModalPortal from '../components/ModalPortal'
 import { ambilFotoPengolahan, useFotoPengolahanUrl } from '../hooks/useFotoTransaksi'
 import api from '../lib/api'
+import { estimasiGabah } from '../lib/estimasiGabah'
 import { labelFoto } from '../lib/fotoDokumen'
 import { pesanError } from '../lib/pesanError'
 import { trimDesimal } from '../lib/poFormat'
@@ -48,6 +49,9 @@ const COLS_UMUM: Kolom[] = [
 const COLS_GUDANG: Kolom[] = [
   { key: 'tgl_masuk', label: 'Tgl Masuk Gudang', value: (r) => tanggal(r.data_gudang?.tanggal_masuk_gudang) },
   { key: 'hgl_fisik', label: 'Kuantum HGL (fisik)', value: (r) => fmt(num(r.data_gudang?.kuantum_hgl)), align: 'right' },
+  // Taksiran, bukan isian: tidak ada padanannya di form Edit karena tidak tersimpan di mana pun.
+  // Kilogram utuh, sama seperti yang dijumlah neraca admin -- kolom ini boleh dijumlah tangan.
+  { key: 'estimasi_gabah', label: 'Estimasi Gabah', value: (r) => fmt(estimasiGabah(r.data_gudang?.kuantum_hgl), 0), align: 'right' },
   { key: 'plat', label: 'Plat', value: (r) => r.data_gudang?.plat_mobil ?? '-' },
   { key: 'supir', label: 'Supir', value: (r) => r.data_gudang?.supir ?? '-' },
 ]

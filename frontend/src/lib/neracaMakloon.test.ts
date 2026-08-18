@@ -14,8 +14,10 @@ function baris(isi: Partial<BarisRekapMakloon>): BarisRekapMakloon {
     gabah_belum_in: 0,
     gabah_spp: 0,
     gabah_belum_spp: 0,
+    estimasi_gabah: 0,
     olah_rekap: 0,
     belum_adm_belum_olah: 0,
+    stok_pengurang_gudang: 0,
     olah_selesai: 0,
     stok_real: 0,
     hgl: 0,
@@ -40,6 +42,16 @@ test('kolom kilogram dijumlah apa adanya', () => {
   assert.equal(total.gabah_diterima, 280065)
   assert.equal(total.gabah_sudah_in, 249785)
   assert.equal(total.katul, 327.42)
+})
+
+test('estimasi gabah & stok pengurang gudang ikut dijumlah, termasuk yang minus', () => {
+  const total = hitungTotalNeraca([
+    baris({ estimasi_gabah: 100000, stok_pengurang_gudang: 41335 }),
+    baris({ estimasi_gabah: 150000, stok_pengurang_gudang: -41550 }),
+  ])
+
+  assert.equal(total.estimasi_gabah, 250000)
+  assert.equal(total.stok_pengurang_gudang, -215)
 })
 
 test('kolom minus tetap ikut mengurangi total, bukan diabaikan', () => {

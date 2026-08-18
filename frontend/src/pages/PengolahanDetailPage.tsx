@@ -23,6 +23,7 @@ import {
 import { bukaTabBaru } from '../lib/bukaTabBaru'
 import { labelFoto } from '../lib/fotoDokumen'
 import { pesanError } from '../lib/pesanError'
+import { estimasiGabah } from '../lib/estimasiGabah'
 import { trimDesimal } from '../lib/poFormat'
 import { apiErrorMessage } from '../lib/apiError'
 import AngkaInput from '../components/AngkaInput'
@@ -629,6 +630,7 @@ function TahapSummary({ tahap, transaksi }: { tahap: TahapPengolahan; transaksi:
           ['Gudang', transaksi.gudang?.nama ?? '-'],
           ['Tanggal masuk', tanggal(data?.tanggal_masuk_gudang)],
           ['Kuantum HGL', fmt(data?.kuantum_hgl, ' kg')],
+          ['Estimasi gabah', data?.kuantum_hgl ? fmt(estimasiGabah(data.kuantum_hgl), ' kg', 0) : '-'],
           ['Plat mobil', data?.plat_mobil ?? '-'],
           ['Supir', data?.supir ?? '-'],
         ]}
@@ -1344,12 +1346,12 @@ function FormTahap({
         {tahap === 'ub_jastasma' && (
           <>
             <div>
-              <span className="label">Stok Real (kg)</span>
+              <span className="label">Stok ERP (kg)</span>
               <div className="readout">{neraca ? fmt(neraca.stok_real) : '-'}</div>
               <p className="mt-1 text-xs text-muted">Gabah sudah IN dikurangi yang sudah diolah dan sudah teradministrasi.</p>
             </div>
             <div>
-              <span className="label">Stok Belum Administrasi, Belum Olah (kg)</span>
+              <span className="label">Stok Pengurang LHPK (kg)</span>
               <div className="readout">{neraca ? fmt(neraca.belum_adm_belum_olah) : '-'}</div>
               <p className="mt-1 text-xs text-muted">Gabah sudah IN dikurangi seluruh yang sudah diolah.</p>
             </div>
@@ -1383,6 +1385,15 @@ function FormTahap({
           )
         })}
       </div>
+
+      {tahap === 'gudang' && (
+        <p className="mt-3 rounded-lg border border-border bg-white px-3 py-2 text-sm text-muted">
+          Estimasi gabah otomatis:{' '}
+          <strong className="text-primary-dark">{form.kuantum_hgl ? fmt(estimasiGabah(form.kuantum_hgl), ' kg', 0) : '-'}</strong>{' '}
+          &mdash; Kuantum HGL &divide; 51%. Taksiran baca-saja: tidak diketik, tidak disimpan, tapi ikut
+          terbaca di tahap berikutnya dan di Rekap Pengolahan.
+        </p>
+      )}
 
       {tahap === 'ub_jastasma' && (
         <p className="mt-3 rounded-lg border border-border bg-white px-3 py-2 text-sm text-muted">

@@ -6,6 +6,7 @@ use App\Models\DataJemputPangan;
 use App\Models\DataMakloonTjp;
 use App\Models\DataPengadaan;
 use App\Models\Gudang;
+use App\Models\PengolahanGudang;
 use App\Models\PengolahanLhpk;
 use App\Models\PengolahanMo;
 use App\Models\PengolahanMoDetail;
@@ -123,6 +124,11 @@ class MonitoringTest extends TestCase
         $berjalan = $this->buatPengolahan($gudang, $makloon, 'GDG', 'berjalan');
         $this->buatLhpk($berjalan, 'LHPK/2', 1000, 600, 'diterima');
 
+        // Tahap Gudang jalannya sendiri: yang diterima memberi estimasi 2.550 / 0,51 = 5.000 kg,
+        // yang belum diterima tidak boleh ikut sama sekali.
+        $this->buatGudang($selesai, 2550, 'diterima');
+        $this->buatGudang($berjalan, 99000, 'menunggu_review');
+
         // LHPK yang masih menunggu review tidak ikut.
         $draft = $this->buatPengolahan($gudang, $makloon, 'UBJ', 'berjalan');
         $this->buatLhpk($draft, 'LHPK/3', 50000, 50000, 'menunggu_review');
@@ -137,8 +143,10 @@ class MonitoringTest extends TestCase
             ->assertJsonPath('data.0.gabah_belum_in', 4000)
             ->assertJsonPath('data.0.gabah_spp', 10000)
             ->assertJsonPath('data.0.gabah_belum_spp', 4000)
+            ->assertJsonPath('data.0.estimasi_gabah', 5000)
             ->assertJsonPath('data.0.olah_rekap', 9000)
             ->assertJsonPath('data.0.belum_adm_belum_olah', 1000)
+            ->assertJsonPath('data.0.stok_pengurang_gudang', 5000)
             ->assertJsonPath('data.0.olah_selesai', 8000)
             ->assertJsonPath('data.0.stok_real', 2000)
             ->assertJsonPath('data.0.hgl', 4600)
@@ -148,6 +156,32 @@ class MonitoringTest extends TestCase
             // Wajar minus: realisasi Operasi belum menyusul HGL yang sudah dilaporkan UB.
             ->assertJsonPath('data.0.hgl_belum_adm', -600)
             ->assertJsonPath('data.0.persentase_olah', 80);
+    }
+
+    /**
+     * Estimasi dibulatkan PER PENGOLAHAN sebelum dijumlah, sama seperti yang dilihat orang di
+     * Rekap Pengolahan -- supaya kolom di sana bisa dijumlah tangan dan ketemu dengan total di
+     * neraca ini. Angkanya sengaja dipilih yang membuat kedua urutan berbeda: dibulatkan dulu
+     * lalu dijumlah = 1.961 + 3.922 = 5.883, sedangkan dijumlah dulu baru dibulatkan = 5.882.
+     */
+    public function test_estimasi_gabah_dibulatkan_per_pengolahan_sebelum_dijumlah(): void
+    {
+        $gudang = Gudang::create(['kode' => 'ADA08002', 'nama' => 'Gudang B']);
+        $makloon = $this->buatUser('makloon');
+        $makloon->update(['nama_maklon' => 'Makloon Bulat']);
+
+        $this->buatGudang($this->buatPengolahan($gudang, $makloon, 'GDG', 'berjalan'), 1000, 'diterima');
+        $this->buatGudang($this->buatPengolahan($gudang, $makloon, 'GDG', 'berjalan'), 2000, 'diterima');
+
+        Sanctum::actingAs($this->buatUser('admin'));
+
+        $this->getJson('/api/monitoring/rekap-makloon')->assertOk()
+            // Mitra ini belum punya gabah masuk sama sekali, tapi tetap muncul: data gudangnya
+            // saja sudah cukup jadi alasan untuk dilihat.
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.estimasi_gabah', 5883)
+            // Wajar minus: HGL sudah masuk gudang padahal gabahnya belum ber-No IN.
+            ->assertJsonPath('data.0.stok_pengurang_gudang', -5883);
     }
 
     /** Makloon tanpa aktivitas apa pun tidak ikut jadi baris kosong. */
@@ -244,6 +278,17 @@ class MonitoringTest extends TestCase
             'current_stage' => 'operasi',
             'status_keseluruhan' => $status,
             'created_by' => $makloon->id,
+        ]);
+    }
+
+    private function buatGudang(TransaksiPengolahan $pengolahan, float $kuantumHgl, string $status): void
+    {
+        PengolahanGudang::create([
+            'transaksi_pengolahan_id' => $pengolahan->id_pengolahan,
+            'gudang_id' => $pengolahan->gudang_id,
+            'tanggal_masuk_gudang' => now()->toDateString(),
+            'kuantum_hgl' => $kuantumHgl,
+            'status' => $status,
         ]);
     }
 

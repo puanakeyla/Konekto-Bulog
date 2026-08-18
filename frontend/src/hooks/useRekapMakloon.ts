@@ -16,8 +16,11 @@ export type BarisRekapMakloon = {
   gabah_belum_in: number
   gabah_spp: number
   gabah_belum_spp: number
+  /** Taksiran gabah dari HGL fisik gudang: kuantum HGL ÷ 51%. */
+  estimasi_gabah: number
   olah_rekap: number
   belum_adm_belum_olah: number
+  stok_pengurang_gudang: number
   olah_selesai: number
   stok_real: number
   hgl: number

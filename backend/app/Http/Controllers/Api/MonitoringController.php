@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\PengolahanGudang;
 use App\Models\Transaksi;
 use App\Models\TransaksiPengolahan;
 use App\Models\User;
@@ -210,6 +211,7 @@ class MonitoringController extends Controller
             ->whereHas('role', fn ($q) => $q->where('nama_role', 'makloon'))
             ->leftJoinSub($this->agregatGabahSergab(), 'sg', 'sg.makloon_user_id', '=', 'users.id')
             ->leftJoinSub($this->agregatOlahPengolahan(), 'pg', 'pg.makloon_user_id', '=', 'users.id')
+            ->leftJoinSub($this->agregatGudangPengolahan(), 'gd', 'gd.makloon_user_id', '=', 'users.id')
             ->orderBy('users.nama_maklon')
             ->get([
                 'users.id',
@@ -227,13 +229,14 @@ class MonitoringController extends Controller
                 DB::raw('COALESCE(pg.katul, 0) as katul'),
                 DB::raw('COALESCE(pg.reject, 0) as reject'),
                 DB::raw('COALESCE(pg.hgl_operasi, 0) as hgl_operasi'),
+                DB::raw('COALESCE(gd.estimasi_gabah, 0) as estimasi_gabah'),
             ]);
 
         $data = $rows
             ->map(fn (User $row) => $this->barisRekapMakloon($row))
             // Makloon tanpa aktivitas apa pun dibuang: daftar mitra jauh lebih panjang daripada
             // yang benar-benar bergerak, dan puluhan baris nol membuat tabelnya tidak terbaca.
-            ->filter(fn (array $baris) => $baris['gabah_diterima'] != 0 || $baris['olah_rekap'] != 0)
+            ->filter(fn (array $baris) => $baris['gabah_diterima'] != 0 || $baris['olah_rekap'] != 0 || $baris['estimasi_gabah'] != 0)
             ->values();
 
         return response()->json(['data' => $data]);
@@ -254,6 +257,8 @@ class MonitoringController extends Controller
         $olahSelesai = (float) $row->olah_selesai;
         $hgl = (float) $row->hgl;
         $hglOperasi = (float) $row->hgl_operasi;
+        // Sudah dibulatkan per pengolahan di dalam agregatnya -- lihat alasannya di sana.
+        $estimasiGabah = (float) $row->estimasi_gabah;
 
         return [
             'makloon_user_id' => $row->id,
@@ -265,8 +270,10 @@ class MonitoringController extends Controller
             'gabah_belum_in' => $diterima - $sudahIn,
             'gabah_spp' => $spp,
             'gabah_belum_spp' => $diterima - $spp,
+            'estimasi_gabah' => $estimasiGabah,
             'olah_rekap' => $olahRekap,
             'belum_adm_belum_olah' => $sudahIn - $olahRekap,
+            'stok_pengurang_gudang' => $sudahIn - $estimasiGabah,
             'olah_selesai' => $olahSelesai,
             'stok_real' => $sudahIn - $olahSelesai,
             'hgl' => $hgl,
@@ -375,6 +382,35 @@ class MonitoringController extends Controller
             ->selectRaw('COALESCE(SUM(l.katul), 0) as katul')
             ->selectRaw('COALESCE(SUM(l.reject), 0) as reject')
             ->selectRaw("COALESCE(SUM(CASE WHEN mo.review_status = 'diterima' THEN l.kuantum_beras_hgl ELSE 0 END), 0) as hgl_operasi");
+    }
+
+    /**
+     * HGL fisik per makloon dari tahap Gudang yang sudah DITERIMA -- himpunan yang sama dengan
+     * kolom "Kuantum HGL (fisik)" di Rekap Pengolahan. Berdiri sendiri, tidak digabung ke
+     * agregatOlahPengolahan(): tahap Gudang bisa selesai lebih dulu daripada LHPK (skema GDG),
+     * dan menumpangkannya di join LHPK akan menghilangkan HGL yang LHPK-nya belum diterima.
+     *
+     * pengolahan_gudang.transaksi_pengolahan_id ber-indeks UNIQUE, jadi join ini tidak bisa
+     * menggandakan kuantum.
+     *
+     * ROUND() dipasang PER BARIS, sebelum SUM(), bukan sesudahnya. Rekap Pengolahan menampilkan
+     * estimasi satu per satu dalam kilogram utuh; kalau di sini dijumlah dulu baru dibulatkan,
+     * kolom yang dijumlah tangan di sana tidak akan pernah ketemu dengan total di neraca ini --
+     * dan selisih beberapa kilogram tanpa penjelasan lebih merepotkan daripada pecahan yang
+     * hilang. Sisi frontend membulatkan di titik yang sama (lib/estimasiGabah.ts).
+     *
+     * ROUND(x) berperilaku sama di MySQL (dev & produksi) dan SQLite (test); kuantum tidak
+     * pernah negatif, jadi perbedaan arah pembulatan setengah tidak pernah terpakai.
+     */
+    private function agregatGudangPengolahan(): \Illuminate\Database\Query\Builder
+    {
+        return DB::table('transaksi_pengolahan as tp')
+            ->join('pengolahan_gudang as g', 'g.transaksi_pengolahan_id', '=', 'tp.id_pengolahan')
+            ->whereNotNull('tp.makloon_user_id')
+            ->where('g.status', 'diterima')
+            ->groupBy('tp.makloon_user_id')
+            ->select('tp.makloon_user_id')
+            ->selectRaw('COALESCE(SUM(ROUND(g.kuantum_hgl / '.PengolahanGudang::RENDEMEN_ESTIMASI.')), 0) as estimasi_gabah');
     }
 
     public function makloon(Request $request)
