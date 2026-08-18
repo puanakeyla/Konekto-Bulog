@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { Fragment, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from '../lib/toast'
@@ -40,8 +40,8 @@ type FieldDef = { key: string; label: string; type?: string; ribuan?: boolean }
 const FIELD_GUDANG: FieldDef[] = [
   { key: 'tanggal_masuk_gudang', label: 'Tanggal masuk gudang', type: 'date' },
   { key: 'kuantum_hgl', label: 'Kuantum HGL (kg)', ribuan: true },
-  { key: 'plat_mobil', label: 'Plat mobil' },
   { key: 'supir', label: 'Supir' },
+  { key: 'plat_mobil', label: 'Plat mobil' },
 ]
 
 const FIELD_LHPK: FieldDef[] = [
@@ -1362,38 +1362,40 @@ function FormTahap({
           const nilai = nilaiField(field, form)
 
           return (
-            <div key={field.key}>
-              <label className="label" htmlFor={field.key}>{field.label}</label>
-              {field.ribuan ? (
-                <AngkaInput
-                  className="input bg-white"
-                  value={nilai}
-                  onChange={(raw) => setForm({ ...form, [field.key]: raw })}
-                />
-              ) : (
-                <input
-                  id={field.key}
-                  className="input bg-white"
-                  type={field.type ?? 'text'}
-                  step={field.type === 'number' ? '0.01' : undefined}
-                  value={nilai}
-                  onChange={(e) => setForm({ ...form, [field.key]: e.target.value })}
-                  placeholder={field.key === 'no_lhpk' ? 'LHPK/00832/02/2026/ADA08001' : undefined}
-                />
+            <Fragment key={field.key}>
+              <div>
+                <label className="label" htmlFor={field.key}>{field.label}</label>
+                {field.ribuan ? (
+                  <AngkaInput
+                    className="input bg-white"
+                    value={nilai}
+                    onChange={(raw) => setForm({ ...form, [field.key]: raw })}
+                  />
+                ) : (
+                  <input
+                    id={field.key}
+                    className="input bg-white"
+                    type={field.type ?? 'text'}
+                    step={field.type === 'number' ? '0.01' : undefined}
+                    value={nilai}
+                    onChange={(e) => setForm({ ...form, [field.key]: e.target.value })}
+                    placeholder={field.key === 'no_lhpk' ? 'LHPK/00832/02/2026/ADA08001' : undefined}
+                  />
+                )}
+              </div>
+              {tahap === 'gudang' && field.key === 'kuantum_hgl' && (
+                <div>
+                  <span className="label">Estimasi gabah (kg)</span>
+                  <div className="readout">
+                    {form.kuantum_hgl ? fmt(estimasiGabah(form.kuantum_hgl), ' kg', 0) : '-'}
+                  </div>
+                  <p className="mt-1 text-xs text-muted">Otomatis dari Kuantum HGL &divide; 51%.</p>
+                </div>
               )}
-            </div>
+            </Fragment>
           )
         })}
       </div>
-
-      {tahap === 'gudang' && (
-        <p className="mt-3 rounded-lg border border-border bg-white px-3 py-2 text-sm text-muted">
-          Estimasi gabah otomatis:{' '}
-          <strong className="text-primary-dark">{form.kuantum_hgl ? fmt(estimasiGabah(form.kuantum_hgl), ' kg', 0) : '-'}</strong>{' '}
-          &mdash; Kuantum HGL &divide; 51%. Taksiran baca-saja: tidak diketik, tidak disimpan, tapi ikut
-          terbaca di tahap berikutnya dan di Rekap Pengolahan.
-        </p>
-      )}
 
       {tahap === 'ub_jastasma' && (
         <p className="mt-3 rounded-lg border border-border bg-white px-3 py-2 text-sm text-muted">
