@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useMakloonOptions } from '../hooks/useMakloonOptions'
 
 type Props = {
@@ -11,6 +11,22 @@ export default function MakloonCombobox({ value, onChange, reserveSpaceWhenOpen 
   const { data: options, isLoading } = useMakloonOptions()
   const [query, setQuery] = useState('')
   const [open, setOpen] = useState(false)
+  const containerRef = useRef<HTMLDivElement>(null)
+
+  // Tutup dropdown saat user klik di luar combobox. Lebih reliable daripada
+  // setTimeout di onBlur yang bisa race condition dengan field form di bawahnya.
+  // onmousedown di dropdown options sudah stopPropagation(), jadi klik opsi tidak
+  // ikut menutup dropdown di sini.
+  useEffect(() => {
+    if (!open) return
+    const handleMouseDown = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleMouseDown)
+    return () => document.removeEventListener('mousedown', handleMouseDown)
+  }, [open])
 
   const selected = options?.find((o) => o.id === value) ?? null
 
@@ -22,7 +38,7 @@ export default function MakloonCombobox({ value, onChange, reserveSpaceWhenOpen 
   }, [options, query])
 
   return (
-    <div className={`relative ${open && reserveSpaceWhenOpen ? 'pb-56' : ''}`}>
+    <div ref={containerRef} className={`relative ${open && reserveSpaceWhenOpen ? 'pb-56' : ''}`}>
       <div className="relative">
         <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-400">
           Q
@@ -37,7 +53,7 @@ export default function MakloonCombobox({ value, onChange, reserveSpaceWhenOpen 
             setQuery('')
           }}
           onChange={(e) => setQuery(e.target.value)}
-          onBlur={() => setTimeout(() => setOpen(false), 150)}
+          onBlur={() => setOpen(false)}
         />
       </div>
       {open && (
