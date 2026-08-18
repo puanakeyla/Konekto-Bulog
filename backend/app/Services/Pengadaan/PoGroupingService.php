@@ -346,12 +346,13 @@ class PoGroupingService
     {
         if ($transaksi->skema === 'MPP') {
             $data = $transaksi->dataMakloonMpp;
+            $terima = $transaksi->dataMakloonTerima;
 
             return [
                 'tanggal_bongkar' => $data->tanggal_bongkar,
                 'id_pemasok' => $data->id_pemasok,
                 'makloon_user_id' => $transaksi->created_by,
-                'kuantum' => $data->kuantum,
+                'kuantum' => $terima->kuantum_bongkar ?? $data->kuantum,
             ];
         }
 

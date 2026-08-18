@@ -542,7 +542,7 @@ class TransaksiController extends Controller
 
         $transaksi->refresh();
         $kuantum = $transaksi->skema === 'MPP'
-            ? $transaksi->dataMakloonMpp?->kuantum
+            ? $transaksi->dataMakloonTerima?->kuantum_bongkar ?? $transaksi->dataMakloonMpp?->kuantum
             : $transaksi->dataMakloonTjp?->kuantum_bongkar;
 
         if ($kuantum !== null) {
@@ -593,7 +593,7 @@ class TransaksiController extends Controller
             'status_keseluruhan' => $transaksi->status_keseluruhan,
             'data_jemput_pangan' => $transaksi->dataJemputPangan?->only(['id_pemasok', 'supir', 'plat_mobil', 'nama_poktan_gapoktan', 'desa', 'kecamatan', 'kabupaten', 'makloon_user_id', 'tanggal_kirim', 'kuantum', 'jarak_ke_makloon_km']),
             'data_makloon_tjp' => $transaksi->dataMakloonTjp?->only(['tanggal_bongkar', 'kuantum_bongkar']),
-            'data_makloon_mpp' => $transaksi->dataMakloonMpp?->only(['id_pemasok', 'supir', 'plat_mobil', 'desa', 'kecamatan', 'kabupaten', 'tanggal_bongkar', 'kuantum', 'jarak_ke_makloon_km']),
+            'data_makloon_mpp' => $transaksi->dataMakloonMpp?->only(['id_pemasok', 'supir', 'plat_mobil', 'desa', 'kecamatan', 'kabupaten', 'tanggal_bongkar', 'kuantum', 'kuantum_bongkar', 'jarak_ke_makloon_km']),
             'data_makloon_terima' => $transaksi->dataMakloonTerima?->only(['kuantum_bongkar']),
             'data_ub_jastasma' => $transaksi->dataUbJastasma?->only(['ka1', 'ka2', 'ka3', 'hampa', 'butir_hijau']),
             'data_pengadaan' => $pengadaan ? [

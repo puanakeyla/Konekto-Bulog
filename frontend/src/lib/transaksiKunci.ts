@@ -11,7 +11,7 @@ export function kunciTransaksi(t: TransaksiListItem) {
     return {
       id_pemasok: t.data_makloon_mpp?.id_pemasok ?? null,
       tanggal_bongkar: t.data_makloon_mpp?.tanggal_bongkar ?? null,
-      kuantum: t.data_makloon_mpp?.kuantum ?? null,
+      kuantum: t.data_makloon_terima?.kuantum_bongkar ?? t.data_makloon_mpp?.kuantum ?? null,
     }
   }
   return {
