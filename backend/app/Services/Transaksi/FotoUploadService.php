@@ -39,13 +39,18 @@ class FotoUploadService
 
         $role = $actor->role->nama_role;
 
+        $koreksiFotoSergabOlehPengadaan = false;
+
         if ($roleOverride !== null) {
             if ($role !== 'admin' && $role !== 'pengadaan') {
                 abort(403, 'Hanya Admin atau Pengadaan yang boleh mengisi role secara eksplisit.');
             }
 
-            if ($role === 'pengadaan' && ! $this->bolehKoreksiFotoSergab($transaksi, $roleOverride, $jenisFoto)) {
-                abort(403, 'Pengadaan hanya boleh mengoreksi foto Sergab pada transaksi yang sudah masuk PO.');
+            if ($role === 'pengadaan') {
+                $koreksiFotoSergabOlehPengadaan = $this->bolehKoreksiFotoSergab($transaksi, $roleOverride, $jenisFoto);
+                if (! $koreksiFotoSergabOlehPengadaan) {
+                    abort(403, 'Pengadaan hanya boleh mengoreksi foto Sergab pada transaksi yang sudah masuk PO.');
+                }
             }
 
             $role = $roleOverride;
@@ -59,7 +64,7 @@ class FotoUploadService
 
         // Tahap terkunci: hanya admin, atau user yang aksesnya sedang dibuka admin lewat
         // Kelola User -- dan user seperti itu tetap dibatasi ke transaksinya sendiri.
-        if ($model->locked_at !== null) {
+        if ($model->locked_at !== null && ! $koreksiFotoSergabOlehPengadaan) {
             if (! $actor->bolehEditRekap()) {
                 abort(422, 'Data tahap ini sudah dikunci, foto tidak bisa diubah.');
             }
