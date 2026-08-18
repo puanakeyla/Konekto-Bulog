@@ -11,22 +11,17 @@ export type JaminanMakloonItem = {
     id: number
     bentuk_jaminan: string | null
     jaminan_rp: number
+    kapasitas_total_kg: number
     kapasitas_per_hari_kg: number
     batas_hari: number
-    /** kapasitas_per_hari x batas_hari — batas gabah yang boleh menumpuk belum diolah. */
     plafon_tunggakan_kg: number
-    berlaku_mulai: string | null
-    berlaku_sampai: string | null
-    masih_berlaku: boolean
   }
   pantauan: {
     gabah_sudah_in: number
     olah_rekap: number
     olah_selesai: number
-    /** Rumus sama persis dengan kolom "Stok Pengurang LHPK" di neraca — bisa minus. */
+    estimasi_gabah: number
     tunggakan_kg: number
-    terpakai_hari_ini_kg: number
-    /** Yang paling dicari: berapa kg lagi yang masih boleh dikirim makloon hari ini. */
     sisa_dapat_diinput_kg: number
     melewati_batas: boolean
   }
@@ -36,22 +31,17 @@ export type SimpanJaminanMakloonPayload = {
   makloon_user_id: number
   bentuk_jaminan: string | null
   jaminan_rp: number
-  kapasitas_per_hari_kg: number
-  batas_hari: number
+  kapasitas_total_kg: number
 }
 
 /** Aturan jaminan milik makloon yang sedang login — panel read-only di form tahap Makloon. */
 export type JaminanSaya = {
   bentuk_jaminan: string | null
   jaminan_rp: number
+  kapasitas_total_kg: number
   kapasitas_per_hari_kg: number
   batas_hari: number
-  berlaku_mulai: string | null
-  berlaku_sampai: string | null
-  masih_berlaku: boolean
-  tanggal: string
-  terpakai_kg: number
-  sisa_harian_kg: number
+  estimasi_gabah_kg: number
   tunggakan_kg: number
   plafon_tunggakan_kg: number
   sisa_dapat_diinput_kg: number

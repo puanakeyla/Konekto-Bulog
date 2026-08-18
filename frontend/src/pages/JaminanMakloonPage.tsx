@@ -15,24 +15,14 @@ type FormState = {
   makloon_user_id: number | null
   bentuk_jaminan: string
   jaminan_rp: string
-  kapasitas_per_hari_kg: string
-  batas_hari: string
+  kapasitas_total_kg: string
 }
 
 const initialForm: FormState = {
   makloon_user_id: null,
   bentuk_jaminan: '',
   jaminan_rp: '',
-  kapasitas_per_hari_kg: '',
-  batas_hari: '',
-}
-
-/** "13 - 15 Agu 2026". Rentang berlaku dihitung server, di sini tinggal dirapikan. */
-function rentangBerlaku(mulai: string | null, sampai: string | null) {
-  if (!mulai || !sampai) return '-'
-  const f = (iso: string, pakaiTahun: boolean) =>
-    new Date(iso).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', ...(pakaiTahun ? { year: 'numeric' } : {}) })
-  return `${f(mulai, false)} - ${f(sampai, true)}`
+  kapasitas_total_kg: '',
 }
 
 export default function JaminanMakloonPage() {
@@ -56,15 +46,14 @@ export default function JaminanMakloonPage() {
       makloon_user_id: id,
       bentuk_jaminan: item?.jaminan?.bentuk_jaminan ?? '',
       jaminan_rp: item?.jaminan ? String(Math.round(item.jaminan.jaminan_rp)) : '',
-      kapasitas_per_hari_kg: item?.jaminan ? String(Math.round(item.jaminan.kapasitas_per_hari_kg)) : '',
-      batas_hari: item?.jaminan ? String(item.jaminan.batas_hari) : '',
+      kapasitas_total_kg: item?.jaminan ? String(Math.round(item.jaminan.kapasitas_total_kg ?? item.jaminan.kapasitas_per_hari_kg)) : '',
     })
     setWarning(null)
   }
 
   const simpan = () => {
-    if (!form.makloon_user_id || !form.jaminan_rp || !form.kapasitas_per_hari_kg || !form.batas_hari) {
-      setWarning('Pilih makloon dan lengkapi jaminan, kapasitas per hari, serta batas hari sebelum menyimpan.')
+    if (!form.makloon_user_id || !form.jaminan_rp || !form.kapasitas_total_kg) {
+      setWarning('Pilih makloon dan lengkapi jaminan serta kapasitas total sebelum menyimpan.')
       toast.error('Data jaminan makloon belum lengkap.')
       return
     }
@@ -73,8 +62,7 @@ export default function JaminanMakloonPage() {
       makloon_user_id: form.makloon_user_id,
       bentuk_jaminan: form.bentuk_jaminan.trim() || null,
       jaminan_rp: Number(form.jaminan_rp),
-      kapasitas_per_hari_kg: Number(form.kapasitas_per_hari_kg),
-      batas_hari: Number(form.batas_hari),
+      kapasitas_total_kg: Number(form.kapasitas_total_kg),
     }, {
       onSuccess: (item) => {
         setWarning(null)
@@ -90,7 +78,7 @@ export default function JaminanMakloonPage() {
       <TautanDashboard className="mb-4" />
       <div className="mb-6">
         <h1 className="section-title">Jaminan Makloon</h1>
-        <p className="page-subtitle">Atur bentuk jaminan, kapasitas harian, dan batas hari untuk makloon aktif.</p>
+        <p className="page-subtitle">Atur bentuk jaminan dan kapasitas total untuk makloon aktif.</p>
       </div>
 
       <div className="mb-3 flex flex-wrap items-center justify-end gap-3">
@@ -111,22 +99,19 @@ export default function JaminanMakloonPage() {
             <Field label="Jaminan (Rp)">
               <AngkaInput required prefix="Rp " value={form.jaminan_rp} onChange={(value) => setForm((prev) => ({ ...prev, jaminan_rp: value }))} />
             </Field>
-            <Field label="Kapasitas per hari (kg)">
-              <AngkaInput required value={form.kapasitas_per_hari_kg} onChange={(value) => setForm((prev) => ({ ...prev, kapasitas_per_hari_kg: value }))} />
-            </Field>
-            <Field label="Batas hari">
-              <AngkaInput required value={form.batas_hari} onChange={(value) => setForm((prev) => ({ ...prev, batas_hari: value }))} />
+            <Field label="Kapasitas total (kg)">
+              <AngkaInput required value={form.kapasitas_total_kg} onChange={(value) => setForm((prev) => ({ ...prev, kapasitas_total_kg: value }))} />
             </Field>
 
             {selected && (
               <div className="rounded-lg border border-border bg-primary-tint/40 p-3 text-xs text-slate-600">
-                <div className="flex justify-between gap-4"><span>Plafon tunggakan</span><strong className="text-primary-dark">{formatKg(Number(form.kapasitas_per_hari_kg || 0) * Number(form.batas_hari || 0))}</strong></div>
+                <div className="flex justify-between gap-4"><span>Kapasitas total</span><strong className="text-primary-dark">{formatKg(Number(form.kapasitas_total_kg || 0))}</strong></div>
                 <div className="mt-2 flex justify-between gap-4">
-                  <span>Belum diolah UB</span>
-                  <strong className={selected.pantauan.melewati_batas ? 'text-danger' : 'text-primary-dark'}>{formatKg(selected.pantauan.tunggakan_kg)}</strong>
+                  <span>Estimasi gabah</span>
+                  <strong className={selected.pantauan.melewati_batas ? 'text-danger' : 'text-primary-dark'}>{formatKg(selected.pantauan.estimasi_gabah)}</strong>
                 </div>
                 <p className="mt-2 text-[0.6875rem] leading-relaxed text-slate-500">
-                  Kuota makloon terbuka kembali setiap UB Jastasma mengirim hasil olahan. Berganti hari tidak membukanya.
+                  Sisa kapasitas dihitung dari kapasitas total dikurangi estimasi gabah.
                 </p>
               </div>
             )}
@@ -149,21 +134,20 @@ export default function JaminanMakloonPage() {
               <thead className="text-left text-xs uppercase text-slate-500">
                 <tr className="bg-primary-tint/60">
                   <th className="px-4 pt-3 pb-1" />
-                  <th className="border-l border-border px-4 pt-3 pb-1 font-bold text-primary-dark" colSpan={4}>Aturan dari Operasi</th>
+                  <th className="border-l border-border px-4 pt-3 pb-1 font-bold text-primary-dark" colSpan={3}>Aturan dari Operasi</th>
                   <th className="border-l border-border px-4 pt-3 pb-1 font-bold text-primary-dark" colSpan={2}>Posisi Makloon</th>
                 </tr>
                 <tr className="bg-primary-tint">
                   <th className="px-4 pb-3 pt-1">Makloon</th>
                   <th className="border-l border-border px-4 pb-3 pt-1">Bentuk Jaminan</th>
                   <th className="px-4 pb-3 pt-1 text-right">Nilai</th>
-                  <th className="px-4 pb-3 pt-1 text-right">Kuota/Hari</th>
-                  <th className="px-4 pb-3 pt-1">Berlaku</th>
-                  <th className="border-l border-border px-4 pb-3 pt-1 text-right">Belum Diolah</th>
+                  <th className="px-4 pb-3 pt-1 text-right">Kapasitas Total</th>
+                  <th className="border-l border-border px-4 pb-3 pt-1 text-right">Estimasi Gabah</th>
                   <th className="px-4 pb-3 pt-1 text-right">Sisa Dapat Dikirim</th>
                 </tr>
               </thead>
               <tbody>
-                {isLoading && <tr><td colSpan={7} className="px-4 py-8 text-center text-slate-500">Memuat data...</td></tr>}
+                {isLoading && <tr><td colSpan={6} className="px-4 py-8 text-center text-slate-500">Memuat data...</td></tr>}
                 {!isLoading && data.map((item) => {
                   const j = item.jaminan
                   return (
@@ -174,20 +158,10 @@ export default function JaminanMakloonPage() {
                       </td>
                       <td className="border-l border-border px-4 py-3 text-slate-600">{j?.bentuk_jaminan || <span className="text-slate-400">belum dicatat</span>}</td>
                       <td className="px-4 py-3 text-right tabular-nums">{j ? formatRp(j.jaminan_rp) : '-'}</td>
-                      <td className="px-4 py-3 text-right tabular-nums">{j ? formatKg(j.kapasitas_per_hari_kg) : '-'}</td>
-                      <td className="px-4 py-3 text-slate-600">
-                        {j ? (
-                          <>
-                            <div className="whitespace-nowrap">{rentangBerlaku(j.berlaku_mulai, j.berlaku_sampai)}</div>
-                            <span className={`badge ${j.masih_berlaku ? 'badge-success' : 'badge-danger'}`}>
-                              {j.masih_berlaku ? `Aktif - ${j.batas_hari} hari` : 'Kedaluwarsa'}
-                            </span>
-                          </>
-                        ) : '-'}
-                      </td>
+                      <td className="px-4 py-3 text-right tabular-nums">{j ? formatKg(j.kapasitas_total_kg ?? j.kapasitas_per_hari_kg) : '-'}</td>
                       <td className={`border-l border-border px-4 py-3 text-right tabular-nums font-semibold ${item.pantauan.melewati_batas ? 'text-danger' : 'text-primary-dark'}`}>
-                        {formatKg(item.pantauan.tunggakan_kg)}
-                        {j && <div className="text-xs font-normal text-slate-500">plafon {formatKg(j.plafon_tunggakan_kg)}</div>}
+                        {formatKg(item.pantauan.estimasi_gabah)}
+                        {j && <div className="text-xs font-normal text-slate-500">dari {formatKg(j.kapasitas_total_kg ?? j.kapasitas_per_hari_kg)}</div>}
                       </td>
                       <td className="px-4 py-3 text-right tabular-nums">
                         {j ? (
@@ -195,21 +169,20 @@ export default function JaminanMakloonPage() {
                             <strong className={item.pantauan.sisa_dapat_diinput_kg <= 0 ? 'text-danger' : 'text-success'}>
                               {formatKg(item.pantauan.sisa_dapat_diinput_kg)}
                             </strong>
-                            <div className="text-xs text-slate-500">hari ini terpakai {formatKg(item.pantauan.terpakai_hari_ini_kg)}</div>
+                            <div className="text-xs text-slate-500">kapasitas - estimasi gabah</div>
                           </>
                         ) : <span className="text-slate-400">jaminan belum diatur</span>}
                       </td>
                     </tr>
                   )
                 })}
-                {!isLoading && data.length === 0 && <tr><td colSpan={7} className="px-4 py-8 text-center text-slate-500">Tidak ada makloon aktif.</td></tr>}
+                {!isLoading && data.length === 0 && <tr><td colSpan={6} className="px-4 py-8 text-center text-slate-500">Tidak ada makloon aktif.</td></tr>}
               </tbody>
             </table>
           </div>
           <p className="border-t border-border bg-surface px-5 py-3 text-xs leading-relaxed text-slate-500">
-            <strong>Belum Diolah</strong> = Gabah Sudah IN &minus; Sudah Diolah, rumus yang sama persis dengan kolom
-            &ldquo;Stok Pengurang LHPK&rdquo; di neraca makloon &mdash; karena itu bisa bernilai minus.
-            <strong className="ml-2">Sisa Dapat Dikirim</strong> = yang terkecil antara sisa kuota hari ini dan sisa plafon.
+            <strong>Sisa Dapat Dikirim</strong> = kapasitas total dikurangi estimasi gabah.
+            Estimasi gabah mengikuti hasil HGL pengolahan yang sudah diterima gudang.
           </p>
         </section>
       </main>
