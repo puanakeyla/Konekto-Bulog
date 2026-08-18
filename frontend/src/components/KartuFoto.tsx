@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { toast } from 'sonner'
+import { toast } from '../lib/toast'
 import { pesanKegagalan } from '../lib/api'
 import { bukaTabBaru } from '../lib/bukaTabBaru'
 import ModalPortal from './ModalPortal'

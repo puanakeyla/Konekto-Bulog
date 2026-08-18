@@ -76,21 +76,6 @@ class KerjaanTransaksi
     }
 
     /**
-     * Hanya syarat "ditolak" -- cabang pertama dari ekspresi(). Dipakai untuk menghitung kartu
-     * Ditolak tanpa memaksa MySQL mengevaluasi seluruh CASE bertingkat untuk tiap baris.
-     */
-    public static function syaratDitolak(): string
-    {
-        return "(kj_jp.status = 'ditolak'
-            OR kj_tjp.status = 'ditolak'
-            OR kj_mpp.status = 'ditolak'
-            OR kj_mt.status = 'ditolak'
-            OR kj_ub.status = 'ditolak'
-            OR kj_pd.review_status = 'ditolak'
-            OR kj_keu.review_status = 'ditolak')";
-    }
-
-    /**
      * Batasi hasil ke satu kategori kerjaan. Memakai WHERE, bukan HAVING: ekspresinya hanya
      * membaca kolom hasil join (tidak ada agregat), dan HAVING kacau ketika paginate()
      * membungkus query jadi COUNT -- binding-nya ikut terlepas dari klausanya.

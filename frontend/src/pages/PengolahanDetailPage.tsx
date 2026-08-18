@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { toast } from 'sonner'
+import { toast } from '../lib/toast'
 import TautanDashboard from '../components/TautanDashboard'
 import api from '../lib/api'
 import { useAuth } from '../hooks/useAuth'

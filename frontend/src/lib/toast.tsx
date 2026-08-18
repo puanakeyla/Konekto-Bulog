@@ -1,3 +1,11 @@
+/**
+ * Notifikasi toast: satu antrean global (`toast.success` / `toast.error`) beserta komponen
+ * penampilnya (`<Toaster />`, dipasang sekali di App.tsx).
+ *
+ * Antreannya disimpan di level modul, bukan di React state, supaya bisa dipanggil dari mana
+ * saja -- termasuk dari handler mutation yang bukan komponen. Warnanya diatur index.css lewat
+ * atribut `data-toast`. Maksimal 5 toast sekaligus, tiap toast hilang sendiri setelah 3,5 detik.
+ */
 import { useEffect, useState, type ReactNode } from 'react'
 
 type ToastKind = 'success' | 'error'
@@ -66,7 +74,7 @@ export function Toaster({ position = 'top-right', toastOptions }: ToasterProps) 
 
   return (
     <div
-      data-sonner-toaster
+      data-toaster
       className={`fixed z-50 flex w-[min(22rem,calc(100vw-2rem))] flex-col gap-2 ${positionClass(position)}`}
       aria-live="polite"
       aria-atomic="true"
@@ -74,7 +82,7 @@ export function Toaster({ position = 'top-right', toastOptions }: ToasterProps) 
       {visibleItems.map((item) => (
         <div
           key={item.id}
-          data-sonner-toast
+          data-toast
           className={`rounded-md px-4 py-3 text-sm font-medium shadow-lg ${toastOptions?.classNames?.[item.kind] ?? ''}`}
           role={item.kind === 'error' ? 'alert' : 'status'}
         >

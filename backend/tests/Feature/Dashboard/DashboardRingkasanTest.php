@@ -6,7 +6,6 @@ use App\Models\DataJemputPangan;
 use App\Models\DataMakloonMpp;
 use App\Models\DataMakloonTjp;
 use App\Models\DataPengadaan;
-use App\Models\DataUbJastasma;
 use App\Models\PoDetail;
 use App\Models\Role;
 use App\Models\Transaksi;

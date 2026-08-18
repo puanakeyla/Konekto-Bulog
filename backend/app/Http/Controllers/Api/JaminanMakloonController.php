@@ -396,9 +396,10 @@ class JaminanMakloonController extends Controller
      * - stok_real            = gabah sudah IN - yang sudah diolah DAN sudah teradministrasi
      * - belum_adm_belum_olah = gabah sudah IN - seluruh yang sudah diolah
      *
-     * Dipakai baca-saja di tahap UB Jastasma dan PengolahanController. TIDAK lagi jadi dasar
-     * gerbang jaminan -- gerbangnya memakai tunggakanBelumDiolah(), yang mengukur dari kuantum
-     * bongkar, bukan dari gabah yang sudah ber-No IN.
+     * Dua pemakainya: panel baca-saja di tahap UB Jastasma (lewat PengolahanController), DAN
+     * gerbang plafon jaminan -- tunggakanBelumDiolah() mengembalikan belum_adm_belum_olah apa
+     * adanya. Karena itu mengubah rumus di sini ikut menggeser gerbang yang menahan kiriman
+     * makloon; keduanya memang sengaja satu angka.
      */
     public static function neracaMakloon(int $makloonUserId): array
     {

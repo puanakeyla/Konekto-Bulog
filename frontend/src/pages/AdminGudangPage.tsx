@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Navigate } from 'react-router-dom'
-import { toast } from 'sonner'
+import { toast } from '../lib/toast'
 import TautanDashboard from '../components/TautanDashboard'
 import { useAuth } from '../hooks/useAuth'
 import { useGudangList, useGudangMutations, useGudangOptions, type Gudang, type GudangImportResult } from '../hooks/useGudang'

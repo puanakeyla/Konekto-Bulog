@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { toast } from 'sonner'
+import { toast } from '../lib/toast'
 import TautanDashboard from '../components/TautanDashboard'
 import { useAuth } from '../hooks/useAuth'
 import { useKandidatMo, type PengolahanItem } from '../hooks/usePengolahan'

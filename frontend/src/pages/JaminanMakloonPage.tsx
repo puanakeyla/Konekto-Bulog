@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { Navigate } from 'react-router-dom'
-import { toast } from 'sonner'
+import { toast } from '../lib/toast'
 import AngkaInput from '../components/AngkaInput'
 import MakloonCombobox from '../components/MakloonCombobox'
 import TautanDashboard from '../components/TautanDashboard'

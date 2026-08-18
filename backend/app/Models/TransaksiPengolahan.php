@@ -130,14 +130,4 @@ class TransaksiPengolahan extends Model
     {
         return $this->dataGudang === null && $this->dataLhpk === null;
     }
-
-    /** Data tahap yang diisi lebih dulu pada skema ini, beserta yang menyusul. */
-    public function dataTahap(string $role): ?Model
-    {
-        return match ($role) {
-            'gudang' => $this->dataGudang,
-            'ub_jastasma' => $this->dataLhpk,
-            default => null,
-        };
-    }
 }

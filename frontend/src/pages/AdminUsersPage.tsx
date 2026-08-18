@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Navigate } from 'react-router-dom'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { toast } from 'sonner'
+import { toast } from '../lib/toast'
 import api from '../lib/api'
 import { useAuth } from '../hooks/useAuth'
 import { useAdminRoles, useAdminUsers, type AdminUser } from '../hooks/useAdminUsers'
