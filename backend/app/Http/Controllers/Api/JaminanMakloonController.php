@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\JaminanMakloon;
+use App\Models\PengolahanGudang;
 use App\Models\Role;
 use App\Models\User;
 use App\Services\AuditLogService;
@@ -26,6 +27,7 @@ class JaminanMakloonController extends Controller
             ->with(['role', 'jaminanMakloon'])
             ->leftJoinSub(self::agregatGabahSergab(), 'sg', 'sg.makloon_user_id', '=', 'users.id')
             ->leftJoinSub(self::agregatOlahPengolahan(), 'pg', 'pg.makloon_user_id', '=', 'users.id')
+            ->leftJoinSub(self::agregatEstimasiGabah(), 'eg', 'eg.makloon_user_id', '=', 'users.id')
             ->when($request->string('q')->toString(), fn ($q, $search) => $q->where('users.nama_maklon', 'like', "%{$search}%"))
             ->orderBy('users.nama_maklon')
             ->get([
@@ -33,6 +35,7 @@ class JaminanMakloonController extends Controller
                 DB::raw('COALESCE(sg.gabah_sudah_in, 0) as gabah_sudah_in'),
                 DB::raw('COALESCE(pg.olah_rekap, 0) as olah_rekap'),
                 DB::raw('COALESCE(pg.olah_selesai, 0) as olah_selesai'),
+                DB::raw('COALESCE(eg.estimasi_gabah, 0) as estimasi_gabah'),
             ]);
 
         return response()->json(['data' => $makloon->map(fn (User $user) => $this->baris($user))->values()]);
@@ -47,13 +50,22 @@ class JaminanMakloonController extends Controller
             // ini murni dibaca manusia -- tidak pernah jadi dasar perhitungan gerbang mana pun.
             'bentuk_jaminan' => ['nullable', 'string', 'max:200'],
             'jaminan_rp' => ['required', 'numeric', 'min:0', 'max:9999999999999'],
-            'kapasitas_per_hari_kg' => ['required', 'numeric', 'min:1', 'max:9999999999999'],
-            'batas_hari' => ['required', 'integer', 'min:1', 'max:365'],
+            'kapasitas_total_kg' => ['required_without:kapasitas_per_hari_kg', 'numeric', 'min:1', 'max:9999999999999'],
+            'kapasitas_per_hari_kg' => ['required_without:kapasitas_total_kg', 'numeric', 'min:1', 'max:9999999999999'],
         ]);
 
         $jaminan = JaminanMakloon::firstOrNew(['makloon_user_id' => $validated['makloon_user_id']]);
         $before = $jaminan->exists ? $jaminan->toArray() : null;
-        $jaminan->fill([...$validated, 'updated_by' => $request->user()->id]);
+        $jaminan->fill([
+            'makloon_user_id' => $validated['makloon_user_id'],
+            'bentuk_jaminan' => $validated['bentuk_jaminan'] ?? null,
+            'jaminan_rp' => $validated['jaminan_rp'],
+            // Nama kolom lama dipertahankan agar data lama tidak perlu dimigrasi besar-besaran.
+            // Secara bisnis sekarang nilainya adalah kapasitas TOTAL, bukan kapasitas harian.
+            'kapasitas_per_hari_kg' => $validated['kapasitas_total_kg'] ?? $validated['kapasitas_per_hari_kg'],
+            'batas_hari' => 1,
+            'updated_by' => $request->user()->id,
+        ]);
         if (! $jaminan->exists) {
             $jaminan->created_by = $request->user()->id;
         }
@@ -87,75 +99,31 @@ class JaminanMakloonController extends Controller
             return response()->json(['data' => null]);
         }
 
-        $validated = $request->validate(['tanggal' => ['nullable', 'date']]);
-        $tanggal = $validated['tanggal'] ?? now()->toDateString();
-
-        $kapasitasHarian = (float) $jaminan->kapasitas_per_hari_kg;
-        $batasHari = (int) $jaminan->batas_hari;
-        $plafon = $kapasitasHarian * $batasHari;
-        $terpakai = self::kuantumBongkarPadaTanggal($user->id, $tanggal, null);
+        $kapasitasTotal = (float) $jaminan->kapasitas_per_hari_kg;
         $tunggakan = self::tunggakanBelumDiolah($user->id);
-        [$mulai, $sampai] = self::rentangBerlaku($jaminan);
+        $estimasiGabah = self::estimasiGabah($user->id);
 
         return response()->json(['data' => [
             'bentuk_jaminan' => $jaminan->bentuk_jaminan,
             'jaminan_rp' => (float) $jaminan->jaminan_rp,
-            'kapasitas_per_hari_kg' => $kapasitasHarian,
-            'batas_hari' => $batasHari,
-            'berlaku_mulai' => $mulai?->toDateString(),
-            'berlaku_sampai' => $sampai?->toDateString(),
-            // Diukur terhadap TANGGAL BONGKAR yang sedang diketik, bukan hari ini -- itulah
-            // tanggal yang dipakai gerbang. Kalau memakai now(), panel bisa menyala merah
-            // padahal kiriman akan lolos (atau sebaliknya), dan peringatan yang tidak cocok
-            // dengan kenyataan lebih buruk daripada tidak ada peringatan.
-            'masih_berlaku' => $mulai && $sampai
-                ? \Carbon\Carbon::parse($tanggal)->startOfDay()->betweenIncluded($mulai, $sampai)
-                : false,
-            'tanggal' => $tanggal,
-            'terpakai_kg' => $terpakai,
-            'sisa_harian_kg' => max(0, $kapasitasHarian - $terpakai),
+            'kapasitas_total_kg' => $kapasitasTotal,
+            'kapasitas_per_hari_kg' => $kapasitasTotal,
+            'batas_hari' => 1,
+            'estimasi_gabah_kg' => $estimasiGabah,
             'tunggakan_kg' => $tunggakan,
-            'plafon_tunggakan_kg' => $plafon,
-            'sisa_dapat_diinput_kg' => self::sisaDapatDiinput($kapasitasHarian, $terpakai, $tunggakan, $plafon),
+            'plafon_tunggakan_kg' => $kapasitasTotal,
+            'sisa_dapat_diinput_kg' => self::sisaDapatDiinput($kapasitasTotal, $estimasiGabah),
         ]]);
     }
 
-    /**
-     * Berapa kg yang MASIH BISA dikirim makloon saat ini -- angka yang paling ingin diketahui
-     * makloon maupun Operasi, dan satu-satunya yang tidak bisa disimpulkan sendiri dari kolom
-     * lain karena ditentukan oleh gerbang mana yang lebih dulu mentok.
-     *
-     * Diambil yang TERKECIL antara sisa kuota harian dan sisa plafon tunggakan: melewati salah
-     * satunya saja sudah cukup untuk ditolak.
-     */
-    private static function sisaDapatDiinput(float $kapasitasHarian, float $terpakaiHariIni, float $tunggakan, float $plafon): float
+    private static function sisaDapatDiinput(float $kapasitasTotal, float $estimasiGabah): float
     {
-        $sisaHarian = $kapasitasHarian - $terpakaiHariIni;
-        $sisaPlafon = $plafon * self::TOLERANSI_SELISIH_TIMBANG - $tunggakan;
-
-        return max(0, min($sisaHarian, $sisaPlafon));
+        return max(0, $kapasitasTotal - $estimasiGabah);
     }
 
     /**
-     * Toleransi selisih timbang antara kuantum bongkar makloon dan kuantum gabah yang dicatat
-     * UB sebagai diolah. Keduanya tidak pernah sama persis (susut, beda alat timbang), dan
-     * selisihnya bisa ke atas MAUPUN ke bawah. Karena arahnya tidak pasti, toleransi ini hanya
-     * MELONGGARKAN plafon, tidak pernah memperketatnya -- toleransi yang memperketat justru
-     * akan menahan makloon yang sudah tertib mengolah.
-     */
-    private const TOLERANSI_SELISIH_TIMBANG = 1.1;
-
-    /**
-     * Dipakai TransaksiController. Tiga gerbang, semuanya dipatok tanggal & kuantum bongkar:
-     *
-     * 1. Masa berlaku -- tanggal bongkar wajib berada di dalam rentang jaminan yang dipasang
-     *    Operasi (tanggal simpan .. + batas_hari). Lewat itu makloon berhenti sampai Operasi
-     *    memperbarui.
-     * 2. Kuota harian -- sekali jalan per tanggal bongkar, sisanya hangus saat ganti hari
-     *    (tidak digulung). Tidak memakai kuota bukan pelanggaran; tidak ada pesan apa pun
-     *    selama makloon tidak melewatinya.
-     * 3. Plafon tunggakan -- gabah yang belum diolah tidak boleh melewati
-     *    kapasitas_per_hari x batas_hari. Inilah aturan "belum mengolah tapi mau input lagi".
+     * Dipakai TransaksiController. Aturan baru memakai kapasitas total makloon.
+     * Sisa jaminan dibaca dari kapasitas total dikurangi estimasi gabah hasil pengolahan.
      */
     public static function pastikanKapasitasMakloon(User $makloon, float $kuantumKg, ?string $tanggalBongkar, ?string $transaksiId = null): void
     {
@@ -164,89 +132,17 @@ class JaminanMakloonController extends Controller
             abort(422, 'Jaminan makloon belum diatur Operasi. Hubungi Operasi sebelum mengirim transaksi.');
         }
 
-        $kapasitasHarian = (float) $jaminan->kapasitas_per_hari_kg;
-        $plafonTunggakan = $kapasitasHarian * (int) $jaminan->batas_hari;
-
-        self::pastikanMasihBerlaku($makloon, $tanggalBongkar);
-
-        if ($tanggalBongkar) {
-            $terpakaiHariIni = self::kuantumBongkarPadaTanggal($makloon->id, $tanggalBongkar, $transaksiId);
-            if ($terpakaiHariIni + $kuantumKg > $kapasitasHarian) {
-                abort(422, sprintf(
-                    'Kuota harian %s kg. Tanggal %s sudah terpakai %s kg, sisa %s kg.',
-                    self::angka($kapasitasHarian),
-                    \Carbon\Carbon::parse($tanggalBongkar)->format('d/m/Y'),
-                    self::angka($terpakaiHariIni),
-                    self::angka(max(0, $kapasitasHarian - $terpakaiHariIni))
-                ));
-            }
-        }
-
-        $tunggakan = self::tunggakanBelumDiolah($makloon->id);
-        if ($tunggakan + $kuantumKg > $plafonTunggakan * self::TOLERANSI_SELISIH_TIMBANG) {
-            abort(422, self::pesanTunggakan($makloon->id, $tunggakan, $kapasitasHarian, (int) $jaminan->batas_hari, $plafonTunggakan));
+        $kapasitasTotal = (float) $jaminan->kapasitas_per_hari_kg;
+        $estimasiGabah = self::estimasiGabah($makloon->id);
+        if ($estimasiGabah + $kuantumKg > $kapasitasTotal) {
+            abort(422, self::pesanKapasitasTotal($makloon->id, $estimasiGabah, $kapasitasTotal));
         }
     }
 
-    /**
-     * Gerbang masa berlaku, DIPISAH dari gerbang kuantum supaya bisa dipanggil lebih awal.
-     *
-     * Di skema MPP hasil timbang baru ada di tahap Makloon Terima, jadi kuota harian & plafon
-     * memang harus menunggu ke sana. Tapi tanggal bongkar sudah diketik sejak tahap Makloon
-     * Kirim -- kalau tanggalnya di luar masa berlaku, tidak ada gunanya membiarkan makloon
-     * menyelesaikan seluruh tahap Kirim beserta unggah fotonya untuk kemudian ditolak di tahap
-     * berikutnya. TransaksiController::makloon() memanggil ini langsung untuk MPP.
-     *
-     * Diam saja bila tanggal belum diisi atau jaminan belum diatur: keduanya sudah ditangani
-     * validasi form dan gerbang pertama pastikanKapasitasMakloon().
-     */
+    /** Batas hari sudah tidak dipakai, tetapi method ini tetap ada karena dipanggil alur MPP. */
     public static function pastikanMasihBerlaku(User $makloon, ?string $tanggalBongkar): void
     {
-        if (! $tanggalBongkar) {
-            return;
-        }
-
-        $jaminan = JaminanMakloon::where('makloon_user_id', $makloon->id)->first();
-        if (! $jaminan) {
-            return;
-        }
-
-        [$mulai, $sampai] = self::rentangBerlaku($jaminan);
-        if (! $mulai || ! $sampai) {
-            return;
-        }
-
-        $tanggal = \Carbon\Carbon::parse($tanggalBongkar)->startOfDay();
-        if ($tanggal->betweenIncluded($mulai, $sampai)) {
-            return;
-        }
-
-        abort(422, sprintf(
-            'Jaminan berlaku %s - %s (%d hari). Tanggal bongkar %s di luar masa berlaku. '
-            .'Hubungi Operasi untuk memperbarui jaminan sebelum mengirim.',
-            $mulai->format('d/m/Y'),
-            $sampai->format('d/m/Y'),
-            (int) $jaminan->batas_hari,
-            $tanggal->format('d/m/Y'),
-        ));
-    }
-
-    /**
-     * Rentang berlaku jaminan: dihitung dari kapan Operasi terakhir menyimpan, bukan kolom
-     * tersendiri. Satu sumber kebenaran -- tanggalnya tidak bisa melenceng dari batas_hari.
-     * Inklusif: simpan 13 Agu dengan batas 3 hari berarti 13, 14, dan 15 Agu.
-     *
-     * @return array{0: ?\Carbon\Carbon, 1: ?\Carbon\Carbon}
-     */
-    private static function rentangBerlaku(JaminanMakloon $jaminan): array
-    {
-        if (! $jaminan->updated_at) {
-            return [null, null];
-        }
-
-        $mulai = $jaminan->updated_at->copy()->startOfDay();
-
-        return [$mulai, $mulai->copy()->addDays(max(0, (int) $jaminan->batas_hari - 1))];
+        return;
     }
 
     /**
@@ -268,17 +164,13 @@ class JaminanMakloonController extends Controller
         return self::neracaMakloon($makloonUserId)['belum_adm_belum_olah'];
     }
 
-    /** Pesan gerbang plafon: menjelaskan apa yang harus terjadi supaya kuota terbuka lagi. */
-    private static function pesanTunggakan(int $makloonUserId, float $tunggakan, float $kapasitasHarian, int $batasHari, float $plafon): string
+    private static function pesanKapasitasTotal(int $makloonUserId, float $estimasiGabah, float $kapasitasTotal): string
     {
         $pesan = sprintf(
-            'Gabah Anda yang belum diolah UB sudah %s kg, melewati batas jaminan %s kg (%s kg x %d hari). '
-            .'Input baru bisa dilakukan setelah UB Jastasma mengirim hasil olahan (LHPK) ke tahap berikutnya. '
-            .'Tidak perlu menunggu sampai masuk rekap -- begitu dikirim, kuota Anda terbuka kembali.',
-            self::angka($tunggakan),
-            self::angka($plafon),
-            self::angka($kapasitasHarian),
-            $batasHari,
+            'Estimasi gabah makloon sudah %s kg, melewati kapasitas total jaminan %s kg. '
+            .'Sisa kapasitas dihitung dari kapasitas total dikurangi estimasi gabah.',
+            self::angka($estimasiGabah),
+            self::angka($kapasitasTotal),
         );
 
         $tertua = self::tanggalBongkarTertua($makloonUserId);
@@ -292,14 +184,9 @@ class JaminanMakloonController extends Controller
     private function baris(User $user): array
     {
         $jaminan = $user->jaminanMakloon;
-        $kapasitasHarian = (float) ($jaminan?->kapasitas_per_hari_kg ?? 0);
-        $batasHari = (int) ($jaminan?->batas_hari ?? 0);
-        $plafon = $kapasitasHarian * $batasHari;
+        $kapasitasTotal = (float) ($jaminan?->kapasitas_per_hari_kg ?? 0);
         $tunggakan = $jaminan ? self::tunggakanBelumDiolah($user->id) : 0.0;
-        [$mulai, $sampai] = $jaminan ? self::rentangBerlaku($jaminan) : [null, null];
-        // Sisa yang bisa diinput HARI INI: gerbang harian dipatok tanggal, jadi Operasi melihat
-        // posisi hari ini -- itu yang relevan saat ia memutuskan perlu memperbarui jaminan.
-        $terpakaiHariIni = $jaminan ? self::kuantumBongkarPadaTanggal($user->id, now()->toDateString(), null) : 0.0;
+        $estimasiGabah = (float) ($user->estimasi_gabah ?? 0);
 
         return [
             'makloon_user_id' => $user->id,
@@ -311,57 +198,26 @@ class JaminanMakloonController extends Controller
                 'id' => $jaminan->id,
                 'bentuk_jaminan' => $jaminan->bentuk_jaminan,
                 'jaminan_rp' => (float) $jaminan->jaminan_rp,
-                'kapasitas_per_hari_kg' => $kapasitasHarian,
-                'batas_hari' => $batasHari,
-                'plafon_tunggakan_kg' => $plafon,
-                // Tanggal berlaku DIHITUNG dari kapan Operasi terakhir menyimpan, bukan kolom
-                // tersendiri: satu sumber kebenaran, tidak bisa melenceng dari batas_hari.
-                'berlaku_mulai' => $mulai?->toDateString(),
-                'berlaku_sampai' => $sampai?->toDateString(),
-                'masih_berlaku' => $mulai && $sampai ? now()->startOfDay()->betweenIncluded($mulai, $sampai) : false,
+                'kapasitas_total_kg' => $kapasitasTotal,
+                'kapasitas_per_hari_kg' => $kapasitasTotal,
+                'batas_hari' => 1,
+                'plafon_tunggakan_kg' => $kapasitasTotal,
             ] : null,
             'pantauan' => [
                 'gabah_sudah_in' => (float) $user->gabah_sudah_in,
                 'olah_rekap' => (float) $user->olah_rekap,
                 'olah_selesai' => (float) $user->olah_selesai,
+                'estimasi_gabah' => $estimasiGabah,
                 'tunggakan_kg' => $tunggakan,
-                'terpakai_hari_ini_kg' => $terpakaiHariIni,
                 'sisa_dapat_diinput_kg' => $jaminan
-                    ? self::sisaDapatDiinput($kapasitasHarian, $terpakaiHariIni, $tunggakan, $plafon)
+                    ? self::sisaDapatDiinput($kapasitasTotal, $estimasiGabah)
                     : 0.0,
-                'melewati_batas' => $jaminan ? $tunggakan > $plafon : false,
+                'melewati_batas' => $jaminan ? $estimasiGabah > $kapasitasTotal : false,
             ],
         ];
     }
 
-    private static function kuantumBongkarPadaTanggal(int $makloonUserId, string $tanggal, ?string $excludeTransaksiId): float
-    {
-        $tjp = DB::table('transaksi as t')
-            ->join('data_jemput_pangan as jp', 'jp.transaksi_id', '=', 't.id_transaksi')
-            ->join('data_makloon_tjp as mk', 'mk.transaksi_id', '=', 't.id_transaksi')
-            ->where('t.skema', 'TJP')
-            ->where('jp.makloon_user_id', $makloonUserId)
-            ->where('mk.tanggal_bongkar', $tanggal)
-            ->whereNotIn('mk.status', ['ditolak'])
-            ->when($excludeTransaksiId, fn ($q) => $q->where('t.id_transaksi', '<>', $excludeTransaksiId))
-            ->selectRaw('COALESCE(SUM(mk.kuantum_bongkar), 0) as total')
-            ->value('total');
-
-        $mpp = DB::table('transaksi as t')
-            ->join('data_makloon_mpp as mk', 'mk.transaksi_id', '=', 't.id_transaksi')
-            ->join('data_makloon_terima as mt', 'mt.transaksi_id', '=', 't.id_transaksi')
-            ->where('t.skema', 'MPP')
-            ->where('t.created_by', $makloonUserId)
-            ->where('mk.tanggal_bongkar', $tanggal)
-            ->whereNotIn('mt.status', ['ditolak'])
-            ->when($excludeTransaksiId, fn ($q) => $q->where('t.id_transaksi', '<>', $excludeTransaksiId))
-            ->selectRaw('COALESCE(SUM(mt.kuantum_bongkar), 0) as total')
-            ->value('total');
-
-        return (float) $tjp + (float) $mpp;
-    }
-
-    /** Tanggal bongkar paling tua milik satu makloon -- dipakai pesan gerbang plafon. */
+    /** Tanggal bongkar paling tua milik satu makloon -- dipakai sebagai konteks pesan penolakan. */
     private static function tanggalBongkarTertua(int $makloonUserId): ?string
     {
         $tjp = DB::table('transaksi as t')
@@ -410,6 +266,11 @@ class JaminanMakloonController extends Controller
             'stok_real' => $sudahIn - (float) ($olah->olah_selesai ?? 0),
             'belum_adm_belum_olah' => $sudahIn - (float) ($olah->olah_rekap ?? 0),
         ];
+    }
+
+    private static function estimasiGabah(int $makloonUserId): float
+    {
+        return (float) (self::agregatEstimasiGabah($makloonUserId)->first()->estimasi_gabah ?? 0);
     }
 
     /**
@@ -499,6 +360,18 @@ class JaminanMakloonController extends Controller
             ->select('tp.makloon_user_id')
             ->selectRaw('COALESCE(SUM(l.kuantum_gabah_diolah), 0) as olah_rekap')
             ->selectRaw("COALESCE(SUM(CASE WHEN tp.status_keseluruhan = 'selesai' THEN l.kuantum_gabah_diolah ELSE 0 END), 0) as olah_selesai");
+    }
+
+    private static function agregatEstimasiGabah(?int $makloonUserId = null): \Illuminate\Database\Query\Builder
+    {
+        return DB::table('transaksi_pengolahan as tp')
+            ->join('pengolahan_gudang as g', 'g.transaksi_pengolahan_id', '=', 'tp.id_pengolahan')
+            ->whereNotNull('tp.makloon_user_id')
+            ->when($makloonUserId !== null, fn ($q) => $q->where('tp.makloon_user_id', $makloonUserId))
+            ->where('g.status', 'diterima')
+            ->groupBy('tp.makloon_user_id')
+            ->select('tp.makloon_user_id')
+            ->selectRaw('COALESCE(SUM(ROUND(g.kuantum_hgl / '.PengolahanGudang::RENDEMEN_ESTIMASI.')), 0) as estimasi_gabah');
     }
 
     private static function angka(float $value): string
