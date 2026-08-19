@@ -12,16 +12,11 @@ export type JaminanMakloonItem = {
     bentuk_jaminan: string | null
     jaminan_rp: number
     kapasitas_total_kg: number
-    kapasitas_per_hari_kg: number
-    batas_hari: number
-    plafon_tunggakan_kg: number
   }
   pantauan: {
-    gabah_sudah_in: number
-    olah_rekap: number
-    olah_selesai: number
-    estimasi_gabah: number
-    tunggakan_kg: number
+    gabah_masuk: number
+    gabah_kembali: number
+    gabah_ditangan: number
     sisa_dapat_diinput_kg: number
     melewati_batas: boolean
   }
@@ -39,26 +34,21 @@ export type JaminanSaya = {
   bentuk_jaminan: string | null
   jaminan_rp: number
   kapasitas_total_kg: number
-  kapasitas_per_hari_kg: number
-  batas_hari: number
-  estimasi_gabah_kg: number
-  tunggakan_kg: number
-  plafon_tunggakan_kg: number
+  gabah_masuk_kg: number
+  gabah_kembali_kg: number
+  gabah_ditangan_kg: number
   sisa_dapat_diinput_kg: number
 }
 
 /**
- * `tanggal` mengikuti tanggal bongkar yang sedang diketik, supaya angka terpakai/sisa di layar
- * bergerak saat makloon mengubahnya. Dimatikan bila tanggalnya belum diisi.
+ * Aturannya murni kg, tanpa dimensi waktu -- jadi tidak ada parameter tanggal: angkanya sama
+ * saja kapan pun makloon membukanya.
  */
-export function useJaminanSaya(tanggal: string | null, aktif = true) {
+export function useJaminanSaya() {
   return useQuery({
-    queryKey: ['jaminan-saya', tanggal],
-    enabled: aktif,
+    queryKey: ['jaminan-saya'],
     queryFn: async () => {
-      const { data } = await api.get<{ data: JaminanSaya | null }>('/api/jaminan-saya', {
-        params: tanggal ? { tanggal } : undefined,
-      })
+      const { data } = await api.get<{ data: JaminanSaya | null }>('/api/jaminan-saya')
       return data.data
     },
   })

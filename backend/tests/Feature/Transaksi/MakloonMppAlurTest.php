@@ -51,22 +51,14 @@ class MakloonMppAlurTest extends TestCase
             'nama_maklon' => 'PT. UJI MPP',
         ]);
 
-        // Sejak jaminan makloon ada, submit ditolak kalau Operasi belum mengisinya. Kapasitas
-        // dan masa berlaku dibuat longgar supaya berkas ini menguji alur dokumen, bukan batas
-        // jaminan -- batasnya sendiri diuji di JaminanMakloonTest.
-        $jaminan = JaminanMakloon::create([
+        // Sejak jaminan makloon ada, submit ditolak kalau Operasi belum mengisinya. Kapasitasnya
+        // dibuat longgar supaya berkas ini menguji alur dokumen, bukan batas jaminan --
+        // batasnya sendiri diuji di JaminanMakloonTest.
+        JaminanMakloon::create([
             'makloon_user_id' => $this->makloon->id,
             'jaminan_rp' => 500_000_000,
             'kapasitas_per_hari_kg' => 100_000,
-            'batas_hari' => 365,
         ]);
-
-        // Masa berlaku dihitung dari `updated_at`. Ditambatkan ke 01 Jul 2026 supaya tanggal
-        // bongkar yang dipakai berkas ini (30 Jul 2026) selalu berada di dalamnya, tidak
-        // bergantung pada tanggal sistem saat test dijalankan.
-        $jaminan->timestamps = false;
-        $jaminan->updated_at = \Carbon\Carbon::parse('2026-07-01');
-        $jaminan->save();
     }
 
     public function test_makloon_kirim_bisa_submit_tanpa_surat_jalan_dan_nota_timbang(): void

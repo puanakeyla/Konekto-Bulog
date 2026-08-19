@@ -72,6 +72,10 @@ Route::middleware(['auth:sanctum', 'user.aktif'])->group(function () {
     Route::get('/transaksi', [TransaksiController::class, 'index']);
     // HARUS sebelum '/transaksi/{transaksi}' karena pattern {transaksi} greedy ('.*'),
     // kalau tidak 'rekap' akan ditangkap sebagai id transaksi.
+    // Kartu angka Rekap. Ikut aturan urutan yang sama dengan '/transaksi/rekap' di bawah:
+    // harus mendahului '/transaksi/{transaksi}' yang polanya greedy.
+    Route::get('/transaksi/rekap/ringkasan', [TransaksiController::class, 'ringkasanRekap'])
+        ->middleware('role:jemput_pangan|makloon|ub_jastasma|pengadaan|keuangan|admin');
     Route::get('/transaksi/rekap', [TransaksiController::class, 'rekap'])
         ->middleware('role:jemput_pangan|makloon|ub_jastasma|pengadaan|keuangan|admin');
     // Route dengan suffix di belakang {transaksi} (pattern '.*', greedy) HARUS didaftarkan
@@ -177,6 +181,8 @@ Route::middleware(['auth:sanctum', 'user.aktif'])->group(function () {
 
     Route::post('/pengadaan/gabungkan-po', [PengadaanController::class, 'gabungkanPo'])
         ->middleware('role:pengadaan|admin');
+    Route::get('/keuangan/ringkasan', [PengadaanController::class, 'ringkasanKeuangan'])
+        ->middleware('role:keuangan|admin');
     Route::get('/po', [PengadaanController::class, 'index'])
         ->middleware('role:pengadaan|keuangan|operasi|gudang|admin');
     Route::get('/po/{dataPengadaan}', [PengadaanController::class, 'show'])

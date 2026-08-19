@@ -283,7 +283,11 @@ class GabungkanPoTest extends TestCase
         // Makloon Terima kini tahap berdata sendiri: makloon menerima data Kirim, mengisi hasil
         // timbang, lalu mengirimnya -- baru setelah itu UB Jastasma yang memeriksanya.
         $this->stageService->terima($transaksi->fresh(), $this->makloon);
-        $this->stageService->submitStage($transaksi->fresh(), $this->makloon, 'makloon_terima', DataMakloonTerima::class, ['kuantum_bongkar' => 980]);
+        // PO menjumlahkan HASIL TIMBANG, bukan kuantum kirim -- jadi angka inilah yang harus
+        // mengikuti $kuantum. Sebelumnya 980 dipatok di sini sementara $kuantum cuma mengisi
+        // tahap Kirim, sehingga tiga test yang memeriksa total PO membandingkan angka yang
+        // memang tidak pernah dipakai perhitungannya.
+        $this->stageService->submitStage($transaksi->fresh(), $this->makloon, 'makloon_terima', DataMakloonTerima::class, ['kuantum_bongkar' => $kuantum]);
         $this->stageService->terima($transaksi->fresh(), $this->ubJastasma);
         $this->stageService->submitStage($transaksi->fresh(), $this->ubJastasma, 'ub_jastasma', DataUbJastasma::class, $this->dataUbJastasma());
 

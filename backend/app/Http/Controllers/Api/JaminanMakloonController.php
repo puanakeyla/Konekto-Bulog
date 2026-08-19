@@ -25,17 +25,14 @@ class JaminanMakloonController extends Controller
             ->where('is_active', true)
             ->whereNotNull('nama_maklon')
             ->with(['role', 'jaminanMakloon'])
-            ->leftJoinSub(self::agregatGabahSergab(), 'sg', 'sg.makloon_user_id', '=', 'users.id')
-            ->leftJoinSub(self::agregatOlahPengolahan(), 'pg', 'pg.makloon_user_id', '=', 'users.id')
-            ->leftJoinSub(self::agregatEstimasiGabah(), 'eg', 'eg.makloon_user_id', '=', 'users.id')
+            ->leftJoinSub(self::agregatBongkar(), 'gm', 'gm.makloon_user_id', '=', 'users.id')
+            ->leftJoinSub(self::agregatEstimasiGabah(), 'gk', 'gk.makloon_user_id', '=', 'users.id')
             ->when($request->string('q')->toString(), fn ($q, $search) => $q->where('users.nama_maklon', 'like', "%{$search}%"))
             ->orderBy('users.nama_maklon')
             ->get([
                 'users.*',
-                DB::raw('COALESCE(sg.gabah_sudah_in, 0) as gabah_sudah_in'),
-                DB::raw('COALESCE(pg.olah_rekap, 0) as olah_rekap'),
-                DB::raw('COALESCE(pg.olah_selesai, 0) as olah_selesai'),
-                DB::raw('COALESCE(eg.estimasi_gabah, 0) as estimasi_gabah'),
+                DB::raw('COALESCE(gm.gabah_bongkar, 0) as gabah_masuk'),
+                DB::raw('COALESCE(gk.estimasi_gabah, 0) as gabah_kembali'),
             ]);
 
         return response()->json(['data' => $makloon->map(fn (User $user) => $this->baris($user))->values()]);
@@ -63,7 +60,6 @@ class JaminanMakloonController extends Controller
             // Nama kolom lama dipertahankan agar data lama tidak perlu dimigrasi besar-besaran.
             // Secara bisnis sekarang nilainya adalah kapasitas TOTAL, bukan kapasitas harian.
             'kapasitas_per_hari_kg' => $validated['kapasitas_total_kg'] ?? $validated['kapasitas_per_hari_kg'],
-            'batas_hari' => 1,
             'updated_by' => $request->user()->id,
         ]);
         if (! $jaminan->exists) {
@@ -86,9 +82,6 @@ class JaminanMakloonController extends Controller
      * Sengaja TIDAK menerima makloon_user_id: kalau bisa ditembak per id, endpoint ini jadi
      * jalan keluar baru dari isolasi makloon (bandingkan Transaksi::scopeTerlihatOleh). Satu
      * makloon hanya boleh melihat aturannya sendiri.
-     *
-     * `tanggal` mengikuti tanggal bongkar yang sedang diketik makloon, supaya angka
-     * terpakai/sisa di layar bergerak saat ia mengubah tanggal -- bukan selalu hari ini.
      */
     public function saya(Request $request)
     {
@@ -100,93 +93,106 @@ class JaminanMakloonController extends Controller
         }
 
         $kapasitasTotal = (float) $jaminan->kapasitas_per_hari_kg;
-        $tunggakan = self::tunggakanBelumDiolah($user->id);
-        $estimasiGabah = self::estimasiGabah($user->id);
+        $masuk = self::gabahMasuk($user->id);
+        $kembali = self::gabahKembali($user->id);
+        $ditangan = self::gabahDitangan($masuk, $kembali);
 
         return response()->json(['data' => [
             'bentuk_jaminan' => $jaminan->bentuk_jaminan,
             'jaminan_rp' => (float) $jaminan->jaminan_rp,
             'kapasitas_total_kg' => $kapasitasTotal,
-            'kapasitas_per_hari_kg' => $kapasitasTotal,
-            'batas_hari' => 1,
-            'estimasi_gabah_kg' => $estimasiGabah,
-            'tunggakan_kg' => $tunggakan,
-            'plafon_tunggakan_kg' => $kapasitasTotal,
-            'sisa_dapat_diinput_kg' => self::sisaDapatDiinput($kapasitasTotal, $estimasiGabah),
+            'gabah_masuk_kg' => $masuk,
+            'gabah_kembali_kg' => $kembali,
+            'gabah_ditangan_kg' => $ditangan,
+            'sisa_dapat_diinput_kg' => self::sisaDapatDiinput($kapasitasTotal, $ditangan),
         ]]);
     }
 
-    private static function sisaDapatDiinput(float $kapasitasTotal, float $estimasiGabah): float
+    private static function sisaDapatDiinput(float $kapasitasTotal, float $gabahDitangan): float
     {
-        return max(0, $kapasitasTotal - $estimasiGabah);
+        return max(0, $kapasitasTotal - $gabahDitangan);
     }
 
     /**
-     * Dipakai TransaksiController. Aturan baru memakai kapasitas total makloon.
-     * Sisa jaminan dibaca dari kapasitas total dikurangi estimasi gabah hasil pengolahan.
+     * HUTANG makloon: gabah yang sudah masuk atas namanya, dikurangi yang sudah dibayar dengan
+     * setoran hasil olah ke gudang.
+     *
+     * Nilainya sama persis dengan kolom "Stok Pengurang Penerimaan Gudang" di neraca gabah
+     * admin (MonitoringController::barisRekapMakloon) -- keduanya Gabah Sudah IN dikurangi
+     * Estimasi Gabah. Itu disengaja: satu angka, dua layar, tidak boleh bercabang.
+     *
+     * Angkanya BERPUTAR: bertambah saat No IN terbit, berkurang saat hasil olahnya diterima
+     * gudang. Makloon yang bekerja normal tidak pernah kehabisan plafon.
+     *
+     * Ditahan di 0 kalau pembayarannya melampaui hutangnya. Neraca membiarkan kolomnya minus
+     * karena di sana minus itu informasi (ada yang diolah melebihi yang ber-IN); di sini minus
+     * berbahaya, sebab ia memberi makloon kapasitas LEBIH BESAR daripada jaminan yang dipegang
+     * Operasi. Itu satu-satunya perbedaan perlakuan terhadap angka yang sama.
      */
-    public static function pastikanKapasitasMakloon(User $makloon, float $kuantumKg, ?string $tanggalBongkar, ?string $transaksiId = null): void
+    private static function gabahDitangan(float $masuk, float $kembali): float
     {
-        $jaminan = JaminanMakloon::where('makloon_user_id', $makloon->id)->first();
+        return max(0, $masuk - $kembali);
+    }
+
+    /**
+     * Gerbang jaminan, dipanggil TransaksiController saat makloon MENGIRIM (bukan menyimpan
+     * draft). Kiriman ditolak kalau gabah yang masih di tangan makloon, ditambah kiriman ini,
+     * melewati kapasitas total yang dipasang Operasi.
+     */
+    public static function pastikanKapasitasMakloon(User $makloon, float $kuantumKg): void
+    {
+        // Gerbang ini BACA-LALU-TULIS: ia membaca sisa kapasitas, lalu pemanggilnya menyimpan
+        // kiriman yang menghabiskannya. Tanpa kunci, dua submit yang tiba dalam jeda antara
+        // keduanya sama-sama membaca sisa yang belum berkurang dan dua-duanya lolos -- plafon
+        // tertembus tanpa error, tanpa jejak, dengan data tersimpan rapi.
+        //
+        // lockForUpdate hanya berlaku di dalam transaksi; di luar transaksi ia diam-diam tidak
+        // menahan apa pun. Karena kegagalannya senyap persis seperti race yang hendak dicegah,
+        // ketiadaan transaksi dijadikan error keras alih-alih dibiarkan lewat.
+        if (DB::transactionLevel() === 0) {
+            throw new \LogicException(
+                'pastikanKapasitasMakloon() harus dipanggil di dalam DB::transaction() yang sama '
+                .'dengan penyimpanan tahapnya. Di luar transaksi, penguncian barisnya tidak berlaku.'
+            );
+        }
+
+        // Yang dikunci baris jaminan MAKLOON INI saja, jadi makloon lain tidak ikut mengantre.
+        // Dua kiriman dari makloon yang sama memang harus berurutan -- itu justru maksudnya.
+        $jaminan = JaminanMakloon::where('makloon_user_id', $makloon->id)->lockForUpdate()->first();
         if (! $jaminan) {
             abort(422, 'Jaminan makloon belum diatur Operasi. Hubungi Operasi sebelum mengirim transaksi.');
         }
 
         $kapasitasTotal = (float) $jaminan->kapasitas_per_hari_kg;
-        $estimasiGabah = self::estimasiGabah($makloon->id);
-        if ($estimasiGabah + $kuantumKg > $kapasitasTotal) {
-            abort(422, self::pesanKapasitasTotal($makloon->id, $estimasiGabah, $kapasitasTotal));
+        $ditangan = self::gabahDitangan(self::gabahMasuk($makloon->id), self::gabahKembali($makloon->id));
+        if ($ditangan + $kuantumKg > $kapasitasTotal) {
+            abort(422, self::pesanKapasitas($ditangan, $kapasitasTotal, $kuantumKg));
         }
     }
 
-    /** Batas hari sudah tidak dipakai, tetapi method ini tetap ada karena dipanggil alur MPP. */
-    public static function pastikanMasihBerlaku(User $makloon, ?string $tanggalBongkar): void
+    private static function pesanKapasitas(float $ditangan, float $kapasitasTotal, float $kuantumKg): string
     {
-        return;
-    }
-
-    /**
-     * Gabah yang belum diolah, DENGAN DEFINISI YANG SAMA PERSIS dengan kolom "Belum
-     * Administrasi, Belum Olah" di neraca makloon (RekapMakloonTabel) -- keputusan pemilik,
-     * supaya tidak ada dua angka bernama mirip yang isinya beda.
-     *
-     * Konsekuensi yang disadari dan diterima pemilik, JANGAN dilaporkan sebagai bug:
-     *
-     * - Angkanya BISA MINUS (neraca memang menandainya `bisaMinus: true`), yaitu ketika rantai
-     *   Pengolahan mencatat olahan lebih besar daripada gabah yang sudah ber-No IN. Saat minus,
-     *   gerbang plafon praktis tidak menahan apa pun.
-     * - Basisnya `gabah_sudah_in`, yang baru terisi SETELAH Pengadaan menerbitkan No IN. Gabah
-     *   yang sudah dibongkar tapi belum ber-PO tidak terhitung di sini, jadi belum membebani
-     *   plafon walau fisiknya sudah menumpuk di makloon.
-     */
-    private static function tunggakanBelumDiolah(int $makloonUserId): float
-    {
-        return self::neracaMakloon($makloonUserId)['belum_adm_belum_olah'];
-    }
-
-    private static function pesanKapasitasTotal(int $makloonUserId, float $estimasiGabah, float $kapasitasTotal): string
-    {
-        $pesan = sprintf(
-            'Estimasi gabah makloon sudah %s kg, melewati kapasitas total jaminan %s kg. '
-            .'Sisa kapasitas dihitung dari kapasitas total dikurangi estimasi gabah.',
-            self::angka($estimasiGabah),
+        return sprintf(
+            'Kiriman %s kg ditolak: Stok Pengurang Penerimaan Gudang makloon %s kg dari kapasitas '
+            .'total jaminan %s kg, jadi sisa yang dapat dikirim tinggal %s kg. '
+            .'Angka itu berkurang setelah hasil olahnya ditimbang masuk gudang.',
+            self::angka($kuantumKg),
+            self::angka($ditangan),
             self::angka($kapasitasTotal),
+            self::angka(self::sisaDapatDiinput($kapasitasTotal, $ditangan)),
         );
-
-        $tertua = self::tanggalBongkarTertua($makloonUserId);
-
-        return $tertua
-            ? $pesan.' Gabah menunggak paling lama sejak '.\Carbon\Carbon::parse($tertua)->format('d/m/Y').'.'
-            : $pesan;
     }
-
 
     private function baris(User $user): array
     {
         $jaminan = $user->jaminanMakloon;
         $kapasitasTotal = (float) ($jaminan?->kapasitas_per_hari_kg ?? 0);
-        $tunggakan = $jaminan ? self::tunggakanBelumDiolah($user->id) : 0.0;
-        $estimasiGabah = (float) ($user->estimasi_gabah ?? 0);
+        // Fallback menutup lubang store(), yang memuat ulang User lewat relasi sehingga kolom
+        // hasil leftJoinSub tidak ikut terbawa. Di index() kolomnya selalu ada, jadi tidak
+        // pernah memicu query tambahan.
+        $masuk = (float) ($user->gabah_masuk ?? self::gabahMasuk($user->id));
+        $kembali = (float) ($user->gabah_kembali ?? self::gabahKembali($user->id));
+        $ditangan = self::gabahDitangan($masuk, $kembali);
 
         return [
             'makloon_user_id' => $user->id,
@@ -199,50 +205,17 @@ class JaminanMakloonController extends Controller
                 'bentuk_jaminan' => $jaminan->bentuk_jaminan,
                 'jaminan_rp' => (float) $jaminan->jaminan_rp,
                 'kapasitas_total_kg' => $kapasitasTotal,
-                'kapasitas_per_hari_kg' => $kapasitasTotal,
-                'batas_hari' => 1,
-                'plafon_tunggakan_kg' => $kapasitasTotal,
             ] : null,
             'pantauan' => [
-                'gabah_sudah_in' => (float) $user->gabah_sudah_in,
-                'olah_rekap' => (float) $user->olah_rekap,
-                'olah_selesai' => (float) $user->olah_selesai,
-                'estimasi_gabah' => $estimasiGabah,
-                'tunggakan_kg' => $tunggakan,
+                'gabah_masuk' => $masuk,
+                'gabah_kembali' => $kembali,
+                'gabah_ditangan' => $ditangan,
                 'sisa_dapat_diinput_kg' => $jaminan
-                    ? self::sisaDapatDiinput($kapasitasTotal, $estimasiGabah)
+                    ? self::sisaDapatDiinput($kapasitasTotal, $ditangan)
                     : 0.0,
-                'melewati_batas' => $jaminan ? $estimasiGabah > $kapasitasTotal : false,
+                'melewati_batas' => $jaminan ? $ditangan > $kapasitasTotal : false,
             ],
         ];
-    }
-
-    /** Tanggal bongkar paling tua milik satu makloon -- dipakai sebagai konteks pesan penolakan. */
-    private static function tanggalBongkarTertua(int $makloonUserId): ?string
-    {
-        $tjp = DB::table('transaksi as t')
-            ->join('data_jemput_pangan as jp', 'jp.transaksi_id', '=', 't.id_transaksi')
-            ->join('data_makloon_tjp as mk', 'mk.transaksi_id', '=', 't.id_transaksi')
-            ->where('t.skema', 'TJP')
-            ->where('jp.makloon_user_id', $makloonUserId)
-            ->whereNotIn('mk.status', ['ditolak'])
-            ->whereNotNull('mk.tanggal_bongkar')
-            ->min('mk.tanggal_bongkar');
-
-        $mpp = DB::table('transaksi as t')
-            ->join('data_makloon_mpp as mk', 'mk.transaksi_id', '=', 't.id_transaksi')
-            ->join('data_makloon_terima as mt', 'mt.transaksi_id', '=', 't.id_transaksi')
-            ->where('t.skema', 'MPP')
-            ->where('t.created_by', $makloonUserId)
-            ->whereNotIn('mt.status', ['ditolak'])
-            ->whereNotNull('mk.tanggal_bongkar')
-            ->min('mk.tanggal_bongkar');
-
-        if ($tjp && $mpp) {
-            return min($tjp, $mpp);
-        }
-
-        return $tjp ?: $mpp;
     }
 
     /**
@@ -259,7 +232,7 @@ class JaminanMakloonController extends Controller
      */
     public static function neracaMakloon(int $makloonUserId): array
     {
-        $sudahIn = (float) (self::agregatGabahSergab($makloonUserId)->first()->gabah_sudah_in ?? 0);
+        $sudahIn = (float) (self::agregatBongkar($makloonUserId)->first()->gabah_bongkar ?? 0);
         $olah = self::agregatOlahPengolahan($makloonUserId)->first();
 
         return [
@@ -268,7 +241,40 @@ class JaminanMakloonController extends Controller
         ];
     }
 
-    private static function estimasiGabah(int $makloonUserId): float
+    /**
+     * Sisi HUTANG BERTAMBAH: bongkar yang sudah diterima DAN sudah ber-No IN. Definisinya sama
+     * dengan kolom "Gabah Sudah IN" di neraca gabah admin.
+     *
+     * No IN dijadikan syarat supaya kedua sisi berdiri di titik yang sama: yang menambah hutang
+     * dan yang membayarnya sama-sama menunggu gabahnya resmi masuk. Sebelum No IN terbit
+     * makloon juga belum boleh menggilingnya, jadi membebani lebih awal berarti menagih atas
+     * gabah yang belum boleh ia sentuh -- ia akan mentok gara-gara PO yang lambat terbit,
+     * sesuatu yang sepenuhnya di luar kendalinya.
+     *
+     * Konsekuensi yang disadari: ada jendela antara bongkar dan terbitnya No IN ketika gabah
+     * sudah menumpuk di makloon tetapi hutangnya belum tercatat. Selama jendela itu gabahnya
+     * masih utuh karena belum boleh diolah; panjang-pendeknya ada di tangan Pengadaan.
+     */
+    private static function gabahMasuk(int $makloonUserId): float
+    {
+        return (float) (self::agregatBongkar($makloonUserId)->first()->gabah_bongkar ?? 0);
+    }
+
+    /**
+     * Sisi HUTANG BERKURANG: estimasi gabah, yaitu taksiran gabah di balik HGL yang benar-benar
+     * ditimbang masuk gudang. Sama dengan kolom "Estimasi Gabah" di neraca gabah admin, dan
+     * pengurang yang sama dengan yang dipakai kolom "Stok Pengurang Penerimaan Gudang" di sana.
+     *
+     * Penerimaan FISIK gudang, bukan laporan LHPK -- keputusan pemilik. Yang melunasi hutang
+     * makloon adalah barang yang nyata sampai ke BULOG; LHPK hanya menyatakan gabahnya sudah
+     * digiling, sedangkan berasnya bisa saja masih di makloon.
+     *
+     * Konsekuensi yang sudah ditimbang dan diterima: konversinya memakai rendemen ACUAN 0,51,
+     * sedangkan rendemen tiap makloon berbeda. Yang di atas acuan tercatat membayar sedikit
+     * lebih banyak daripada hutangnya, yang di bawah acuan menyisakan sedikit residu. Ini harga
+     * dari memakai angka yang sama dengan neraca, dan dipilih dengan sadar.
+     */
+    private static function gabahKembali(int $makloonUserId): float
     {
         return (float) (self::agregatEstimasiGabah($makloonUserId)->first()->estimasi_gabah ?? 0);
     }
@@ -281,8 +287,12 @@ class JaminanMakloonController extends Controller
      * seluruh sejarah transaksi lebih dulu, baru membuang 29/30 hasilnya. Terukur 198 ms per
      * submit di 15.000 transaksi. index() tetap memanggil tanpa argumen karena ia memang
      * membutuhkan semua baris.
+     *
+     * Yang dihasilkan adalah kolom "Gabah Sudah IN" di neraca gabah admin: bongkar yang sudah
+     * diterima DAN PO-nya sudah terbit ber-No IN. Dipakai neracaMakloon() maupun sisi hutang
+     * gerbang jaminan -- keduanya berdiri di titik yang sama.
      */
-    private static function agregatGabahSergab(?int $makloonUserId = null): \Illuminate\Database\Query\Builder
+    private static function agregatBongkar(?int $makloonUserId = null): \Illuminate\Database\Query\Builder
     {
         $tjp = DB::table('transaksi as t')
             ->join('data_jemput_pangan as jp', 'jp.transaksi_id', '=', 't.id_transaksi')
@@ -312,7 +322,7 @@ class JaminanMakloonController extends Controller
             ->fromSub($tjp->unionAll($mpp), 'g')
             ->groupBy('g.makloon_user_id')
             ->select('g.makloon_user_id')
-            ->selectRaw('COALESCE(SUM(g.kuantum), 0) as gabah_sudah_in');
+            ->selectRaw('COALESCE(SUM(g.kuantum), 0) as gabah_bongkar');
     }
 
     /**
@@ -336,7 +346,7 @@ class JaminanMakloonController extends Controller
     }
 
     /**
-     * Alasan $makloonUserId sama dengan agregatGabahSergab(): saring dulu, baru kelompokkan.
+     * Alasan $makloonUserId sama dengan agregatBongkar(): saring dulu, baru kelompokkan.
      *
      * Rantai Pengolahan tidak terhubung ke satu transaksi SerGab tertentu -- kaitannya hanya ke
      * MAKLOON, lewat transaksi_pengolahan.makloon_user_id. Mencocokkan
@@ -362,6 +372,17 @@ class JaminanMakloonController extends Controller
             ->selectRaw("COALESCE(SUM(CASE WHEN tp.status_keseluruhan = 'selesai' THEN l.kuantum_gabah_diolah ELSE 0 END), 0) as olah_selesai");
     }
 
+    /**
+     * Taksiran gabah di balik HGL yang sudah ditimbang masuk gudang. Dibulatkan PER PENGOLAHAN
+     * sebelum dijumlah -- sama persis dengan MonitoringController::agregatGudangPengolahan(),
+     * supaya kolom "Estimasi Gabah" di neraca, di Rekap Pengolahan, dan angka bayar di gerbang
+     * ini selalu menampilkan bilangan yang sama.
+     *
+     * Hanya tahap Gudang berstatus `diterima` yang ikut: sebelum diperiksa, barangnya belum
+     * tentu benar-benar sampai.
+     *
+     * Alasan $makloonUserId sama dengan agregatBongkar(): saring dulu, baru kelompokkan.
+     */
     private static function agregatEstimasiGabah(?int $makloonUserId = null): \Illuminate\Database\Query\Builder
     {
         return DB::table('transaksi_pengolahan as tp')

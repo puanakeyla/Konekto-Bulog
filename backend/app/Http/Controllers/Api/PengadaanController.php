@@ -55,6 +55,45 @@ class PengadaanController extends Controller
         return DataPengadaanResource::collection($dataPengadaan);
     }
 
+    /**
+     * Empat kartu angka di layar Keuangan, dihitung DI DATABASE atas seluruh PO -- bukan atas
+     * 20 PO satu halaman seperti sebelumnya. Dulu keempatnya berubah-ubah begitu pengguna
+     * menekan "Berikutnya", karena yang dijumlah memang cuma halaman yang sedang terbuka.
+     *
+     * Definisinya dijaga sama persis dengan penyaring di layar: "di tahap Keuangan" berarti PO
+     * itu punya minimal satu transaksi anggota yang sedang berdiri di tahap keuangan. Tanpa
+     * syarat itu, PO lama yang sudah maju tetapi review_status-nya tertinggal ikut terhitung.
+     */
+    public function ringkasanKeuangan()
+    {
+        $diTahapKeuangan = fn ($query) => $query->whereExists(fn ($ada) => $ada
+            ->from('po_detail as pd')
+            ->join('transaksi as t', 't.id_transaksi', '=', 'pd.transaksi_id')
+            ->whereColumn('pd.data_pengadaan_id', 'dp.id')
+            ->where('t.current_stage', 'keuangan'));
+
+        $belumDibayar = "COALESCE(dk.status_bayar, '') <> 'dibayarkan'";
+
+        $antrean = DB::table('data_pengadaan as dp')
+            ->leftJoin('data_keuangan as dk', 'dk.data_pengadaan_id', '=', 'dp.id')
+            ->tap($diTahapKeuangan)
+            ->selectRaw("COALESCE(SUM(CASE WHEN dp.review_status = 'menunggu_review' THEN 1 ELSE 0 END), 0) as perlu_review")
+            ->selectRaw("COALESCE(SUM(CASE WHEN dp.review_status = 'diterima' AND {$belumDibayar} THEN 1 ELSE 0 END), 0) as siap_bayar")
+            ->selectRaw("COALESCE(SUM(CASE WHEN dp.review_status = 'diterima' AND {$belumDibayar} THEN dp.total_harga ELSE 0 END), 0) as nilai_antrean")
+            ->first();
+
+        // "Sudah dibayar" sengaja TIDAK dibatasi tahap: PO yang sudah lunas memang tidak lagi
+        // berdiri di tahap Keuangan, jadi menyaringnya akan selalu menghasilkan nol.
+        $sudahDibayar = DB::table('data_keuangan')->where('status_bayar', 'dibayarkan')->count();
+
+        return response()->json(['data' => [
+            'perlu_review' => (int) $antrean->perlu_review,
+            'siap_bayar' => (int) $antrean->siap_bayar,
+            'sudah_dibayar' => $sudahDibayar,
+            'nilai_antrean' => (float) $antrean->nilai_antrean,
+        ]]);
+    }
+
     public function show(Request $request, DataPengadaan $dataPengadaan)
     {
         $dataPengadaan->load(['poDetail.transaksi.riwayatPenolakan.penolak', 'dataKeuangan', 'makloon']);

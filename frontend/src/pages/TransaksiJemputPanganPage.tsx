@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useMutation } from '@tanstack/react-query'
 import { toast } from '../lib/toast'
@@ -66,12 +66,22 @@ export default function TransaksiJemputPanganPage() {
   const [fotoGagal, setFotoGagal] = useState<string[]>([])
   const [warning, setWarning] = useState<string | null>(null)
   const [aksiBerjalan, setAksiBerjalan] = useState<AksiSimpan | null>(null)
+  const idTransaksiRef = useRef<string | null>(null)
 
   const mutation = useMutation({
     mutationFn: async ({ values, aksi }: { values: FormState; aksi: AksiSimpan }) => {
       setAksiBerjalan(aksi)
-      const { data: created } = await api.post<{ data: { id_transaksi: string } }>('/api/transaksi')
-      const idTransaksi = created.data.id_transaksi
+
+      // Transaksi dibuat SEKALI per halaman, bukan sekali per klik. Kalau langkah sesudahnya
+      // gagal -- validasi backend, unggahan foto, jaringan putus, atau gerbang jaminan -- nomor
+      // yang sudah terlanjur lahir dipakai ulang saat pengguna membetulkan datanya dan menekan
+      // tombol lagi. Tanpa ini setiap percobaan meninggalkan satu transaksi draft berisi data
+      // yang sama, dan itulah draft ganda yang muncul di daftar.
+      if (!idTransaksiRef.current) {
+        const { data: created } = await api.post<{ data: { id_transaksi: string } }>('/api/transaksi')
+        idTransaksiRef.current = created.data.id_transaksi
+      }
+      const idTransaksi = idTransaksiRef.current
 
       await api.patch(`/api/transaksi/${encodeURIComponent(idTransaksi)}/jemput-pangan`, {
         ...values,
@@ -96,6 +106,7 @@ export default function TransaksiJemputPanganPage() {
       return { idTransaksi, gagal, aksi }
     },
     onSuccess: ({ idTransaksi, gagal, aksi }) => {
+      idTransaksiRef.current = null
       setFotoGagal(gagal)
       toast.success(aksi === 'draft' ? `Transaksi ${idTransaksi} tersimpan sebagai draft.` : `Transaksi ${idTransaksi} dibuat & dikirim ke Makloon.`)
       gagal.forEach((f) => toast.error(`Foto "${fotoLabel(f)}" gagal diupload, coba ulangi.`))

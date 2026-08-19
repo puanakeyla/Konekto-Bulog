@@ -4,6 +4,7 @@ import { toast } from '../lib/toast'
 import AngkaInput from '../components/AngkaInput'
 import MakloonCombobox from '../components/MakloonCombobox'
 import TautanDashboard from '../components/TautanDashboard'
+import ConfirmDialog from '../components/ConfirmDialog'
 import { apiErrorMessage } from '../lib/apiError'
 import { useAuth } from '../hooks/useAuth'
 import { useJaminanMakloon, useSimpanJaminanMakloon } from '../hooks/useJaminanMakloon'
@@ -30,6 +31,7 @@ export default function JaminanMakloonPage() {
   const [q, setQ] = useState('')
   const [form, setForm] = useState<FormState>(initialForm)
   const [warning, setWarning] = useState<string | null>(null)
+  const [konfirmasiTimpa, setKonfirmasiTimpa] = useState(false)
   const { data = [], isLoading } = useJaminanMakloon(q)
   const mutation = useSimpanJaminanMakloon()
 
@@ -46,10 +48,18 @@ export default function JaminanMakloonPage() {
       makloon_user_id: id,
       bentuk_jaminan: item?.jaminan?.bentuk_jaminan ?? '',
       jaminan_rp: item?.jaminan ? String(Math.round(item.jaminan.jaminan_rp)) : '',
-      kapasitas_total_kg: item?.jaminan ? String(Math.round(item.jaminan.kapasitas_total_kg ?? item.jaminan.kapasitas_per_hari_kg)) : '',
+      kapasitas_total_kg: item?.jaminan ? String(Math.round(item.jaminan.kapasitas_total_kg)) : '',
     })
     setWarning(null)
   }
+
+  // Satu makloon hanya punya SATU aturan jaminan: menyimpan untuk makloon yang sudah punya
+  // berarti menimpa, dan aturan lama tidak disimpan di mana pun. Karena itu penimpaan minta
+  // konfirmasi yang menyebut angka lama dan angka barunya -- Operasi harus melihat apa yang
+  // akan hilang sebelum menekan, bukan sesudah.
+  const makloonTerpilih = data.find((row) => row.makloon_user_id === form.makloon_user_id)
+  const jaminanLama = makloonTerpilih?.jaminan ?? null
+  const namaMakloonTerpilih = makloonTerpilih?.nama_maklon ?? 'Makloon ini'
 
   const simpan = () => {
     if (!form.makloon_user_id || !form.jaminan_rp || !form.kapasitas_total_kg) {
@@ -58,6 +68,20 @@ export default function JaminanMakloonPage() {
       return
     }
 
+    if (jaminanLama) {
+      setKonfirmasiTimpa(true)
+      return
+    }
+
+    kirim()
+  }
+
+  const kirim = () => {
+    // Sudah dijaga simpan(); diulang di sini karena kirim() juga dipanggil dari dialog
+    // konfirmasi, dan tanpa guard ini tipenya tetap `number | null`.
+    if (!form.makloon_user_id) return
+
+    setKonfirmasiTimpa(false)
     mutation.mutate({
       makloon_user_id: form.makloon_user_id,
       bentuk_jaminan: form.bentuk_jaminan.trim() || null,
@@ -107,11 +131,11 @@ export default function JaminanMakloonPage() {
               <div className="rounded-lg border border-border bg-primary-tint/40 p-3 text-xs text-slate-600">
                 <div className="flex justify-between gap-4"><span>Kapasitas total</span><strong className="text-primary-dark">{formatKg(Number(form.kapasitas_total_kg || 0))}</strong></div>
                 <div className="mt-2 flex justify-between gap-4">
-                  <span>Estimasi gabah</span>
-                  <strong className={selected.pantauan.melewati_batas ? 'text-danger' : 'text-primary-dark'}>{formatKg(selected.pantauan.estimasi_gabah)}</strong>
+                  <span>Stok Pengurang Penerimaan Gudang</span>
+                  <strong className={selected.pantauan.melewati_batas ? 'text-danger' : 'text-primary-dark'}>{formatKg(selected.pantauan.gabah_ditangan)}</strong>
                 </div>
                 <p className="mt-2 text-[0.6875rem] leading-relaxed text-slate-500">
-                  Sisa kapasitas dihitung dari kapasitas total dikurangi estimasi gabah.
+                  Sisa dapat dikirim = kapasitas total − Stok Pengurang Penerimaan Gudang.
                 </p>
               </div>
             )}
@@ -142,7 +166,7 @@ export default function JaminanMakloonPage() {
                   <th className="border-l border-border px-4 pb-3 pt-1">Bentuk Jaminan</th>
                   <th className="px-4 pb-3 pt-1 text-right">Nilai</th>
                   <th className="px-4 pb-3 pt-1 text-right">Kapasitas Total</th>
-                  <th className="border-l border-border px-4 pb-3 pt-1 text-right">Estimasi Gabah</th>
+                  <th className="border-l border-border px-4 pb-3 pt-1 text-right">Stok Pengurang<br />Penerimaan Gudang</th>
                   <th className="px-4 pb-3 pt-1 text-right">Sisa Dapat Dikirim</th>
                 </tr>
               </thead>
@@ -158,10 +182,11 @@ export default function JaminanMakloonPage() {
                       </td>
                       <td className="border-l border-border px-4 py-3 text-slate-600">{j?.bentuk_jaminan || <span className="text-slate-400">belum dicatat</span>}</td>
                       <td className="px-4 py-3 text-right tabular-nums">{j ? formatRp(j.jaminan_rp) : '-'}</td>
-                      <td className="px-4 py-3 text-right tabular-nums">{j ? formatKg(j.kapasitas_total_kg ?? j.kapasitas_per_hari_kg) : '-'}</td>
+                      <td className="px-4 py-3 text-right tabular-nums">{j ? formatKg(j.kapasitas_total_kg) : '-'}</td>
                       <td className={`border-l border-border px-4 py-3 text-right tabular-nums font-semibold ${item.pantauan.melewati_batas ? 'text-danger' : 'text-primary-dark'}`}>
-                        {formatKg(item.pantauan.estimasi_gabah)}
-                        {j && <div className="text-xs font-normal text-slate-500">dari {formatKg(j.kapasitas_total_kg ?? j.kapasitas_per_hari_kg)}</div>}
+                        {formatKg(item.pantauan.gabah_ditangan)}
+                        {j && <div className="text-xs font-normal text-slate-500">dari {formatKg(j.kapasitas_total_kg)}</div>}
+                        <div className="text-xs font-normal text-slate-400">Gabah Sudah IN {formatKg(item.pantauan.gabah_masuk)} · Estimasi Gabah {formatKg(item.pantauan.gabah_kembali)}</div>
                       </td>
                       <td className="px-4 py-3 text-right tabular-nums">
                         {j ? (
@@ -169,7 +194,7 @@ export default function JaminanMakloonPage() {
                             <strong className={item.pantauan.sisa_dapat_diinput_kg <= 0 ? 'text-danger' : 'text-success'}>
                               {formatKg(item.pantauan.sisa_dapat_diinput_kg)}
                             </strong>
-                            <div className="text-xs text-slate-500">kapasitas - estimasi gabah</div>
+                            <div className="text-xs text-slate-500">kapasitas − stok pengurang</div>
                           </>
                         ) : <span className="text-slate-400">jaminan belum diatur</span>}
                       </td>
@@ -181,11 +206,54 @@ export default function JaminanMakloonPage() {
             </table>
           </div>
           <p className="border-t border-border bg-surface px-5 py-3 text-xs leading-relaxed text-slate-500">
-            <strong>Sisa Dapat Dikirim</strong> = kapasitas total dikurangi estimasi gabah.
-            Estimasi gabah mengikuti hasil HGL pengolahan yang sudah diterima gudang.
+            <strong>Stok Pengurang Penerimaan Gudang</strong> = Gabah Sudah IN − Estimasi Gabah.
+            <strong> Sisa Dapat Dikirim</strong> = Kapasitas total − Stok Pengurang Penerimaan Gudang.
+            Angkanya sama persis dengan kolom bernama sama di neraca gabah, jadi kedua layar bisa
+            dicocokkan langsung. <strong>Yang dihitung hanya gabah yang No IN-nya sudah terbit</strong> —
+            bongkar yang PO-nya belum keluar belum masuk hitungan. Angkanya berkurang sendiri setiap
+            kali hasil olahan makloon ditimbang masuk gudang.
           </p>
         </section>
       </main>
+
+      <ConfirmDialog
+        open={konfirmasiTimpa}
+        title="Ganti aturan jaminan yang berlaku?"
+        confirmLabel="Ganti aturan"
+        loading={mutation.isPending}
+        onCancel={() => setKonfirmasiTimpa(false)}
+        onConfirm={kirim}
+        description={
+          <>
+            <p>
+              <strong>{namaMakloonTerpilih}</strong> sudah punya aturan jaminan. Menyimpan akan
+              menggantinya, dan aturan lama tidak disimpan di mana pun.
+            </p>
+            <p className="mt-2">Aturan baru berlaku untuk kiriman berikutnya, terhitung sejak disimpan. Kiriman yang sudah terlanjur masuk tidak ditinjau ulang.</p>
+            <dl className="mt-3 space-y-1 rounded-lg border border-border bg-surface px-3 py-2">
+              <Perubahan label="Kapasitas total" lama={formatKg(jaminanLama?.kapasitas_total_kg ?? 0)} baru={formatKg(Number(form.kapasitas_total_kg || 0))} />
+              <Perubahan label="Nilai jaminan" lama={formatRp(jaminanLama?.jaminan_rp ?? 0)} baru={formatRp(Number(form.jaminan_rp || 0))} />
+              <Perubahan label="Bentuk jaminan" lama={jaminanLama?.bentuk_jaminan || 'belum dicatat'} baru={form.bentuk_jaminan.trim() || 'belum dicatat'} />
+            </dl>
+          </>
+        }
+      />
+    </div>
+  )
+}
+
+/** Satu baris "lama -> baru". Yang tidak berubah ditulis sekali saja supaya yang berubah menonjol. */
+function Perubahan({ label, lama, baru }: { label: string; lama: string; baru: string }) {
+  return (
+    <div className="flex flex-wrap justify-between gap-x-4 text-sm">
+      <dt className="text-slate-500">{label}</dt>
+      <dd className="text-right font-semibold">
+        {lama === baru ? (
+          <span className="text-slate-500">{baru} (tetap)</span>
+        ) : (
+          <><span className="text-slate-400 line-through">{lama}</span> <span className="text-primary-dark">{baru}</span></>
+        )}
+      </dd>
     </div>
   )
 }

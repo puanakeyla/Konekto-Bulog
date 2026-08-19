@@ -834,14 +834,10 @@ export default function TransaksiDetailPage() {
                     ))}
                     {isRejected && <div className="alert-danger mt-4">Tahap ini ditolak. Perbaiki data pada role terkait lalu kirim ulang.</div>}
                     {showJemputPanganForm && <JemputPanganForm form={jemputPanganForm} setForm={setJemputPanganForm} mutation={simpanJemputPangan} error={jemputPanganError} fotos={fotosJemputPangan} setFotos={setFotosJemputPangan} progress={progressJemputPangan} fotoGagal={fotoJemputPanganGagal} fotoTersimpan={fotoJemputPanganTersimpan} />}
-                    {/* Aturan jaminan ditampilkan di SETIAP tahap tempat makloon mengetik tanggal
-                        bongkar. Untuk MPP itu tahap Kirim (masa berlaku sudah diperiksa di sana)
-                        dan tahap Terima (kuota & plafon, lihat blok di bawah). */}
-                    {showMakloonForm && (
-                      <PanelJaminanMakloon
-                        tanggalBongkar={(transaksi.skema === 'MPP' ? makloonMppForm.tanggal_bongkar : makloonForm.tanggal_bongkar) || null}
-                      />
-                    )}
+                    {/* Aturan jaminan ditampilkan di setiap tahap yang dijaganya: TJP di tahap
+                        Makloon, MPP di tahap Terima (blok di bawah). Di tahap MPP Kirim ia tampil
+                        sebagai ancar-ancar -- gerbangnya sendiri baru jalan setelah hasil timbang. */}
+                    {showMakloonForm && <PanelJaminanMakloon />}
                     {showMakloonForm && (transaksi.skema === 'MPP' ? <MakloonMppForm form={makloonMppForm} setForm={setMakloonMppForm} mutation={simpanMakloon} error={makloonError} fotos={fotosMakloon} setFotos={setFotosMakloon} progress={progressMakloon} fotoGagal={fotoMakloonGagal} fotoTersimpan={fotoMakloonTersimpan} /> : <MakloonTjpForm form={makloonForm} setForm={setMakloonForm} mutation={simpanMakloon} error={makloonError} fotos={fotosMakloon} setFotos={setFotosMakloon} progress={progressMakloon} fotoGagal={fotoMakloonGagal} fotoTersimpan={fotoMakloonTersimpan} />)}
                     {showUbForm && <UbForm form={ubForm} setForm={setUbForm} mutation={simpanUb} error={ubError} fotos={fotosUb} setFotos={setFotosUb} progress={progressUb} fotoGagal={fotoUbGagal} fotoTersimpan={fotoUbTersimpan} />}
 
@@ -849,7 +845,7 @@ export default function TransaksiDetailPage() {
                         sebelum itu tidak ada yang boleh dicatat sebagai hasil timbang. */}
                     {showMakloonTerimaForm && (
                       <div className="mt-4 space-y-4 border-t border-border pt-4">
-                        <PanelJaminanMakloon tanggalBongkar={textField(transaksi.data_makloon_mpp, 'tanggal_bongkar') || null} />
+                        <PanelJaminanMakloon />
 
                         {/* Tulisan kuning di ATAS form, sama seperti empat form tahap lain
                             (JemputPangan/MakloonMpp/MakloonTjp/Ub) -- bukan menempel di tombol. */}

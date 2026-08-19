@@ -8,7 +8,8 @@ import KartuFoto from '../components/KartuFoto'
 import AngkaInput from '../components/AngkaInput'
 import KabupatenSelect from '../components/KabupatenSelect'
 import { useAuth } from '../hooks/useAuth'
-import { useRekapTransaksi, type RekapTransaksi } from '../hooks/useRekapTransaksi'
+import { useRekapTransaksi, useRingkasanRekap, type RekapTransaksi, type RingkasanRekap } from '../hooks/useRekapTransaksi'
+import PaginationBar from '../components/PaginationBar'
 import { useMakloonOptions } from '../hooks/useMakloonOptions'
 import { ambilFotoTransaksi, useDokumenTransaksi } from '../hooks/useFotoTransaksi'
 import api, { pesanKegagalan } from '../lib/api'
@@ -65,11 +66,6 @@ function numeric(v: string) {
   return clean === '' ? null : Number(clean)
 }
 
-function numberValue(v: string | number | null | undefined) {
-  if (v === null || v === undefined || v === '') return 0
-  const parsed = Number(v)
-  return Number.isFinite(parsed) ? parsed : 0
-}
 
 function formatKg(value: number) {
   return new Intl.NumberFormat('id-ID', { maximumFractionDigits: 0 }).format(value)
@@ -319,25 +315,17 @@ function kolomUntukRoleSkema(role: string, skema: 'TJP' | 'MPP'): SheetColumn<Re
 type KuantumSummaryItem = { key: string; label: string; value: number }
 
 /**
- * Semua kartu memakai KUANTUM BONGKAR (hasil timbang di makloon), bukan kuantum kirim,
- * supaya TJP dan MPP dihitung dengan ukuran yang sama dan boleh dijumlahkan. Kolomnya
- * beda per skema: TJP di data_makloon_tjp, MPP di data_makloon_mpp.
+ * Kartu mengikuti skema yang relevan untuk role (JP cuma punya TJP), bukan tahapnya.
+ *
+ * Semua angka memakai KUANTUM BONGKAR (hasil timbang di makloon), bukan kuantum kirim, supaya
+ * TJP dan MPP dihitung dengan ukuran yang sama dan boleh dijumlahkan.
  */
-function totalBongkar(rows: RekapTransaksi[], skema: 'TJP' | 'MPP') {
-  return rows.reduce((total, row) => {
-    if (row.skema !== skema) return total
-    const bongkar = skema === 'TJP' ? row.data_makloon_tjp?.kuantum_bongkar : row.data_makloon_mpp?.kuantum_bongkar
-    return total + numberValue(bongkar)
-  }, 0)
-}
-
-/** Kartu mengikuti skema yang relevan untuk role (JP cuma punya TJP), bukan tahapnya. */
-function kuantumSummaryUntukRole(role: string, rows: RekapTransaksi[]): KuantumSummaryItem[] {
+function kuantumSummaryUntukRole(role: string, ringkasan?: RingkasanRekap): KuantumSummaryItem[] {
   const daftarSkema = skemaUntukRole(role)
   const items: KuantumSummaryItem[] = daftarSkema.map((skema) => ({
     key: skema.toLowerCase(),
     label: `Total Kuantum ${skema}`,
-    value: totalBongkar(rows, skema),
+    value: skema === 'TJP' ? (ringkasan?.bongkar_tjp ?? 0) : (ringkasan?.bongkar_mpp ?? 0),
   }))
 
   if (items.length > 1) {
@@ -510,28 +498,21 @@ export default function RekapTransaksiPage() {
   const { user } = useAuth()
   const role = user?.role.nama_role ?? ''
   const queryClient = useQueryClient()
-  const { data, isLoading, isError, error } = useRekapTransaksi()
+  const [page, setPage] = useState(1)
+  const { data, isLoading, isError, error } = useRekapTransaksi(page)
+  // Kartu angka dihitung backend atas SELURUH data. Sebelumnya dijumlah dari baris yang sedang
+  // dimuat, sehingga begitu datanya lewat satu halaman angkanya berkurang tanpa tanda apa pun.
+  const { data: ringkasan } = useRingkasanRekap()
   const { data: makloonOptions = [] } = useMakloonOptions()
   const rows = data?.items ?? []
+  const meta = data?.meta
   const [editing, setEditing] = useState<RekapTransaksi | null>(null)
   const [editForm, setEditForm] = useState<RekapEditForm | null>(null)
   const [dokumenTransaksi, setDokumenTransaksi] = useState<string | null>(null)
-  // Baris yang lolos pencarian/filter tiap tabel, dilaporkan balik oleh DataSpreadsheet.
-  // Kartu total dihitung dari sini supaya angkanya selalu sama dengan yang terlihat.
-  const [barisTampil, setBarisTampil] = useState<Record<string, RekapTransaksi[]>>({})
 
   const judul = JUDUL[role] ?? { title: 'Rekap Transaksi', badge: 'Rekap', sub: 'Rekap data transaksi lintas tahap.' }
   const daftarSkema = skemaUntukRole(role)
 
-  // Sebelum tabel sempat melapor (render pertama), pakai seluruh baris skema itu supaya
-  // kartu tidak sempat berkedip 0.
-  const rowsTampil = daftarSkema.flatMap(
-    (skema) => barisTampil[skema] ?? rows.filter((r) => r.skema === skema),
-  )
-
-  // Semua baris kini pasti terkunci (disaring backend), jadi kartu "terkunci" tak lagi
-  // bermakna. Jumlah PO unik lebih informatif sekarang setelah kolom No. PO digabung.
-  const totalPo = new Set(rows.map((r) => r.data_pengadaan?.no_po).filter(Boolean)).size
 
   const updateMutation = useMutation({
     mutationFn: ({ row, form }: { row: RekapTransaksi; form: RekapEditForm }) =>
@@ -628,10 +609,10 @@ export default function RekapTransaksiPage() {
         )}
 
         <div className="stats-grid">
-          <div className="stat-card"><div className="stat-label">Total transaksi</div><div className="stat-value">{rows.length}</div></div>
-          <div className="stat-card"><div className="stat-label">TJP</div><div className="stat-value">{rows.filter((r) => r.skema === 'TJP').length}</div></div>
-          <div className="stat-card"><div className="stat-label">MPP</div><div className="stat-value">{rows.filter((r) => r.skema === 'MPP').length}</div></div>
-          <div className="stat-card"><div className="stat-label">Total PO</div><div className="stat-value">{totalPo}</div></div>
+          <div className="stat-card"><div className="stat-label">Total transaksi</div><div className="stat-value">{meta?.total ?? '-'}</div></div>
+          <div className="stat-card"><div className="stat-label">TJP</div><div className="stat-value">{ringkasan?.jumlah_tjp ?? '-'}</div></div>
+          <div className="stat-card"><div className="stat-label">MPP</div><div className="stat-value">{ringkasan?.jumlah_mpp ?? '-'}</div></div>
+          <div className="stat-card"><div className="stat-label">Total PO</div><div className="stat-value">{ringkasan?.total_po ?? '-'}</div></div>
         </div>
 
         {daftarSkema.map((skema) => {
@@ -643,7 +624,7 @@ export default function RekapTransaksiPage() {
               <div className="toolbar-card mb-4">
                 <div>
                   <h2 className="section-title">Tabel {judul.title} — {skema}</h2>
-                  <p className="page-subtitle">Satu baris = satu transaksi {skema} · {columns.length} kolom · {rowsSkema.length} baris</p>
+                  <p className="page-subtitle">Satu baris = satu transaksi {skema} · {columns.length} kolom · {rowsSkema.length} baris di halaman ini</p>
                 </div>
                 <span className="badge badge-success">Hanya menampilkan data yang sudah terkunci</span>
               </div>
@@ -659,17 +640,14 @@ export default function RekapTransaksiPage() {
                 emptyTitle={`Belum ada transaksi ${skema}`}
                 emptyCopy={`Data muncul setelah transaksi dibuat pada alur ${skema}.`}
                 renderRowActions={renderRowActions}
-                onFilteredChange={(hasil) => setBarisTampil((prev) => ({ ...prev, [skema]: hasil }))}
               />
             </section>
           )
         })}
 
-        <KuantumSummary
-          items={kuantumSummaryUntukRole(role, rowsTampil)}
-          jumlahTampil={rowsTampil.length}
-          jumlahTotal={rows.length}
-        />
+        {meta && meta.last_page > 1 && <PaginationBar meta={meta} page={page} setPage={setPage} satuan="transaksi" />}
+
+        <KuantumSummary items={kuantumSummaryUntukRole(role, ringkasan)} />
       </div>
 
 
@@ -696,18 +674,14 @@ export default function RekapTransaksiPage() {
   )
 }
 
-function KuantumSummary({ items, jumlahTampil, jumlahTotal }: { items: KuantumSummaryItem[]; jumlahTampil: number; jumlahTotal: number }) {
+function KuantumSummary({ items }: { items: KuantumSummaryItem[] }) {
   if (items.length === 0) return null
 
   return (
     <div className="mt-4 rounded-lg border border-border bg-surface px-4 py-3">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <span className="section-title">Total keseluruhan kuantum</span>
-        <span className="text-xs font-semibold text-slate-500">
-          {jumlahTampil === jumlahTotal
-            ? 'Kuantum bongkar dari seluruh baris rekap'
-            : `Kuantum bongkar mengikuti filter tabel — ${jumlahTampil} dari ${jumlahTotal} baris`}
-        </span>
+        <span className="text-xs font-semibold text-slate-500">Kuantum bongkar seluruh data rekap, bukan halaman ini saja</span>
       </div>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {items.map((item) => (

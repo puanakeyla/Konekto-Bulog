@@ -14,7 +14,6 @@ class JaminanMakloon extends Model
         'bentuk_jaminan',
         'jaminan_rp',
         'kapasitas_per_hari_kg',
-        'batas_hari',
         'created_by',
         'updated_by',
     ];
@@ -24,7 +23,6 @@ class JaminanMakloon extends Model
         return [
             'jaminan_rp' => 'decimal:2',
             'kapasitas_per_hari_kg' => 'decimal:2',
-            'batas_hari' => 'integer',
         ];
     }
 

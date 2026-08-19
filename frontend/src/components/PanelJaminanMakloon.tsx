@@ -7,12 +7,12 @@ const kg = (value: number) => `${new Intl.NumberFormat('id-ID').format(Math.roun
  *
  * Read-only sepenuhnya. Yang boleh mengubah angkanya cuma Operasi.
  */
-export default function PanelJaminanMakloon({ tanggalBongkar }: { tanggalBongkar: string | null }) {
-  const { data, isLoading } = useJaminanSaya(tanggalBongkar)
+export default function PanelJaminanMakloon() {
+  const { data, isLoading } = useJaminanSaya()
 
   if (isLoading || !data) return null
 
-  const lewatKapasitas = data.estimasi_gabah_kg > data.kapasitas_total_kg
+  const lewatKapasitas = data.gabah_ditangan_kg > data.kapasitas_total_kg
 
   return (
     <div className="mt-4 rounded-lg border border-border bg-primary-tint/40 p-4 text-sm">
@@ -21,17 +21,30 @@ export default function PanelJaminanMakloon({ tanggalBongkar }: { tanggalBongkar
       <dl className="grid gap-x-6 gap-y-2 @md:grid-cols-2">
         <Baris label="Bentuk jaminan" nilai={data.bentuk_jaminan || '-'} />
         <Baris label="Kapasitas total" nilai={kg(data.kapasitas_total_kg)} />
+        <Baris label="Gabah Sudah IN" nilai={kg(data.gabah_masuk_kg)} />
+        <Baris label="Estimasi Gabah" nilai={kg(data.gabah_kembali_kg)} />
         <Baris
-          label="Estimasi gabah"
-          nilai={`${kg(data.estimasi_gabah_kg)} dari ${kg(data.kapasitas_total_kg)}`}
+          label="Stok Pengurang Penerimaan Gudang"
+          nilai={`${kg(data.gabah_ditangan_kg)} dari ${kg(data.kapasitas_total_kg)}`}
           bahaya={lewatKapasitas}
         />
         <Baris label="Sisa dapat dikirim" nilai={kg(data.sisa_dapat_diinput_kg)} bahaya={data.sisa_dapat_diinput_kg <= 0} />
       </dl>
 
-      <p className="mt-3 border-t border-border pt-3 text-xs leading-relaxed text-slate-600">
-        Sisa kapasitas dihitung dari kapasitas total dikurangi estimasi gabah.
-      </p>
+      <div className="mt-3 space-y-2 border-t border-border pt-3 text-xs leading-relaxed text-slate-600">
+        <p className="font-mono text-[0.6875rem] leading-5 text-slate-500">
+          Stok Pengurang Penerimaan Gudang = Gabah Sudah IN &minus; Estimasi Gabah<br />
+          Sisa dapat dikirim = Kapasitas total &minus; Stok Pengurang Penerimaan Gudang
+        </p>
+        <p>
+          <strong>Yang dihitung hanya gabah yang No IN-nya sudah terbit.</strong> Gabah yang sudah
+          dibongkar tapi PO-nya belum keluar belum masuk perhitungan.
+        </p>
+        <p>
+          Angkanya berkurang sendiri setiap kali hasil olahan Anda ditimbang masuk gudang, sehingga
+          sisa yang dapat dikirim terbuka lagi.
+        </p>
+      </div>
     </div>
   )
 }

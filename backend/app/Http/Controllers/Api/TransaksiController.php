@@ -144,11 +144,8 @@ class TransaksiController extends Controller
      */
     public function rekap(Request $request)
     {
-        $role = $request->user()->role->nama_role;
-
-        $query = Transaksi::query()
+        $query = $this->penyaringRekap($request)
             ->select('transaksi.*')
-            ->terlihatOleh($request->user())
             ->with([
                 'dataJemputPangan.makloon',
                 'dataMakloonMpp',
@@ -181,6 +178,23 @@ class TransaksiController extends Controller
             ->orderByRaw(self::tanggalUrut())
             ->orderBy('id_transaksi');
 
+        return TransaksiResource::collection($this->halamanRekap($query, $request));
+    }
+
+    /**
+     * Penyaring baris rekap, tanpa select/urutan/eager-load.
+     *
+     * Dipakai berdua oleh daftar berhalaman dan kartu ringkasannya. Sengaja satu tempat: kalau
+     * penyaringnya bercabang, kartu akan menjumlahkan himpunan yang berbeda dari baris yang
+     * bisa dibuka pengguna -- selisih yang tidak menimbulkan error dan karena itu tidak pernah
+     * ketahuan.
+     */
+    private function penyaringRekap(Request $request): Builder
+    {
+        $role = $request->user()->role->nama_role;
+
+        $query = Transaksi::query()->terlihatOleh($request->user());
+
         // Role Jemput Pangan hanya relevan dengan skema TJP (MPP tidak punya tahap JP).
         if ($role === 'jemput_pangan') {
             $query->where('skema', 'TJP');
@@ -188,7 +202,47 @@ class TransaksiController extends Controller
 
         $this->terapkanFilterTerkunci($query, $role);
 
-        return TransaksiResource::collection($this->halamanRekap($query, $request));
+        return $query;
+    }
+
+    /**
+     * Kartu angka di atas tabel Rekap, dihitung DI DATABASE atas seluruh baris yang berhak
+     * dilihat pemanggil -- bukan atas satu halaman.
+     *
+     * Sebelumnya kartu-kartu ini dijumlah di browser dari baris yang sedang dimuat. Selama
+     * datanya masih di bawah satu halaman angkanya kebetulan benar; lewat dari itu ia diam-diam
+     * melaporkan sebagian, tanpa error dan tanpa tanda apa pun di layar.
+     *
+     * Kuantum MPP diambil dari `data_makloon_terima`, BUKAN `data_makloon_mpp.kuantum_bongkar`.
+     * Kolom yang belakangan itu sudah tidak diisi siapa pun sejak tahap Makloon Terima punya
+     * tabel sendiri -- sumber yang sama dipakai PoGroupingService dan neraca makloon.
+     */
+    public function ringkasanRekap(Request $request)
+    {
+        $angka = $this->penyaringRekap($request)
+            ->leftJoin('data_makloon_tjp as rk_tjp', 'rk_tjp.transaksi_id', '=', 'transaksi.id_transaksi')
+            ->leftJoin('data_makloon_terima as rk_mt', 'rk_mt.transaksi_id', '=', 'transaksi.id_transaksi')
+            ->selectRaw("COALESCE(SUM(CASE WHEN transaksi.skema = 'TJP' THEN rk_tjp.kuantum_bongkar ELSE 0 END), 0) as bongkar_tjp")
+            ->selectRaw("COALESCE(SUM(CASE WHEN transaksi.skema = 'MPP' THEN rk_mt.kuantum_bongkar ELSE 0 END), 0) as bongkar_mpp")
+            ->selectRaw("COALESCE(SUM(CASE WHEN transaksi.skema = 'TJP' THEN 1 ELSE 0 END), 0) as jumlah_tjp")
+            ->selectRaw("COALESCE(SUM(CASE WHEN transaksi.skema = 'MPP' THEN 1 ELSE 0 END), 0) as jumlah_mpp")
+            ->first();
+
+        // PO dihitung dari no_po yang BERBEDA, bukan dari jumlah baris po_detail: satu PO
+        // menggabungkan banyak transaksi, dan tabelnya pun menampilkannya sebagai satu blok.
+        $totalPo = $this->penyaringRekap($request)
+            ->join('po_detail as rk_pd', 'rk_pd.transaksi_id', '=', 'transaksi.id_transaksi')
+            ->join('data_pengadaan as rk_dp', 'rk_dp.id', '=', 'rk_pd.data_pengadaan_id')
+            ->distinct()
+            ->count('rk_dp.no_po');
+
+        return response()->json(['data' => [
+            'bongkar_tjp' => (float) $angka->bongkar_tjp,
+            'bongkar_mpp' => (float) $angka->bongkar_mpp,
+            'jumlah_tjp' => (int) $angka->jumlah_tjp,
+            'jumlah_mpp' => (int) $angka->jumlah_mpp,
+            'total_po' => $totalPo,
+        ]]);
     }
 
     /**
@@ -678,21 +732,22 @@ class TransaksiController extends Controller
         if ($aksi === 'draft') {
             $record = $this->service->saveDraft($transaksi, $request->user(), $stage, $model, $data);
         } else {
-            if ($transaksi->skema === 'TJP') {
-                // TJP baru punya kuantum final di tahap Makloon, jadi gerbang jaminan tetap di sini.
-                $this->pastikanKapasitasJaminanMakloon($request, $transaksi, $data);
-            } else {
-                // MPP: gerbang KUANTUM (kuota harian & plafon) memang menunggu Makloon Terima,
-                // karena hasil timbang baru ada di sana. TAPI tanggal bongkar sudah diketik DI
-                // SINI, jadi masa berlakunya diperiksa sekarang juga. Tanpa ini makloon
-                // menyelesaikan seluruh tahap Kirim beserta unggah fotonya, lalu baru tertolak
-                // satu tahap kemudian -- terasa seperti "cuma diperingatkan tapi tetap terkirim".
-                JaminanMakloonController::pastikanMasihBerlaku($request->user(), $data['tanggal_bongkar'] ?? null);
-            }
-            // MPP: surat jalan & nota timbang bukan dokumen tahap Makloon Kirim -- keduanya
-            // diunggah nanti di tahap Makloon Terima, jadi jangan dituntut di sini.
-            $this->pastikanDokumenLengkap($transaksi, $model, $transaksi->skema === 'MPP' ? DataMakloonMpp::FOTO_TAHAP_KIRIM : null);
-            $record = $this->service->submitStage($transaksi, $request->user(), $stage, $model, $data);
+            // Gerbang jaminan dan penyimpanannya WAJIB satu transaksi: gerbangnya mengunci baris
+            // jaminan makloon, dan kunci itu baru bermakna kalau ia bertahan sampai kiriman ini
+            // tersimpan. Lihat JaminanMakloonController::pastikanKapasitasMakloon().
+            $record = DB::transaction(function () use ($request, $transaksi, $data, $model, $stage) {
+                // TJP baru punya kuantum final di tahap Makloon, jadi gerbang jaminan ada di sini.
+                // MPP tidak diperiksa di sini: kuantum kirim masih angka rencana, dan gerbangnya
+                // menunggu hasil timbang di tahap Makloon Terima.
+                if ($transaksi->skema === 'TJP') {
+                    $this->pastikanKapasitasJaminanMakloon($request, $transaksi, $data);
+                }
+                // MPP: surat jalan & nota timbang bukan dokumen tahap Makloon Kirim -- keduanya
+                // diunggah nanti di tahap Makloon Terima, jadi jangan dituntut di sini.
+                $this->pastikanDokumenLengkap($transaksi, $model, $transaksi->skema === 'MPP' ? DataMakloonMpp::FOTO_TAHAP_KIRIM : null);
+
+                return $this->service->submitStage($transaksi, $request->user(), $stage, $model, $data);
+            });
         }
 
         return response()->json(['data' => $record]);
@@ -704,7 +759,7 @@ class TransaksiController extends Controller
      * TransaksiStageService lewat current_stage, sama seperti tahap lain.
      *
      * Kapasitas jaminan MPP dicek DI SINI, bukan di Makloon Kirim. Kuantum kirim masih angka
-     * rencana/awal; stok dan batas harian harus memakai hasil timbang bongkar yang final.
+     * rencana/awal; gerbang kapasitas harus memakai hasil timbang bongkar yang final.
      */
     public function makloonTerima(Request $request, Transaksi $transaksi)
     {
@@ -724,9 +779,13 @@ class TransaksiController extends Controller
         if ($aksi === 'draft') {
             $record = $this->service->saveDraft($transaksi, $request->user(), 'makloon_terima', DataMakloonTerima::class, $data);
         } else {
-            $this->pastikanKapasitasJaminanMakloon($request, $transaksi, $data);
-            $this->pastikanDokumenLengkap($transaksi, DataMakloonTerima::class);
-            $record = $this->service->submitStage($transaksi, $request->user(), 'makloon_terima', DataMakloonTerima::class, $data);
+            // Satu transaksi dengan gerbangnya -- alasan yang sama seperti di makloon().
+            $record = DB::transaction(function () use ($request, $transaksi, $data) {
+                $this->pastikanKapasitasJaminanMakloon($request, $transaksi, $data);
+                $this->pastikanDokumenLengkap($transaksi, DataMakloonTerima::class);
+
+                return $this->service->submitStage($transaksi, $request->user(), 'makloon_terima', DataMakloonTerima::class, $data);
+            });
         }
 
         return response()->json(['data' => $record]);
@@ -837,24 +896,17 @@ class TransaksiController extends Controller
             return;
         }
 
-        $tanggalBongkar = $data['tanggal_bongkar'] ?? null;
         if ($transaksi->skema === 'TJP') {
             $transaksi->loadMissing('dataJemputPangan.makloon');
             $makloon = $transaksi->dataJemputPangan?->makloon;
         } else {
             $makloon = $request->user();
-            $tanggalBongkar ??= $transaksi->dataMakloonMpp?->tanggal_bongkar;
         }
 
         if (! $makloon) {
             return;
         }
 
-        JaminanMakloonController::pastikanKapasitasMakloon(
-            $makloon,
-            (float) $kuantum,
-            $tanggalBongkar,
-            $transaksi->id_transaksi,
-        );
+        JaminanMakloonController::pastikanKapasitasMakloon($makloon, (float) $kuantum);
     }
 }

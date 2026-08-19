@@ -46,6 +46,27 @@ export type PoItem = {
   data_keuangan: DataKeuangan | null
 }
 
+/**
+ * Empat kartu layar Keuangan, dihitung backend atas seluruh PO. Dulu dijumlah dari 20 PO satu
+ * halaman, sehingga angkanya berubah tiap kali pengguna menekan "Berikutnya".
+ */
+export type RingkasanKeuangan = {
+  perlu_review: number
+  siap_bayar: number
+  sudah_dibayar: number
+  nilai_antrean: number
+}
+
+export function useRingkasanKeuangan() {
+  return useQuery({
+    queryKey: ['keuangan-ringkasan'],
+    queryFn: async () => {
+      const { data } = await api.get<{ data: RingkasanKeuangan }>('/api/keuangan/ringkasan')
+      return data.data
+    },
+  })
+}
+
 export function usePoList(page = 1, perPage = 20, search = '', enabled = true) {
   return useQuery({
     queryKey: ['po-list', page, perPage, search],

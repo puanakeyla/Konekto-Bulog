@@ -84,6 +84,30 @@ export type RekapTransaksi = {
   data_pengadaan: RekapPengadaan | null
 }
 
+/**
+ * Kartu angka Rekap: dihitung backend atas SELURUH data yang berhak dilihat pemanggil.
+ *
+ * Sengaja terpisah dari daftar berhalaman. Menjumlahkannya dari baris yang sedang dimuat cuma
+ * benar selama datanya muat dalam satu halaman -- lewat dari itu angkanya berkurang diam-diam.
+ */
+export type RingkasanRekap = {
+  bongkar_tjp: number
+  bongkar_mpp: number
+  jumlah_tjp: number
+  jumlah_mpp: number
+  total_po: number
+}
+
+export function useRingkasanRekap() {
+  return useQuery({
+    queryKey: ['rekap-transaksi-ringkasan'],
+    queryFn: async () => {
+      const { data } = await api.get<{ data: RingkasanRekap }>('/api/transaksi/rekap/ringkasan')
+      return data.data
+    },
+  })
+}
+
 export function useRekapTransaksi(page = 1, perPage = 200) {
   return useQuery({
     queryKey: ['rekap-transaksi', page, perPage],
