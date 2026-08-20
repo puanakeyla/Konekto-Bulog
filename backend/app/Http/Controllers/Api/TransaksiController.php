@@ -255,7 +255,10 @@ class TransaksiController extends Controller
      */
     private function halamanRekap(Builder $query, Request $request): LengthAwarePaginator
     {
-        $perPage = $request->integer('per_page', 100);
+        // Dijepit 1-500. Tanpa batas atas, `?per_page=100000` menarik seluruh rekap beserta
+        // relasinya ke memori PHP dalam satu permintaan -- persis kondisi yang dulu membuat
+        // rekap pengolahan fatal di 512 MB. 500 adalah ukuran yang dipakai ekspor CSV.
+        $perPage = max(1, min($request->integer('per_page', 100), 500));
         $halaman = Paginator::resolveCurrentPage();
         $total = (clone $query)->reorder()->count();
 

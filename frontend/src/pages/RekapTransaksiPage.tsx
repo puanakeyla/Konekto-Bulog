@@ -8,7 +8,7 @@ import KartuFoto from '../components/KartuFoto'
 import AngkaInput from '../components/AngkaInput'
 import KabupatenSelect from '../components/KabupatenSelect'
 import { useAuth } from '../hooks/useAuth'
-import { useRekapTransaksi, useRingkasanRekap, type RekapTransaksi, type RingkasanRekap } from '../hooks/useRekapTransaksi'
+import { ambilSemuaRekapTransaksi, useRekapTransaksi, useRingkasanRekap, type RekapTransaksi, type RingkasanRekap } from '../hooks/useRekapTransaksi'
 import PaginationBar from '../components/PaginationBar'
 import { useMakloonOptions } from '../hooks/useMakloonOptions'
 import { ambilFotoTransaksi, useDokumenTransaksi } from '../hooks/useFotoTransaksi'
@@ -634,6 +634,9 @@ export default function RekapTransaksiPage() {
                 columns={columns}
                 rowKey={(r) => r.id_transaksi}
                 namaFile={`rekap-${role || 'transaksi'}-${skema.toLowerCase()}`}
+                // Ekspor menarik seluruh halaman lalu menyaring skema ini -- tabelnya memang
+                // dipisah per skema di browser, bukan oleh server.
+                ambilSemuaBaris={async () => (await ambilSemuaRekapTransaksi()).filter((r) => r.skema === skema)}
                 isLoading={isLoading}
                 isError={isError}
                 errorMessage={pesanKegagalan(error)}

@@ -3,7 +3,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from '../lib/toast'
 import TautanDashboard from '../components/TautanDashboard'
 import { useAuth } from '../hooks/useAuth'
-import { LABEL_TAHAP, tahapTerlihat, usePengolahanRekap, type PengolahanItem, type SkemaPengolahan, type TahapPengolahan } from '../hooks/usePengolahan'
+import { ambilSemuaRekapPengolahan, LABEL_TAHAP, tahapTerlihat, usePengolahanRekap, type PengolahanItem, type SkemaPengolahan, type TahapPengolahan } from '../hooks/usePengolahan'
 import DataSpreadsheet, { type SheetColumn } from '../components/DataSpreadsheet'
 import DokumenPengolahanModal, { type SlotDokumen } from '../components/DokumenPengolahanModal'
 import KartuFoto from '../components/KartuFoto'
@@ -224,7 +224,8 @@ function TabelSkema({
         rows={rows}
         columns={columns}
         rowKey={(row) => row.id_pengolahan}
-        namaFile={`rekap-pengolahan-${role || 'semua'}-${skema.toLowerCase()}-hal${page}`}
+        namaFile={`rekap-pengolahan-${role || 'semua'}-${skema.toLowerCase()}`}
+        ambilSemuaBaris={() => ambilSemuaRekapPengolahan(skema)}
         isLoading={isLoading}
         isError={isError}
         errorMessage={errorMessage}
@@ -233,7 +234,8 @@ function TabelSkema({
         emptyCopy={`Data muncul setelah data tahap Anda pada alur ${skema} diterima tahap berikutnya.`}
       />
 
-      {/* Pencarian & filter di dalam tabel bekerja atas HALAMAN INI -- sama seperti Rekap Sergab. */}
+      {/* Pencarian & filter di dalam tabel bekerja atas HALAMAN INI -- sama seperti Rekap Sergab.
+          Ekspor CSV tidak: ia menarik seluruh halaman lebih dulu (lihat ambilSemuaBaris). */}
       {data && data.last_page > 1 && (
         <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm text-muted">
           <span>Menampilkan {data.from ?? 0}-{data.to ?? 0} dari {data.total}</span>

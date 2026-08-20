@@ -30,7 +30,23 @@ Route::get('/foto/{media}', [FotoStreamController::class, 'stream'])
 
 // `user.aktif` menendang akun yang dinonaktifkan admin dari sesi yang masih berjalan --
 // lihat App\Http\Middleware\PastikanUserAktif.
-Route::middleware(['auth:sanctum', 'user.aktif'])->group(function () {
+//
+// `throttle:240,1` adalah batas laju SATU-SATUNYA yang berlaku menyeluruh. Laravel 11 tidak
+// memasang batas apa pun sendiri di grup api, jadi tanpa baris ini endpoint agregat termahal
+// (rekap, monitoring, neraca makloon) boleh dipukul tanpa henti -- satu tab yang nyangkut di
+// retry loop cukup untuk menguras worker php-fpm yang di VPS cuma belasan.
+//
+// Kuncinya per USER yang login, bukan per IP (itu perilaku bawaan ThrottleRequests untuk
+// request terautentikasi), sehingga kantor ber-NAT tidak saling menghabiskan jatah -- alasan
+// yang sama dipakai batas login di AuthController.
+//
+// 240/menit sengaja longgar: ekspor CSV rekap menarik seluruh himpunan halaman demi halaman,
+// ~60 permintaan beruntun untuk 30k baris, dan itu pemakaian yang sah.
+//
+// GET /api/foto/{media} sengaja DI LUAR grup ini: satu galeri memuat puluhan gambar sekaligus
+// sehingga batas per menit apa pun akan salah tuduh, dan penjaganya sudah berupa URL
+// bertanda tangan yang kedaluwarsa 5 menit.
+Route::middleware(['auth:sanctum', 'user.aktif', 'throttle:240,1'])->group(function () {
     Route::post('/logout', [AuthController::class, 'logout']);
     Route::get('/me', [AuthController::class, 'me']);
 

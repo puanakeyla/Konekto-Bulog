@@ -119,3 +119,34 @@ export function useRekapTransaksi(page = 1, perPage = 200) {
     },
   })
 }
+
+/** Ukuran halaman saat menarik seluruh rekap. Server menjepitnya di 500 (TransaksiController). */
+const PER_PAGE_EKSPOR = 500
+
+/**
+ * SELURUH baris rekap, halaman demi halaman. Dipakai HANYA oleh tombol ekspor CSV -- layarnya
+ * tetap memuat satu halaman, karena merender 30.000 baris di DOM tidak ada gunanya.
+ *
+ * Ditarik BERURUTAN, bukan paralel dengan Promise.all: 30k baris = 60 permintaan, dan
+ * menembakkannya sekaligus menabrak batas laju sekaligus menguras worker php-fpm yang di VPS
+ * cuma belasan. Berurutan lebih lambat tapi tidak pernah merobohkan servernya sendiri.
+ *
+ * Sengaja TIDAK lewat React Query: hasilnya besar, dipakai sekali, lalu dibuang -- menaruhnya
+ * di cache query cuma menahan puluhan MB di memori tab sampai halaman ditutup.
+ */
+export async function ambilSemuaRekapTransaksi(): Promise<RekapTransaksi[]> {
+  const semua: RekapTransaksi[] = []
+  let page = 1
+  let lastPage = 1
+
+  do {
+    const { data } = await api.get<{ data: RekapTransaksi[]; meta: PaginationMeta }>('/api/transaksi/rekap', {
+      params: { page, per_page: PER_PAGE_EKSPOR },
+    })
+    semua.push(...data.data)
+    lastPage = data.meta.last_page
+    page += 1
+  } while (page <= lastPage)
+
+  return semua
+}

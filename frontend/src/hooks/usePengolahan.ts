@@ -164,6 +164,30 @@ export function usePengolahanRekap(skema: SkemaPengolahan, page = 1, perPage = 2
   })
 }
 
+/** Batas atas per_page yang diterima PengolahanController::rekap(). */
+const PER_PAGE_EKSPOR = 500
+
+/**
+ * SELURUH baris rekap satu skema, halaman demi halaman -- padanan
+ * ambilSemuaRekapTransaksi(); alasan berurutan & di luar React Query dijelaskan di sana.
+ */
+export async function ambilSemuaRekapPengolahan(skema: SkemaPengolahan): Promise<PengolahanItem[]> {
+  const semua: PengolahanItem[] = []
+  let page = 1
+  let lastPage = 1
+
+  do {
+    const { data } = await api.get<RekapHalaman>('/api/pengolahan/rekap', {
+      params: { skema, page, per_page: PER_PAGE_EKSPOR },
+    })
+    semua.push(...data.data)
+    lastPage = data.last_page
+    page += 1
+  } while (page <= lastPage)
+
+  return semua
+}
+
 /**
  * Kandidat penggabungan MO: sudah lolos review Operasi & belum masuk MO mana pun.
  *

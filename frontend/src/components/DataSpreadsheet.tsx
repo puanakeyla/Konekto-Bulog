@@ -1,5 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { downloadCsv, type ExportColumn } from '../lib/exportCsv'
+import { pesanError } from '../lib/pesanError'
+import { saringTabel } from '../lib/saringTabel'
+import { toast } from '../lib/toast'
 
 export type SheetColumn<T> = ExportColumn<T> & {
   /** Tampilan sel di layar; default memakai `value`. */
@@ -41,6 +44,16 @@ type Props<T> = {
    * satu-satunya cara induk tahu baris mana yang sedang tampil.
    */
   onFilteredChange?: (rows: T[]) => void
+  /**
+   * Menarik SELURUH baris (semua halaman) untuk ekspor CSV. Tanpa ini tombol Ekspor hanya
+   * menulis halaman yang kebetulan terbuka -- diam-diam tidak lengkap begitu datanya lewat
+   * satu halaman, kelas kesalahan yang sama persis dengan kartu angka yang dulu dijumlah dari
+   * baris ter-fetch di browser.
+   *
+   * Tabel yang datanya memang sudah utuh dalam satu permintaan (mis. neraca makloon, puluhan
+   * baris) tidak perlu mengisinya -- ekspornya jatuh ke perilaku lama yang saat itu benar.
+   */
+  ambilSemuaBaris?: () => Promise<T[]>
 }
 
 /**
@@ -83,8 +96,10 @@ export default function DataSpreadsheet<T>({
   errorMessage = null,
   renderRowActions,
   onFilteredChange,
+  ambilSemuaBaris,
 }: Props<T>) {
   const [q, setQ] = useState('')
+  const [mengekspor, setMengekspor] = useState(false)
   // key kolom -> daftar nilai yang dipilih. Kolom tanpa entri berarti tidak difilter.
   const [filters, setFilters] = useState<Record<string, string[]>>({})
 
@@ -124,22 +139,37 @@ export default function DataSpreadsheet<T>({
     return hasil
   }, [filters, opsiFilter, kolomFilter])
 
-  const filtered = useMemo(() => {
-    const key = q.trim().toLowerCase()
-    const cariCols = columns.filter((c) => c.searchable !== false)
-    const aktif = Object.entries(efektifFilters).filter(([, v]) => v.length > 0)
+  const filtered = useMemo(
+    () => saringTabel(rows, columns, q, efektifFilters),
+    [rows, columns, q, efektifFilters],
+  )
 
-    return rows.filter((row) => {
-      // Filter kolom digabung dengan AND antar kolom, OR antar nilai dalam satu kolom.
-      for (const [colKey, dipilih] of aktif) {
-        const col = columns.find((c) => c.key === colKey)
-        if (!col) continue
-        if (!dipilih.includes(String(col.value(row) ?? ''))) return false
-      }
-      if (!key) return true
-      return cariCols.some((c) => String(c.value(row) ?? '').toLowerCase().includes(key))
-    })
-  }, [rows, columns, q, efektifFilters])
+  /**
+   * Ekspor selalu menulis SELURUH himpunan bila induk memberi `ambilSemuaBaris` -- bukan
+   * halaman yang terbuka. Pencarian & filter kolom tetap dihormati dan diterapkan ke himpunan
+   * penuh itu, memakai `efektifFilters` (bukan `filters` mentah) supaya yang menyaring persis
+   * kotak centang yang sedang terlihat pengguna.
+   */
+  async function ekspor() {
+    if (!ambilSemuaBaris) {
+      downloadCsv(namaFile, filtered, columns)
+      return
+    }
+
+    setMengekspor(true)
+    try {
+      const semua = await ambilSemuaBaris()
+      downloadCsv(namaFile, saringTabel(semua, columns, q, efektifFilters), columns)
+    } catch (err) {
+      // Gagal di tengah berarti sebagian halaman belum tertarik. Berkas separuh isi jauh lebih
+      // berbahaya daripada tidak ada berkas sama sekali -- jadi tidak ada yang diunduh.
+      toast.error(pesanError(err, 'Ekspor gagal, tidak ada berkas yang diunduh. Coba lagi.'))
+    } finally {
+      setMengekspor(false)
+    }
+  }
+
+  const bisaEkspor = (ambilSemuaBaris ? rows.length : filtered.length) > 0 && !mengekspor
 
   // Callback disimpan di ref supaya efek di bawah tidak ikut bergantung pada identitas
   // fungsinya (induk umumnya membuat fungsi baru tiap render).
@@ -202,14 +232,14 @@ export default function DataSpreadsheet<T>({
         </div>
         <button
           type="button"
-          onClick={() => downloadCsv(namaFile, filtered, columns)}
-          disabled={filtered.length === 0}
+          onClick={ekspor}
+          disabled={!bisaEkspor}
           className="inline-flex items-center gap-2 rounded-lg bg-accent px-4 py-2 text-xs font-bold text-primary-dark shadow-sm transition-all hover:bg-primary hover:text-white hover:shadow-md disabled:cursor-not-allowed disabled:opacity-50"
         >
           <svg viewBox="0 0 20 20" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
             <path d="M10 3v10m0 0 3.5-3.5M10 13l-3.5-3.5M3.5 15.5h13" />
           </svg>
-          Ekspor CSV
+          {mengekspor ? 'Menyiapkan...' : ambilSemuaBaris ? 'Ekspor CSV (semua halaman)' : 'Ekspor CSV'}
         </button>
       </div>
 

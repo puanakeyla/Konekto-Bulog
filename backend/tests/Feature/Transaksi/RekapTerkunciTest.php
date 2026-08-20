@@ -63,6 +63,32 @@ class RekapTerkunciTest extends TestCase
         $this->assertNotContains($belumTerkunci->id_transaksi, $ids);
     }
 
+    /**
+     * per_page dijepit 1-500 di server. Ekspor CSV memanggil endpoint ini halaman demi halaman;
+     * tanpa batas atas, satu `?per_page=100000` menarik seluruh rekap beserta relasinya ke memori
+     * PHP sekaligus -- dan yang gagal bukan cuma permintaan itu, melainkan proses php-fpm-nya.
+     */
+    public function test_per_page_rekap_dijepit_antara_1_dan_500(): void
+    {
+        $this->buatTjpDenganJpTerkunci();
+
+        Sanctum::actingAs($this->jemputPangan);
+
+        $this->getJson('/api/transaksi/rekap?per_page=100000')
+            ->assertOk()
+            ->assertJsonPath('meta.per_page', 500);
+
+        // Batas bawah sama pentingnya: per_page=0 membuat LengthAwarePaginator membagi nol.
+        $this->getJson('/api/transaksi/rekap?per_page=0')
+            ->assertOk()
+            ->assertJsonPath('meta.per_page', 1);
+
+        // Nilai wajar tetap dihormati apa adanya.
+        $this->getJson('/api/transaksi/rekap?per_page=25')
+            ->assertOk()
+            ->assertJsonPath('meta.per_page', 25);
+    }
+
     public function test_makloon_hanya_melihat_transaksi_yang_tahap_makloon_sudah_terkunci(): void
     {
         // TJP: JP terkunci tapi Makloon belum -> tidak boleh muncul untuk role makloon.
