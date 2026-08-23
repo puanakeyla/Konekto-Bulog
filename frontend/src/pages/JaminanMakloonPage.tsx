@@ -118,7 +118,7 @@ export default function JaminanMakloonPage() {
               <MakloonCombobox value={form.makloon_user_id} onChange={pilihMakloon} />
             </Field>
             <Field label="Bentuk jaminan">
-              <input className="input" placeholder="Bank Garansi BNI No. 0012/BG/2026" value={form.bentuk_jaminan} onChange={(e) => setForm((prev) => ({ ...prev, bentuk_jaminan: e.target.value }))} />
+              <input className="input" value={form.bentuk_jaminan} onChange={(e) => setForm((prev) => ({ ...prev, bentuk_jaminan: e.target.value }))} />
             </Field>
             <Field label="Jaminan (Rp)">
               <AngkaInput required prefix="Rp " value={form.jaminan_rp} onChange={(value) => setForm((prev) => ({ ...prev, jaminan_rp: value }))} />
@@ -150,7 +150,9 @@ export default function JaminanMakloonPage() {
           <div className="border-b border-border bg-white px-5 py-4">
             <h2 className="section-title">Pantauan Makloon</h2>
           </div>
-          <div className="overflow-x-auto">
+          {/* Digulung di dalam panelnya: makloon aktif bisa puluhan, dan keterangan rumus di
+              kaki panel harus tetap terjangkau tanpa scroll halaman sepanjang tabel. */}
+          <div className="overflow-x-auto tabel-scroll">
             <table className="min-w-full text-sm">
               {/* Dua baris kepala: baris atas mengelompokkan kolom jadi tiga blok
                   (identitas / aturan Operasi / posisi makloon saat ini) supaya tabelnya
@@ -187,6 +189,14 @@ export default function JaminanMakloonPage() {
                         {formatKg(item.pantauan.gabah_ditangan)}
                         {j && <div className="text-xs font-normal text-slate-500">dari {formatKg(j.kapasitas_total_kg)}</div>}
                         <div className="text-xs font-normal text-slate-400">Gabah Sudah IN {formatKg(item.pantauan.gabah_masuk)} · Estimasi Gabah {formatKg(item.pantauan.gabah_kembali)}</div>
+                        {/* Nol punya dua sebab yang sangat berbeda: belum ada gabah masuk, atau
+                            setoran olahan sudah melampauinya. Tanpa dibedakan, Operasi tidak bisa
+                            tahu apakah plafonnya sedang bekerja atau angkanya sekadar macet. */}
+                        {item.pantauan.gabah_kembali > item.pantauan.gabah_masuk && (
+                          <div className="text-xs font-normal text-success">
+                            kelebihan setoran {formatKg(item.pantauan.gabah_kembali - item.pantauan.gabah_masuk)} — plafon belum tersentuh
+                          </div>
+                        )}
                       </td>
                       <td className="px-4 py-3 text-right tabular-nums">
                         {j ? (

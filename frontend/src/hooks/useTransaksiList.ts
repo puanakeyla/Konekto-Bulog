@@ -54,14 +54,17 @@ export function useTransaksiList(page = 1, perPage = 20, siapPo = false) {
  * Menyaring di browser hanya menyaring halaman yang kebetulan terbuka, sehingga jumlah baris
  * tidak akan cocok dengan angka pada chip filter begitu antreannya lebih dari satu halaman.
  */
-export function useAntreanTransaksi(page: number, skema: string, kerjaan: string, perPage = 25, search = '', pengadaanTahap = 'semua') {
+export function useAntreanTransaksi(page: number, skema: string, kerjaan: string, perPage = 25, search = '', pengadaanTahap = 'semua', perMakloon = false) {
   return useQuery({
-    queryKey: ['antrean-transaksi', page, skema, kerjaan, perPage, search, pengadaanTahap],
+    queryKey: ['antrean-transaksi', page, skema, kerjaan, perPage, search, pengadaanTahap, perMakloon],
     queryFn: async () => {
       const { data } = await api.get<{ data: TransaksiListItem[]; meta: PaginationMeta }>('/api/transaksi', {
         params: {
           page,
           per_page: perPage,
+          // Dengan per_makloon, `per_page` menghitung MAKLOON dan meta.total pun jumlah makloon.
+          // Satu makloon selalu utuh dalam satu halaman, jadi akordionnya tidak pernah kembar.
+          ...(perMakloon ? { per_makloon: 1 } : {}),
           ...(skema === 'semua' ? {} : { skema }),
           ...(kerjaan === 'semua' ? {} : { kerjaan }),
           ...(pengadaanTahap === 'semua' ? {} : { pengadaan_tahap: pengadaanTahap }),

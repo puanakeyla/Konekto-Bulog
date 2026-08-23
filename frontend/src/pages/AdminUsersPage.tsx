@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { Navigate } from 'react-router-dom'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from '../lib/toast'
+import InputPassword from '../components/InputPassword'
 import api from '../lib/api'
 import { useAuth } from '../hooks/useAuth'
 import { useAdminRoles, useAdminUsers, type AdminUser } from '../hooks/useAdminUsers'
@@ -254,10 +255,8 @@ export default function AdminUsersPage() {
               <span className="label">
                 Password {editing ? 'baru' : ''}
               </span>
-              <input
+              <InputPassword
                 required={!editing}
-                type="password"
-                className="input"
                 value={form.password}
                 onChange={(event) => setForm((prev) => ({ ...prev, password: event.target.value }))}
               />
@@ -265,10 +264,8 @@ export default function AdminUsersPage() {
 
             <label className="block">
               <span className="label">Konfirmasi Password</span>
-              <input
+              <InputPassword
                 required={!editing || form.password !== ''}
-                type="password"
-                className="input"
                 value={form.password_confirmation}
                 onChange={(event) =>
                   setForm((prev) => ({ ...prev, password_confirmation: event.target.value }))

@@ -13,6 +13,10 @@ export default function PanelJaminanMakloon() {
   if (isLoading || !data) return null
 
   const lewatKapasitas = data.gabah_ditangan_kg > data.kapasitas_total_kg
+  // Stok Pengurang dijepit di nol saat setoran olahan melampaui gabah yang ber-No IN. Tanpa
+  // penjelasan, makloon yang baru saja menambah IN melihat angka yang tidak bergerak dan
+  // menyimpulkan panelnya rusak -- padahal justru sedang menguntungkannya.
+  const kelebihanSetoran = data.gabah_kembali_kg - data.gabah_masuk_kg
 
   return (
     <div className="mt-4 rounded-lg border border-border bg-primary-tint/40 p-4 text-sm">
@@ -44,6 +48,14 @@ export default function PanelJaminanMakloon() {
           Angkanya berkurang sendiri setiap kali hasil olahan Anda ditimbang masuk gudang, sehingga
           sisa yang dapat dikirim terbuka lagi.
         </p>
+        {kelebihanSetoran > 0 && (
+          <p className="rounded-md bg-success/10 px-3 py-2 text-success">
+            <strong>Stok Pengurang Anda 0 karena setoran olahan melebihi gabah yang ber-No IN
+            sebanyak {kg(kelebihanSetoran)}.</strong> Selama kelebihan itu belum terpakai, menambah
+            IN tidak menaikkan Stok Pengurang &mdash; kapasitas Anda tetap terbuka penuh. Itu
+            memang perilaku yang benar, bukan angka yang macet.
+          </p>
+        )}
       </div>
     </div>
   )

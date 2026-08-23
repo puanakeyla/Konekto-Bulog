@@ -108,12 +108,20 @@ export function useRingkasanRekap() {
   })
 }
 
-export function useRekapTransaksi(page = 1, perPage = 200) {
+/**
+ * Satu tabel rekap = satu skema, dengan halamannya sendiri.
+ *
+ * Dulu satu permintaan memuat kedua skema lalu browser memisahkannya jadi dua tabel. Urutan
+ * server menaruh SELURUH blok TJP lebih dulu, jadi dengan 670 TJP dan per_page 200 tabel MPP
+ * kosong di halaman 1-3 -- terbaca sebagai "transaksi MPP tidak ada sama sekali". Menyaring
+ * per skema di server membuat tiap tabel selalu berisi sejak halaman pertama.
+ */
+export function useRekapTransaksi(skema: 'TJP' | 'MPP', page = 1, perPage = 200) {
   return useQuery({
-    queryKey: ['rekap-transaksi', page, perPage],
+    queryKey: ['rekap-transaksi', skema, page, perPage],
     queryFn: async () => {
       const { data } = await api.get<{ data: RekapTransaksi[]; meta: PaginationMeta }>('/api/transaksi/rekap', {
-        params: { page, per_page: perPage },
+        params: { skema, page, per_page: perPage },
       })
       return { items: data.data, meta: data.meta }
     },
@@ -134,14 +142,14 @@ const PER_PAGE_EKSPOR = 500
  * Sengaja TIDAK lewat React Query: hasilnya besar, dipakai sekali, lalu dibuang -- menaruhnya
  * di cache query cuma menahan puluhan MB di memori tab sampai halaman ditutup.
  */
-export async function ambilSemuaRekapTransaksi(): Promise<RekapTransaksi[]> {
+export async function ambilSemuaRekapTransaksi(skema?: 'TJP' | 'MPP'): Promise<RekapTransaksi[]> {
   const semua: RekapTransaksi[] = []
   let page = 1
   let lastPage = 1
 
   do {
     const { data } = await api.get<{ data: RekapTransaksi[]; meta: PaginationMeta }>('/api/transaksi/rekap', {
-      params: { page, per_page: PER_PAGE_EKSPOR },
+      params: { page, per_page: PER_PAGE_EKSPOR, ...(skema ? { skema } : {}) },
     })
     semua.push(...data.data)
     lastPage = data.meta.last_page

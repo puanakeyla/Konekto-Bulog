@@ -106,9 +106,71 @@ class TransaksiController extends Controller
                 ->whereDoesntHave('poDetail');
         }
 
-        $transaksi = $query->paginate($request->integer('per_page', 20));
+        // Dashboard menampilkan antrean sebagai akordion PER MAKLOON. Kalau halamannya dipotong
+        // per sekian BARIS, satu makloon terbelah di batas halaman dan akordionnya muncul lagi
+        // di halaman berikutnya -- "PT Jaya Manunggal" terlihat 2-3 kali padahal satu. Karena
+        // itu mode ini memotong per MAKLOON: satu halaman memuat seluruh transaksi milik
+        // sejumlah makloon, jadi satu makloon mustahil muncul di dua halaman.
+        $transaksi = $request->boolean('per_makloon')
+            ? $this->halamanPerMakloon($query, $request)
+            : $query->paginate($request->integer('per_page', 20));
 
         return TransaksiResource::collection($transaksi);
+    }
+
+    /**
+     * Pemilik makloon sebuah transaksi, sebagai ekspresi SQL. MPP dibuat sendiri oleh makloon
+     * (transaksi.created_by); TJP dititipkan Jemput Pangan (data_jemput_pangan.makloon_user_id).
+     * Padanan sisi PHP: TransaksiResource::makloonUser() -- keduanya WAJIB sepakat, kalau tidak
+     * akordion frontend mengelompokkan nama yang berbeda dari yang dipakai memotong halaman.
+     */
+    private const PEMILIK_MAKLOON = "CASE WHEN transaksi.skema = 'MPP' THEN transaksi.created_by ELSE data_jemput_pangan.makloon_user_id END";
+
+    /**
+     * Satu halaman = sejumlah MAKLOON beserta SELURUH transaksinya, bukan sejumlah baris.
+     *
+     * Dua langkah, dan itu disengaja: daftar makloon diambil lebih dulu (satu kolom, DISTINCT,
+     * diurut nama) lalu dipotong; baru transaksinya ditarik dengan whereIn. Mengurut lalu
+     * memotong barisnya langsung tidak bisa menjamin batas halaman jatuh tepat di pergantian
+     * makloon -- dan justru itulah yang bikin satu makloon tampil berulang.
+     *
+     * `total` pada meta karena itu berisi jumlah MAKLOON, bukan jumlah transaksi. Jumlah
+     * transaksi seluruh antrean sudah disediakan DashboardController::ringkasan.
+     */
+    private function halamanPerMakloon(Builder $query, Request $request): LengthAwarePaginator
+    {
+        $daftar = DB::query()
+            ->fromSub(
+                (clone $query)->reorder()->select([DB::raw(self::PEMILIK_MAKLOON.' as makloon_user_id')])->distinct(),
+                'm'
+            )
+            ->leftJoin('users as u', 'u.id', '=', 'm.makloon_user_id')
+            // Baris tanpa makloon (data tahap belum terisi) ditaruh paling belakang supaya
+            // tidak menempati halaman pertama yang paling sering dibuka.
+            ->orderByRaw('CASE WHEN u.nama_maklon IS NULL THEN 1 ELSE 0 END')
+            ->orderBy('u.nama_maklon')
+            ->pluck('m.makloon_user_id');
+
+        // Dijepit 1-50: satu makloon bisa membawa puluhan transaksi, jadi angka besar di sini
+        // menarik ribuan baris sekaligus.
+        //
+        // ponytail: ukuran halaman dibatasi per MAKLOON, bukan per baris, jadi berat responsnya
+        // mengikuti makloon tersibuk -- terukur ~390 baris / 1,0 detik untuk antrean Pengadaan
+        // pada data uji 1.000 transaksi. Itu memang harga dari "satu makloon tidak boleh terbelah
+        // dua halaman". Kalau satu makloon sampai membawa ribuan baris, batasi barisnya juga
+        // (pilih makloon sampai anggaran baris habis) alih-alih mengecilkan angka ini lagi.
+        $perPage = max(1, min($request->integer('per_page', 5), 50));
+        $halaman = Paginator::resolveCurrentPage();
+        $potong = $daftar->forPage($halaman, $perPage)->values();
+
+        $items = $potong->isEmpty()
+            ? collect()
+            : $query->whereIn(DB::raw(self::PEMILIK_MAKLOON), $potong->all())->get();
+
+        return new LengthAwarePaginator($items, $daftar->count(), $perPage, $halaman, [
+            'path' => Paginator::resolveCurrentPath(),
+            'pageName' => 'page',
+        ]);
     }
 
     private function filterPencarian(Builder $query, string $keyword): void
@@ -198,6 +260,14 @@ class TransaksiController extends Controller
         // Role Jemput Pangan hanya relevan dengan skema TJP (MPP tidak punya tahap JP).
         if ($role === 'jemput_pangan') {
             $query->where('skema', 'TJP');
+        }
+
+        // Tabel rekap dipisah per skema DI BROWSER, tapi halamannya dipotong DI SERVER dan
+        // urutannya menaruh seluruh blok TJP lebih dulu. Dengan 670 TJP dan per_page 200,
+        // tabel MPP kosong di halaman 1-3 -- terbaca sebagai "MPP tidak ada sama sekali".
+        // Karena itu tiap tabel sekarang meminta skemanya sendiri dan punya halamannya sendiri.
+        if (in_array($request->query('skema'), ['TJP', 'MPP'], true)) {
+            $query->where('skema', $request->query('skema'));
         }
 
         $this->terapkanFilterTerkunci($query, $role);

@@ -248,6 +248,20 @@ body {
     border-radius: 0.75rem;
   }
 
+  /* Daftar puluhan baris digulung DI DALAM kotaknya sendiri, bukan memanjangkan halaman --
+     kontrol di bawah tabel (tombol, form) jadi tetap terlihat tanpa harus scroll jauh.
+     Kepala tabel menempel supaya nama kolom tidak hilang saat digulung. */
+  .tabel-scroll {
+    max-height: 26rem;
+    overflow-y: auto;
+  }
+
+  .tabel-scroll thead {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+  }
+
   .data-table {
     width: 100%;
     min-width: 44rem;
@@ -367,7 +381,9 @@ body {
   .label {
     display: block;
     margin-bottom: 0.375rem;
-    font-size: 0.75rem;
+    /* 14px, bukan 12px. Label filter & form dibaca sepanjang hari di layar kantor;
+       ukuran sebelumnya bikin mata cepat lelah. */
+    font-size: 0.875rem;
     font-weight: 650;
     color: #3d4554;
   }

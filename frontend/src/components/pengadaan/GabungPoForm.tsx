@@ -200,7 +200,9 @@ export default function GabungPoForm({
             </p>
           )}
 
-          <div className="data-table-wrap mb-4">
+          {/* Daftar transaksi siap-PO gampang berisi puluhan baris. Digulung di dalam kotaknya
+              sendiri supaya form No. PO di bawahnya tidak terdorong jauh ke bawah layar. */}
+          <div className="data-table-wrap tabel-scroll mb-4">
             <table className="data-table">
               <thead><tr><th className="w-10"></th><th>ID Transaksi</th><th>Skema</th><th>ID Pemasok</th><th>Tanggal Bongkar</th><th className="text-right">Kuantum</th></tr></thead>
               <tbody>
@@ -241,7 +243,7 @@ export default function GabungPoForm({
           <TahapDialog transaksi={detailTahap} onClose={() => setDetailTahap(null)} />
 
           <form className="grid gap-4 @md:grid-cols-2" onSubmit={(e) => { e.preventDefault(); setConfirmGabung(true) }}>
-            <label className="block"><span className="label">No. PO</span><input required className="input" value={noPo} onChange={(e) => setNoPo(e.target.value)} placeholder="Contoh: PO-0001/VII/2026" /></label>
+            <label className="block"><span className="label">No. PO</span><input required className="input" value={noPo} onChange={(e) => setNoPo(e.target.value)} placeholder="Contoh: PO/0000/00/0000" /></label>
             <label className="block"><span className="label">Harga per kg</span><AngkaInput required prefix="Rp " value={harga} onChange={setHarga} /></label>
             <label className="block"><span className="label">Total Kuantum</span><input className="input" readOnly value={`${formatNumber(totalSelectedKuantum)} kg`} /></label>
             <label className="block"><span className="label">Total harga</span><input className="input" readOnly value={formatMoney(totalSelectedKuantum * Number(harga || 0))} /></label>

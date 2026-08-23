@@ -126,6 +126,28 @@ class RekapTerkunciTest extends TestCase
         $this->assertNotContains($belumApaApa->id_transaksi, $ids);
     }
 
+    /**
+     * Tabel rekap dipisah per skema di layar, tapi halamannya dipotong server dan urutannya
+     * menaruh seluruh blok TJP lebih dulu. Tanpa penyaring skema, tabel MPP kosong sampai baris
+     * TJP habis -- dengan 670 TJP dan 200 baris per halaman itu berarti tiga halaman penuh tanpa
+     * satu pun MPP, yang di layar terbaca sebagai "MPP tidak ada sama sekali".
+     */
+    public function test_rekap_dapat_disaring_per_skema(): void
+    {
+        $tjp = $this->buatTjpDenganJpTerkunci();
+        $mpp = $this->buatMppDenganMakloonTerkunci();
+
+        Sanctum::actingAs($this->buatUser('admin'));
+
+        $hanyaMpp = collect($this->getJson('/api/transaksi/rekap?skema=MPP')->assertOk()->json('data'));
+        $this->assertSame(['MPP'], $hanyaMpp->pluck('skema')->unique()->all());
+        $this->assertContains($mpp->id_transaksi, $hanyaMpp->pluck('id_transaksi')->all());
+
+        $hanyaTjp = collect($this->getJson('/api/transaksi/rekap?skema=TJP')->assertOk()->json('data'));
+        $this->assertSame(['TJP'], $hanyaTjp->pluck('skema')->unique()->all());
+        $this->assertContains($tjp->id_transaksi, $hanyaTjp->pluck('id_transaksi')->all());
+    }
+
     public function test_ub_jastasma_hanya_melihat_transaksi_yang_tahap_ub_sudah_terkunci(): void
     {
         $terkunci = $this->buatMppDenganUbTerkunci();

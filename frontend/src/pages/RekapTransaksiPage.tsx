@@ -494,18 +494,70 @@ function payloadDariForm(row: RekapTransaksi, form: RekapEditForm) {
   }
 }
 
+/**
+ * Satu skema = satu tabel DENGAN halamannya sendiri.
+ *
+ * Halaman dipisah per tabel, bukan dibagi bersama: server mengurutkan seluruh blok TJP lebih
+ * dulu, jadi satu halaman bersama membuat tabel MPP kosong sampai baris TJP habis. Dengan 670
+ * TJP dan 200 baris per halaman itu berarti MPP baru muncul di halaman keempat -- yang di layar
+ * terbaca sebagai "MPP tidak ada sama sekali".
+ */
+function TabelSkema({
+  skema,
+  role,
+  judul,
+  renderRowActions,
+}: {
+  skema: 'TJP' | 'MPP'
+  role: string
+  judul: string
+  renderRowActions: (row: RekapTransaksi) => ReactNode
+}) {
+  const [page, setPage] = useState(1)
+  const { data, isLoading, isError, error } = useRekapTransaksi(skema, page)
+  const rows = data?.items ?? []
+  const meta = data?.meta
+  const columns = kolomUntukRoleSkema(role, skema)
+
+  return (
+    <section className="panel panel-pad">
+      <div className="toolbar-card mb-4">
+        <div>
+          <h2 className="section-title">Tabel {judul} — {skema}</h2>
+          <p className="page-subtitle">
+            Satu baris = satu transaksi {skema} · {columns.length} kolom · {rows.length} dari {meta?.total ?? 0} baris
+          </p>
+        </div>
+        <span className="badge badge-success">Hanya menampilkan data yang sudah terkunci</span>
+      </div>
+
+      <DataSpreadsheet
+        rows={rows}
+        columns={columns}
+        rowKey={(r) => r.id_transaksi}
+        namaFile={`rekap-${role || 'transaksi'}-${skema.toLowerCase()}`}
+        ambilSemuaBaris={() => ambilSemuaRekapTransaksi(skema)}
+        isLoading={isLoading}
+        isError={isError}
+        errorMessage={pesanKegagalan(error)}
+        emptyTitle={`Belum ada transaksi ${skema}`}
+        emptyCopy={`Data muncul setelah transaksi dibuat pada alur ${skema}.`}
+        renderRowActions={renderRowActions}
+      />
+
+      {meta && meta.last_page > 1 && <PaginationBar meta={meta} page={page} setPage={setPage} satuan={`transaksi ${skema}`} />}
+    </section>
+  )
+}
+
 export default function RekapTransaksiPage() {
   const { user } = useAuth()
   const role = user?.role.nama_role ?? ''
   const queryClient = useQueryClient()
-  const [page, setPage] = useState(1)
-  const { data, isLoading, isError, error } = useRekapTransaksi(page)
   // Kartu angka dihitung backend atas SELURUH data. Sebelumnya dijumlah dari baris yang sedang
   // dimuat, sehingga begitu datanya lewat satu halaman angkanya berkurang tanpa tanda apa pun.
   const { data: ringkasan } = useRingkasanRekap()
   const { data: makloonOptions = [] } = useMakloonOptions()
-  const rows = data?.items ?? []
-  const meta = data?.meta
   const [editing, setEditing] = useState<RekapTransaksi | null>(null)
   const [editForm, setEditForm] = useState<RekapEditForm | null>(null)
   const [dokumenTransaksi, setDokumenTransaksi] = useState<string | null>(null)
@@ -609,46 +661,21 @@ export default function RekapTransaksiPage() {
         )}
 
         <div className="stats-grid">
-          <div className="stat-card"><div className="stat-label">Total transaksi</div><div className="stat-value">{meta?.total ?? '-'}</div></div>
+          <div className="stat-card"><div className="stat-label">Total transaksi</div><div className="stat-value">{ringkasan ? ringkasan.jumlah_tjp + ringkasan.jumlah_mpp : '-'}</div></div>
           <div className="stat-card"><div className="stat-label">TJP</div><div className="stat-value">{ringkasan?.jumlah_tjp ?? '-'}</div></div>
           <div className="stat-card"><div className="stat-label">MPP</div><div className="stat-value">{ringkasan?.jumlah_mpp ?? '-'}</div></div>
           <div className="stat-card"><div className="stat-label">Total PO</div><div className="stat-value">{ringkasan?.total_po ?? '-'}</div></div>
         </div>
 
-        {daftarSkema.map((skema) => {
-          const rowsSkema = rows.filter((r) => r.skema === skema)
-          const columns = kolomUntukRoleSkema(role, skema)
-
-          return (
-            <section key={skema} className="panel panel-pad">
-              <div className="toolbar-card mb-4">
-                <div>
-                  <h2 className="section-title">Tabel {judul.title} — {skema}</h2>
-                  <p className="page-subtitle">Satu baris = satu transaksi {skema} · {columns.length} kolom · {rowsSkema.length} baris di halaman ini</p>
-                </div>
-                <span className="badge badge-success">Hanya menampilkan data yang sudah terkunci</span>
-              </div>
-
-              <DataSpreadsheet
-                rows={rowsSkema}
-                columns={columns}
-                rowKey={(r) => r.id_transaksi}
-                namaFile={`rekap-${role || 'transaksi'}-${skema.toLowerCase()}`}
-                // Ekspor menarik seluruh halaman lalu menyaring skema ini -- tabelnya memang
-                // dipisah per skema di browser, bukan oleh server.
-                ambilSemuaBaris={async () => (await ambilSemuaRekapTransaksi()).filter((r) => r.skema === skema)}
-                isLoading={isLoading}
-                isError={isError}
-                errorMessage={pesanKegagalan(error)}
-                emptyTitle={`Belum ada transaksi ${skema}`}
-                emptyCopy={`Data muncul setelah transaksi dibuat pada alur ${skema}.`}
-                renderRowActions={renderRowActions}
-              />
-            </section>
-          )
-        })}
-
-        {meta && meta.last_page > 1 && <PaginationBar meta={meta} page={page} setPage={setPage} satuan="transaksi" />}
+        {daftarSkema.map((skema) => (
+          <TabelSkema
+            key={skema}
+            skema={skema}
+            role={role}
+            judul={judul.title}
+            renderRowActions={renderRowActions}
+          />
+        ))}
 
         <KuantumSummary items={kuantumSummaryUntukRole(role, ringkasan)} />
       </div>

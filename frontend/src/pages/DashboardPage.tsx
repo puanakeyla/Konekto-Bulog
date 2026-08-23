@@ -70,6 +70,24 @@ const PENGADAAN_FILTERS: { id: PengadaanTahapId; label: string; helper: string }
   { id: 'perlu_diperbaiki', label: 'Perlu diperbaiki', helper: 'Transaksi ditolak atau dikembalikan dari tahap berikutnya. Lihat detailnya, perbaiki, lalu simpan ulang.' },
 ]
 
+/**
+ * Satu blok tabel tidak pernah lebih dari 8 baris sekaligus, DI SELURUH ROLE. Angkanya
+ * dipusatkan di sini supaya tidak ada layar yang diam-diam memakai ukuran lain -- dulu tinggi
+ * tiap blok mengikuti berapa transaksi yang kebetulan jatuh ke halaman itu, sehingga satu
+ * makloon tampil 4 baris dan makloon berikutnya 8 tanpa alasan yang bisa dijelaskan.
+ */
+const BARIS_PER_BLOK = 8
+
+/**
+ * Makloon per halaman untuk role berakordion (per_page pada mode ?per_makloon=1).
+ * Empat, bukan lebih: satu halaman memuat SELURUH transaksi tiap makloon di dalamnya, jadi
+ * angka ini yang menentukan berat responsnya.
+ */
+const MAKLOON_PER_HALAMAN = 4
+
+/** Baris per halaman untuk role tanpa akordion (role Makloon). */
+const BARIS_PER_HALAMAN = 40
+
 type MakloonGroup = {
   nama: string
   lokasi: string
@@ -92,6 +110,38 @@ function groupByMakloon(items: TransaksiListItem[]): MakloonGroup[] {
     else g.mpp += 1
   }
   return Array.from(map.values()).sort((a, b) => a.nama.localeCompare(b.nama, 'id'))
+}
+
+/**
+ * Potongan 8 baris + navigasinya. Dipakai akordion makloon MAUPUN tabel per tahap, jadi kedua
+ * bentuk daftar bernapas sama -- itu maksudnya "konsisten di seluruh role".
+ *
+ * Paginasinya di browser: barisnya sudah ada di memori (satu makloon utuh per halaman server),
+ * jadi meminta ulang ke server hanya menambah latensi tanpa menambah data.
+ */
+function useHalamanBlok<T>(rows: T[]) {
+  const [halaman, setHalaman] = useState(1)
+  const total = Math.max(1, Math.ceil(rows.length / BARIS_PER_BLOK))
+  // Baris bisa menyusut (filter berubah, transaksi terkirim) sampai halaman aktif tidak ada lagi.
+  const aktif = Math.min(halaman, total)
+  const mulai = (aktif - 1) * BARIS_PER_BLOK
+  const potongan = rows.slice(mulai, mulai + BARIS_PER_BLOK)
+  return { rows: potongan, blok: { halaman: aktif, total, mulai, jumlah: potongan.length, setHalaman } }
+}
+
+type HalamanBlok = { halaman: number; total: number; mulai: number; jumlah: number; setHalaman: (n: number) => void }
+
+function PagerBlok({ blok }: { blok: HalamanBlok }) {
+  if (blok.total <= 1) return null
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border bg-surface px-4 py-2 text-xs text-muted">
+      <span>Baris {blok.mulai + 1}-{blok.mulai + blok.jumlah} · halaman {blok.halaman}/{blok.total}</span>
+      <div className="flex items-center gap-2">
+        <button type="button" className="btn btn-ghost px-3 py-1 text-xs" disabled={blok.halaman <= 1} onClick={() => blok.setHalaman(blok.halaman - 1)}>Sebelumnya</button>
+        <button type="button" className="btn btn-ghost px-3 py-1 text-xs" disabled={blok.halaman >= blok.total} onClick={() => blok.setHalaman(blok.halaman + 1)}>Berikutnya</button>
+      </div>
+    </div>
+  )
 }
 
 // Inisial 2 huruf dari nama makloon, mengabaikan prefix "Makloon" (mis. "Makloon Sinar Jaya" -> "SJ").
@@ -200,7 +250,21 @@ export default function DashboardPage() {
   // seluruh antrean muat dalam satu halaman; di atas itu kartu statistik dan chip diam-diam
   // melaporkan sebagian data saja. Daftarnya kembali paginated karena filternya sudah di query.
   const { data: ringkasan } = useRingkasanDashboard(skemaFilter)
-  const { data: antreanPage, isLoading } = useAntreanTransaksi(page, skemaFilter, role === 'pengadaan' ? 'semua' : kerjaanFilter, 25, search, role === 'pengadaan' ? pengadaanFilter : 'semua')
+  // Role berakordion memotong halaman PER MAKLOON (lihat TransaksiController::halamanPerMakloon):
+  // satu makloon selalu utuh dalam satu halaman, jadi "PT Jaya Manunggal" tidak pernah muncul
+  // lagi sebagai akordion kedua di halaman berikutnya. `per_page` di sini karena itu berarti
+  // MAKLOON per halaman, bukan baris. Role Makloon tetap dipotong per baris -- daftarnya
+  // transaksi miliknya sendiri, tidak ada yang perlu dikelompokkan.
+  const useGrouped = !!user && GROUPED_ROLES.has(role)
+  const { data: antreanPage, isLoading } = useAntreanTransaksi(
+    page,
+    skemaFilter,
+    role === 'pengadaan' ? 'semua' : kerjaanFilter,
+    useGrouped ? MAKLOON_PER_HALAMAN : BARIS_PER_HALAMAN,
+    search,
+    role === 'pengadaan' ? pengadaanFilter : 'semua',
+    useGrouped,
+  )
 
   const transaksi = antreanPage?.items ?? []
   const meta = antreanPage?.meta
@@ -208,7 +272,6 @@ export default function DashboardPage() {
   const totalAntrean = ringkasan?.antrean.total ?? 0
   const hitungTahap = ringkasan?.pengadaan_tahap ?? { perlu_dicek: 0, po_in: 0, spp: 0, sergab: 0, perlu_diperbaiki: 0, total: 0 }
 
-  const useGrouped = !!user && GROUPED_ROLES.has(role)
   const makloonGroups = useMemo(() => groupByMakloon(transaksi), [transaksi])
   // Tabel datar (role Makloon) dipisah per TAHAP, bukan per status: satu orang Makloon memegang
   // tiga tahap yang pekerjaannya benar-benar berbeda (Makloon TJP, Makloon Kirim & Makloon
@@ -401,41 +464,7 @@ export default function DashboardPage() {
         {!isLoading && transaksi.length > 0 && (
           useGrouped ? (
             <div className="space-y-3">
-              {makloonGroups.map((group) => (
-                <details key={group.nama} className="group panel overflow-hidden">
-                  <summary className="flex cursor-pointer list-none items-center gap-3 px-4 py-3 [&::-webkit-details-marker]:hidden">
-                    <span className="grid h-[34px] w-[34px] shrink-0 place-items-center rounded-lg bg-primary-tint text-xs font-bold text-primary transition-colors group-open:bg-primary group-open:text-white">{inisialMakloon(group.nama)}</span>
-                    <div className="min-w-0 flex-1">
-                      <div className="truncate text-sm font-semibold text-primary-dark">{group.nama}</div>
-                      {group.lokasi && <div className="truncate text-xs text-gray-400">{group.lokasi}</div>}
-                    </div>
-                    <div className="flex shrink-0 items-center gap-2">
-                      {group.tjp > 0 && <SkemaCount skema="TJP" count={group.tjp} />}
-                      {group.mpp > 0 && <SkemaCount skema="MPP" count={group.mpp} />}
-                      <svg viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4 shrink-0 text-muted transition-transform group-open:rotate-90"><path d="M7 5l6 5-6 5V5z" /></svg>
-                    </div>
-                  </summary>
-                  <div className="border-t border-border bg-surface">
-                    <table className="w-full text-sm">
-                      <thead className="text-left text-[0.68rem] font-bold uppercase tracking-wide text-muted">
-                        <tr>
-                          <th className="py-2 pl-16 pr-4">ID Transaksi</th>
-                          <th className="px-4">Skema</th>
-                          <th className="px-4">{role === 'pengadaan' ? 'Posisi' : 'Tahap'}</th>
-                          <th className="px-4">Status</th>
-                          {role === 'pengadaan' && <th className="px-4">Berikutnya</th>}
-                          <th className="px-4">Tanggal</th>
-                          <th className="px-4">ID Pemasok</th>
-                          <th className="px-4"></th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {group.transaksi.map((t) => <TransaksiRow key={t.id_transaksi} t={t} role={role} />)}
-                      </tbody>
-                    </table>
-                  </div>
-                </details>
-              ))}
+              {makloonGroups.map((group) => <AkordionMakloon key={group.nama} group={group} role={role} />)}
             </div>
           ) : (
             <div className="space-y-6">
@@ -445,7 +474,10 @@ export default function DashboardPage() {
         )}
         {meta && meta.last_page > 1 && (
           <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm text-muted">
-            <span>Menampilkan {meta.from ?? 0}-{meta.to ?? 0} dari {meta.total} transaksi</span>
+            {/* Satuannya ikut mode paginasi: role berakordion dipotong per MAKLOON, jadi
+                meta.total pun jumlah makloon. Menyebutnya "transaksi" di situ bikin angkanya
+                terbaca salah -- jumlah transaksi seluruh antrean ada di kartu di atas. */}
+            <span>Menampilkan {meta.from ?? 0}-{meta.to ?? 0} dari {meta.total} {useGrouped ? 'makloon' : 'transaksi'}</span>
             <div className="flex gap-2">
               <button className="btn btn-ghost" disabled={page <= 1} onClick={() => setPage((prev) => Math.max(1, prev - 1))}>Sebelumnya</button>
               <span className="badge">Halaman {meta.current_page}/{meta.last_page}</span>
@@ -557,7 +589,56 @@ function TransaksiRow({ t, role }: { t: TransaksiListItem; role: string }) {
 }
 
 /** Satu blok tabel per tahap, dipakai role Makloon yang memegang tiga tahap sekaligus. */
+/**
+ * Satu makloon = satu akordion, dan SELURUH transaksinya ada di dalamnya karena server memotong
+ * halaman per makloon (TransaksiController::halamanPerMakloon), bukan per baris. Isinya sendiri
+ * dibatasi 8 baris sekaligus supaya makloon dengan puluhan transaksi tidak jadi gulungan panjang.
+ */
+function AkordionMakloon({ group, role }: { group: MakloonGroup; role: string }) {
+  const { rows, blok } = useHalamanBlok(group.transaksi)
+  return (
+    <details className="group panel overflow-hidden">
+      <summary className="flex cursor-pointer list-none items-center gap-3 px-4 py-3 [&::-webkit-details-marker]:hidden">
+        <span className="grid h-[34px] w-[34px] shrink-0 place-items-center rounded-lg bg-primary-tint text-xs font-bold text-primary transition-colors group-open:bg-primary group-open:text-white">{inisialMakloon(group.nama)}</span>
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-sm font-semibold text-primary-dark">{group.nama}</div>
+          {group.lokasi && <div className="truncate text-xs text-gray-400">{group.lokasi}</div>}
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          <span className="badge">{group.transaksi.length} transaksi</span>
+          {group.tjp > 0 && <SkemaCount skema="TJP" count={group.tjp} />}
+          {group.mpp > 0 && <SkemaCount skema="MPP" count={group.mpp} />}
+          <svg viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4 shrink-0 text-muted transition-transform group-open:rotate-90"><path d="M7 5l6 5-6 5V5z" /></svg>
+        </div>
+      </summary>
+      <div className="border-t border-border bg-surface">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="text-left text-xs font-bold uppercase tracking-wide text-muted">
+              <tr>
+                <th className="py-2 pl-16 pr-4">ID Transaksi</th>
+                <th className="px-4">Skema</th>
+                <th className="px-4">{role === 'pengadaan' ? 'Posisi' : 'Tahap'}</th>
+                <th className="px-4">Status</th>
+                {role === 'pengadaan' && <th className="px-4">Berikutnya</th>}
+                <th className="px-4">Tanggal</th>
+                <th className="px-4">ID Pemasok</th>
+                <th className="px-4"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((t) => <TransaksiRow key={t.id_transaksi} t={t} role={role} />)}
+            </tbody>
+          </table>
+        </div>
+        <PagerBlok blok={blok} />
+      </div>
+    </details>
+  )
+}
+
 function TabelTahap({ stage, rows }: { stage: string; rows: TransaksiListItem[] }) {
+  const { rows: potongan, blok } = useHalamanBlok(rows)
   return (
     <div>
       <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
@@ -568,21 +649,24 @@ function TabelTahap({ stage, rows }: { stage: string; rows: TransaksiListItem[] 
         <span className="badge">{rows.length} transaksi</span>
       </div>
       <div className="panel overflow-hidden">
-        <table className="w-full text-sm">
-          <thead className="bg-primary-tint text-left text-primary-dark">
-            <tr>
-              <th className="px-4 py-2">ID Transaksi</th>
-              <th className="px-4 py-2">Skema</th>
-              <th className="px-4 py-2">Status</th>
-              <th className="px-4 py-2">Tanggal</th>
-              <th className="px-4 py-2">ID Pemasok</th>
-              <th className="px-4 py-2"></th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((t) => <DashboardTableRow key={t.id_transaksi} t={t} />)}
-          </tbody>
-        </table>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-primary-tint text-left text-primary-dark">
+              <tr>
+                <th className="px-4 py-2">ID Transaksi</th>
+                <th className="px-4 py-2">Skema</th>
+                <th className="px-4 py-2">Status</th>
+                <th className="px-4 py-2">Tanggal</th>
+                <th className="px-4 py-2">ID Pemasok</th>
+                <th className="px-4 py-2"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {potongan.map((t) => <DashboardTableRow key={t.id_transaksi} t={t} />)}
+            </tbody>
+          </table>
+        </div>
+        <PagerBlok blok={blok} />
       </div>
     </div>
   )
