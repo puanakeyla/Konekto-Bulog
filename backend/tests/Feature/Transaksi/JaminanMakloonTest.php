@@ -135,9 +135,7 @@ class JaminanMakloonTest extends TestCase
             [...$this->dataMakloonTerima('submit'), 'kuantum_bongkar' => 1],
         )
             ->assertStatus(422)
-            ->assertJsonPath('message', fn (string $pesan) => str_contains($pesan, 'Stok Pengurang Penerimaan Gudang makloon 1.000 kg')
-                && str_contains($pesan, 'kapasitas total jaminan 1.000 kg')
-                && str_contains($pesan, 'tinggal 0 kg'));
+            ->assertJsonPath('message', 'Kiriman anda ditolak, stok olah belum diterima gudang. Anda belum bisa mengirim GKP');
     }
 
     /**
@@ -179,8 +177,7 @@ class JaminanMakloonTest extends TestCase
             [...$this->dataMakloonTerima('submit'), 'kuantum_bongkar' => 501],
         )
             ->assertStatus(422)
-            ->assertJsonPath('message', fn (string $pesan) => str_contains($pesan, 'Kiriman 501 kg ditolak')
-                && str_contains($pesan, 'tinggal 500 kg'));
+            ->assertJsonPath('message', 'Kiriman anda ditolak, stok olah belum diterima gudang. Anda belum bisa mengirim GKP');
     }
 
     /** Batas atas persis: sisa 500 kg, kiriman 500 kg -- masih di dalam, bukan lewat. */
@@ -373,7 +370,7 @@ class JaminanMakloonTest extends TestCase
             'kuantum_bongkar' => 1,
         ])
             ->assertStatus(422)
-            ->assertJsonPath('message', fn (string $pesan) => str_contains($pesan, 'Stok Pengurang Penerimaan Gudang makloon 1.000 kg'));
+            ->assertJsonPath('message', 'Kiriman anda ditolak, stok olah belum diterima gudang. Anda belum bisa mengirim GKP');
     }
 
     public function test_operasi_menyimpan_jaminan_dan_menimpa_yang_lama(): void

@@ -35,28 +35,14 @@ export default function PanelJaminanMakloon() {
         <Baris label="Sisa dapat dikirim" nilai={kg(data.sisa_dapat_diinput_kg)} bahaya={data.sisa_dapat_diinput_kg <= 0} />
       </dl>
 
-      <div className="mt-3 space-y-2 border-t border-border pt-3 text-xs leading-relaxed text-slate-600">
-        <p className="font-mono text-[0.6875rem] leading-5 text-slate-500">
-          Stok Pengurang Penerimaan Gudang = Gabah Sudah IN &minus; Estimasi Gabah<br />
-          Sisa dapat dikirim = Kapasitas total &minus; Stok Pengurang Penerimaan Gudang
+      {kelebihanSetoran > 0 && (
+        <p className="mt-3 rounded-md bg-success/10 px-3 py-2 text-xs leading-relaxed text-success">
+          <strong>Stok Pengurang Anda 0 karena setoran olahan melebihi gabah yang ber-No IN
+          sebanyak {kg(kelebihanSetoran)}.</strong> Selama kelebihan itu belum terpakai, menambah
+          IN tidak menaikkan Stok Pengurang &mdash; kapasitas Anda tetap terbuka penuh. Itu
+          memang perilaku yang benar, bukan angka yang macet.
         </p>
-        <p>
-          <strong>Yang dihitung hanya gabah yang No IN-nya sudah terbit.</strong> Gabah yang sudah
-          dibongkar tapi PO-nya belum keluar belum masuk perhitungan.
-        </p>
-        <p>
-          Angkanya berkurang sendiri setiap kali hasil olahan Anda ditimbang masuk gudang, sehingga
-          sisa yang dapat dikirim terbuka lagi.
-        </p>
-        {kelebihanSetoran > 0 && (
-          <p className="rounded-md bg-success/10 px-3 py-2 text-success">
-            <strong>Stok Pengurang Anda 0 karena setoran olahan melebihi gabah yang ber-No IN
-            sebanyak {kg(kelebihanSetoran)}.</strong> Selama kelebihan itu belum terpakai, menambah
-            IN tidak menaikkan Stok Pengurang &mdash; kapasitas Anda tetap terbuka penuh. Itu
-            memang perilaku yang benar, bukan angka yang macet.
-          </p>
-        )}
-      </div>
+      )}
     </div>
   )
 }

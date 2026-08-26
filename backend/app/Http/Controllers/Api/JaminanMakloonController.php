@@ -166,21 +166,8 @@ class JaminanMakloonController extends Controller
         $kapasitasTotal = (float) $jaminan->kapasitas_per_hari_kg;
         $ditangan = self::gabahDitangan(self::gabahMasuk($makloon->id), self::gabahKembali($makloon->id));
         if ($ditangan + $kuantumKg > $kapasitasTotal) {
-            abort(422, self::pesanKapasitas($ditangan, $kapasitasTotal, $kuantumKg));
+            abort(422, 'Kiriman anda ditolak, stok olah belum diterima gudang. Anda belum bisa mengirim GKP');
         }
-    }
-
-    private static function pesanKapasitas(float $ditangan, float $kapasitasTotal, float $kuantumKg): string
-    {
-        return sprintf(
-            'Kiriman %s kg ditolak: Stok Pengurang Penerimaan Gudang makloon %s kg dari kapasitas '
-            .'total jaminan %s kg, jadi sisa yang dapat dikirim tinggal %s kg. '
-            .'Angka itu berkurang setelah hasil olahnya ditimbang masuk gudang.',
-            self::angka($kuantumKg),
-            self::angka($ditangan),
-            self::angka($kapasitasTotal),
-            self::angka(self::sisaDapatDiinput($kapasitasTotal, $ditangan)),
-        );
     }
 
     private function baris(User $user): array
@@ -395,8 +382,4 @@ class JaminanMakloonController extends Controller
             ->selectRaw('COALESCE(SUM(ROUND(g.kuantum_hgl / '.PengolahanGudang::RENDEMEN_ESTIMASI.')), 0) as estimasi_gabah');
     }
 
-    private static function angka(float $value): string
-    {
-        return number_format($value, 0, ',', '.');
-    }
 }
