@@ -38,7 +38,7 @@ export default function PoSppForm({ po, onChanged, onPerbaikiIn }: { po: PoItem;
       onChanged?.()
       toast.success(ditolak
         ? `PO ${po.no_po} dikirim ulang ke Keuangan.`
-        : `No. SPP PO ${po.no_po} tersimpan dan PO dikirim ke Keuangan. Sisa langkah Anda: Status Sergab.`)
+        : `No. SPP PO ${po.no_po} tersimpan dan PO dikirim ke Keuangan.`)
     },
     onError: (err) => toast.error(apiErrorMessage(err, 'Gagal menyimpan No. SPP.')),
   })

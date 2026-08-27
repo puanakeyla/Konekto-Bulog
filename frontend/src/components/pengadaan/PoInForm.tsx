@@ -35,7 +35,7 @@ export default function PoInForm({ po, onChanged }: { po: PoItem; onChanged?: ()
       setConfirmIn(false)
       setValues({})
       afterChange()
-      toast.success(`Nomor IN PO ${po.no_po} tersimpan dan dikunci. Lanjut isi No. SPP.`)
+      toast.success(`Nomor IN PO ${po.no_po} tersimpan dan dikunci.`)
     },
     onError: (err) => toast.error(apiErrorMessage(err, 'Gagal menyimpan nomor IN.')),
   })

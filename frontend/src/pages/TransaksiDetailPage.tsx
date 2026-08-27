@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { useParams, useNavigate } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import api from '../lib/api'
@@ -302,6 +302,7 @@ function poStageData(po: PoItem | null, stageId: string): StageData | null {
 
 export default function TransaksiDetailPage() {
   const { id } = useParams<{ id: string }>()
+  const navigate = useNavigate()
   const { user } = useAuth()
   const queryClient = useQueryClient()
   const [catatan, setCatatan] = useState('')
@@ -861,7 +862,7 @@ export default function TransaksiDetailPage() {
                         {poRejected && po.catatan_penolakan && (
                           <div className="alert-danger mb-3">Ditolak Keuangan: {po.catatan_penolakan}. Perbaiki lalu kirim ulang.</div>
                         )}
-                        <PoInForm po={po} onChanged={invalidate} />
+                        <PoInForm po={po} onChanged={() => { invalidate(); navigate('/dashboard') }} />
                       </div>
                     )}
 
@@ -870,7 +871,7 @@ export default function TransaksiDetailPage() {
                         {poRejected && po.catatan_penolakan && (
                           <div className="alert-danger mb-3">Ditolak Keuangan: {po.catatan_penolakan}. Perbaiki lalu kirim ulang.</div>
                         )}
-                        <PoSppForm po={po} onChanged={invalidate} />
+                        <PoSppForm po={po} onChanged={() => { invalidate(); navigate('/dashboard') }} />
                       </div>
                     )}
 

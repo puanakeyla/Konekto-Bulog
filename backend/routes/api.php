@@ -101,6 +101,8 @@ Route::middleware(['auth:sanctum', 'user.aktif'])->group(function () {
         ->middleware('role:pengadaan|keuangan|admin');
     Route::post('/po/{dataPengadaan}/foto', [PengadaanController::class, 'fotoUpload'])
         ->middleware('role:pengadaan|admin');
+    Route::delete('/po/{dataPengadaan}/foto/{jenisFoto}', [PengadaanController::class, 'fotoDestroy'])
+        ->middleware('role:pengadaan|admin');
     Route::patch('/po/{dataPengadaan}', [PengadaanController::class, 'update'])
         ->middleware('role:pengadaan|admin');
     Route::patch('/po/{dataPengadaan}/anggota', [PengadaanController::class, 'ubahAnggota'])

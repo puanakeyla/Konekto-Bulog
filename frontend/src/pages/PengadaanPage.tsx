@@ -1,4 +1,5 @@
 import { useMemo, useState, type ReactNode } from 'react'
+import { useNavigate } from 'react-router-dom'
 import FormHero from '../components/FormHero'
 import { SkeletonPoCards } from '../components/Skeleton'
 import GabungPoForm from '../components/pengadaan/GabungPoForm'
@@ -34,6 +35,7 @@ function masihDiPengadaan(po: PoItem) {
 }
 
 export default function PengadaanPage() {
+  const navigate = useNavigate()
   const [active, setActive] = useState<StepId>('po')
   // PO yang sedang dibuka ulang untuk memperbaiki nomor IN. Nomor IN-nya sudah lengkap, jadi
   // tanpa pengecualian ini PO tersebut tetap dihitung sebagai antrean SPP -- pengguna diminta
@@ -44,6 +46,12 @@ export default function PengadaanPage() {
 
   const kandidatPo = transaksiResult?.items ?? []
   const poList = poResult?.items ?? []
+
+  // Setelah simpan IN/SPP, langsung kembali ke Dashboard Pengadaan.
+  const kembaliKeDashboard = () => {
+    setPerbaikiInPoId(null)
+    navigate('/dashboard')
+  }
 
   // PO yang ditolak Keuangan masuk ke langkah SPP, bukan Sergab: nomor IN-nya sudah tersimpan dan
   // menyimpan No. SPP adalah satu-satunya aksi yang mengirim ulang PO. Kalau ia jatuh ke Sergab,
@@ -102,11 +110,10 @@ export default function PengadaanPage() {
             </>
           )}
 
-          {/* Simpan IN pada PO yang sedang diperbaiki memulangkan pengguna ke langkah SPP --
-              di situlah PO itu memang menunggu, dan itu satu-satunya jalan kembali (tidak ada
-              tombol "kembali ke No. SPP" terpisah). */}
-          {active === 'in' && <PoList loading={loadingPo} error={poError ? poLoadError : null} empty="Tidak ada PO yang menunggu nomor IN." rows={antrean.in} render={(po) => <PoInForm key={po.id} po={po} onChanged={po.id === perbaikiInPoId ? () => { setPerbaikiInPoId(null); setActive('spp') } : undefined} />} />}
-          {active === 'spp' && <PoList loading={loadingPo} error={poError ? poLoadError : null} empty="Tidak ada PO yang menunggu No. SPP." rows={antrean.spp} render={(po) => <PoSppForm key={po.id} po={po} onPerbaikiIn={() => { setPerbaikiInPoId(po.id); setActive('in') }} />} />}
+          {/* Setelah menyimpan IN atau SPP, form mengembalikan pengguna ke Dashboard agar petugas berikutnya
+              dapat mengambil antrean tahap berikutnya. */}
+          {active === 'in' && <PoList loading={loadingPo} error={poError ? poLoadError : null} empty="Tidak ada PO yang menunggu nomor IN." rows={antrean.in} render={(po) => <PoInForm key={po.id} po={po} onChanged={kembaliKeDashboard} />} />}
+          {active === 'spp' && <PoList loading={loadingPo} error={poError ? poLoadError : null} empty="Tidak ada PO yang menunggu No. SPP." rows={antrean.spp} render={(po) => <PoSppForm key={po.id} po={po} onChanged={kembaliKeDashboard} onPerbaikiIn={() => { setPerbaikiInPoId(po.id); setActive('in') }} />} />}
           {active === 'status' && <PoList loading={loadingPo} error={poError ? poLoadError : null} empty="Tidak ada PO yang menunggu Status Sergab." rows={antrean.status} render={(po) => <PoStatusSergabForm key={po.id} po={po} />} />}
 
         </section>

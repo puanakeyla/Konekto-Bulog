@@ -281,13 +281,19 @@ type KuantumSummaryItem = { key: string; label: string; value: number }
 
 /**
  * Semua kartu memakai KUANTUM BONGKAR (hasil timbang di makloon), bukan kuantum kirim,
- * supaya TJP dan MPP dihitung dengan ukuran yang sama dan boleh dijumlahkan. Kolomnya
- * beda per skema: TJP di data_makloon_tjp, MPP di data_makloon_mpp.
+ * supaya TJP dan MPP dihitung dengan ukuran yang sama dan boleh dijumlahkan. Untuk MPP,
+ * hasil timbang disimpan di data_makloon_terima; data_makloon_mpp menjadi fallback untuk
+ * data lama, lalu kuantum kirim dipakai sebagai fallback terakhir agar baris MPP lama yang
+ * belum memiliki record Makloon Terima tetap ikut terakumulasi.
  */
 function totalBongkar(rows: RekapTransaksi[], skema: 'TJP' | 'MPP') {
   return rows.reduce((total, row) => {
     if (row.skema !== skema) return total
-    const bongkar = skema === 'TJP' ? row.data_makloon_tjp?.kuantum_bongkar : row.data_makloon_mpp?.kuantum_bongkar
+    const bongkar = skema === 'TJP'
+      ? row.data_makloon_tjp?.kuantum_bongkar
+      : row.data_makloon_terima?.kuantum_bongkar
+        ?? row.data_makloon_mpp?.kuantum_bongkar
+        ?? row.data_makloon_mpp?.kuantum
     return total + numberValue(bongkar)
   }, 0)
 }

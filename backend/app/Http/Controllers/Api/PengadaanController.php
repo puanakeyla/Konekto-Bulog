@@ -6,6 +6,11 @@ use App\Http\Controllers\Controller;
 use App\Http\Resources\DataPengadaanResource;
 use App\Models\DataPengadaan;
 use App\Models\Transaksi;
+use App\Models\DataJemputPangan;
+use App\Models\DataMakloonMpp;
+use App\Models\DataMakloonTerima;
+use App\Models\DataMakloonTjp;
+use App\Models\DataUbJastasma;
 use App\Services\AuditLogService;
 use App\Services\NotifikasiService;
 use App\Services\Pengadaan\PoGroupingService;
@@ -290,26 +295,63 @@ class PengadaanController extends Controller
 
     public function fotoIndex(Request $request, DataPengadaan $dataPengadaan)
     {
-        return response()->json([
-            'data' => collect(self::FOTO_SERGAB)
-                ->map(function (string $jenisFoto) use ($dataPengadaan) {
-                    $media = $dataPengadaan->getFirstMedia($jenisFoto);
-                    if (! $media) {
-                        return null;
-                    }
+        $collections = [
+            'foto_barang' => ['label' => 'Foto Barang', 'aliases' => ['foto_gabah']],
+            'foto_serah_terima' => ['label' => 'Foto Serah Terima', 'aliases' => []],
+            'foto_bukti_pembayaran' => ['label' => 'Foto Bukti Pembayaran', 'aliases' => ['foto_pembayaran', 'foto_kwitansi']],
+            'foto_surat_pernyataan_usia_panen' => ['label' => 'Foto Surat Pernyataan', 'aliases' => ['foto_surat_pernyataan']],
+        ];
 
-                    return [
-                        'jenis_foto' => $jenisFoto,
-                        'thumb_url' => URL::temporarySignedRoute('foto.stream', now()->addMinutes(5), [
-                            'media' => $media->id,
-                            'conversion' => 'thumb',
-                        ]),
-                    ];
-                })
-                ->filter()
-                ->values()
-                ->all(),
-        ]);
+        $result = [];
+        $transaksiIds = $dataPengadaan->poDetail()->pluck('transaksi_id');
+
+        foreach ($collections as $jenisFoto => $meta) {
+            $media = $dataPengadaan->getFirstMedia($jenisFoto);
+
+            if (! $media) {
+                foreach ($meta['aliases'] as $alias) {
+                    $media = $this->findTransactionMediaByIds($transaksiIds, $alias);
+                    if ($media) break;
+                }
+            }
+
+            if (! $media) {
+                $media = $this->findTransactionMediaByIds($transaksiIds, $jenisFoto);
+            }
+
+            if (! $media) continue;
+
+            $result[] = [
+                'jenis_foto' => $jenisFoto,
+                'label' => $meta['label'],
+                'thumb_url' => URL::temporarySignedRoute('foto.stream', now()->addMinutes(5), ['media' => $media->id, 'conversion' => 'thumb']),
+                'view_url' => URL::temporarySignedRoute('foto.stream', now()->addMinutes(5), ['media' => $media->id]),
+                'download_url' => URL::temporarySignedRoute('foto.stream', now()->addMinutes(5), ['media' => $media->id, 'download' => 1]),
+            ];
+        }
+
+        return response()->json(['data' => $result]);
+    }
+
+    private function findTransactionMediaByIds($transaksiIds, string $jenisFoto)
+    {
+        $models = [
+            DataMakloonMpp::class,
+            DataMakloonTerima::class,
+            DataMakloonTjp::class,
+            DataJemputPangan::class,
+            DataUbJastasma::class,
+        ];
+
+        foreach ($models as $modelClass) {
+            $records = $modelClass::whereIn('transaksi_id', $transaksiIds)->get();
+            foreach ($records as $record) {
+                $media = $record->getFirstMedia($jenisFoto);
+                if ($media) return $media;
+            }
+        }
+
+        return null;
     }
 
     public function fotoUpload(Request $request, DataPengadaan $dataPengadaan)
@@ -338,6 +380,40 @@ class PengadaanController extends Controller
             'size' => $media->size,
             'mime_type' => $media->mime_type,
         ]], 201);
+    }
+
+    public function fotoDestroy(Request $request, DataPengadaan $dataPengadaan, string $jenisFoto)
+    {
+        abort_unless(in_array($jenisFoto, self::FOTO_SERGAB, true), 404);
+
+        if ($dataPengadaan->review_status === 'diterima') {
+            abort(422, 'Data Pengadaan sudah diterima dan foto tidak dapat diubah.');
+        }
+
+        if ($dataPengadaan->status === 'dibatalkan') {
+            abort(422, 'PO sudah dibatalkan dan foto tidak dapat diubah.');
+        }
+
+        $media = $dataPengadaan->getFirstMedia($jenisFoto);
+        if (! $media) {
+            $aliases = match ($jenisFoto) {
+                'foto_barang' => ['foto_gabah'],
+                'foto_serah_terima' => [],
+                'foto_bukti_pembayaran' => ['foto_pembayaran', 'foto_kwitansi'],
+                'foto_surat_pernyataan_usia_panen' => ['foto_surat_pernyataan'],
+                default => [],
+            };
+            foreach ($aliases as $alias) {
+                $media = $this->findTransactionMedia($dataPengadaan, $alias);
+                if ($media) break;
+            }
+        }
+
+        if ($media) {
+            $media->delete();
+        }
+
+        return response()->json(['success' => true]);
     }
 
     public function pembayaran(Request $request, DataPengadaan $dataPengadaan)

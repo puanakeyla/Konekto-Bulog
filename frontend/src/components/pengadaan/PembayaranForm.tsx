@@ -36,6 +36,8 @@ export default function PembayaranForm({ po, onChanged }: { po: PoItem; onChange
     onSuccess: (_data, aksi) => {
       setConfirmBayar(false)
       queryClient.invalidateQueries({ queryKey: ['po-list'] })
+      queryClient.invalidateQueries({ queryKey: ['antrean-transaksi'] })
+      queryClient.invalidateQueries({ queryKey: ['dashboard-ringkasan'] })
       onChanged?.()
       toast.success(aksi === 'bayar'
         ? `PO ${po.no_po} ditandai dibayarkan.`

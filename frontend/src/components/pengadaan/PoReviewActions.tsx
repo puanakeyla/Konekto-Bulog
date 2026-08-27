@@ -26,6 +26,8 @@ export default function PoReviewActions({
   const afterChange = () => {
     queryClient.invalidateQueries({ queryKey: ['po-list'] })
     queryClient.invalidateQueries({ queryKey: ['transaksi-list'] })
+    queryClient.invalidateQueries({ queryKey: ['antrean-transaksi'] })
+    queryClient.invalidateQueries({ queryKey: ['dashboard-ringkasan'] })
     onChanged?.()
   }
 
