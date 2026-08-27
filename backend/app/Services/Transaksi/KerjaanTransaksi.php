@@ -63,7 +63,7 @@ class KerjaanTransaksi
               OR (transaksi.current_stage = 'ub_jastasma' AND transaksi.skema = 'MPP' AND kj_mt.status = 'menunggu_review')
               OR (transaksi.current_stage = 'ub_jastasma' AND transaksi.skema = 'TJP' AND kj_tjp.status = 'menunggu_review')
               OR (transaksi.current_stage = 'pengadaan' AND kj_ub.status = 'menunggu_review')
-              OR (transaksi.current_stage = 'keuangan' AND kj_pd.review_status = 'menunggu_review') THEN 'periksa'
+              OR (kj_pd.review_status = 'menunggu_review') THEN 'periksa'
             WHEN (transaksi.current_stage = 'jemput_pangan' AND kj_jp.status = 'draft')
               OR (transaksi.current_stage = 'makloon' AND kj_tjp.status = 'draft')
               OR (transaksi.current_stage = 'makloon_kirim' AND kj_mpp.status = 'draft')

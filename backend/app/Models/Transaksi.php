@@ -131,7 +131,19 @@ class Transaksi extends Model
             ->all();
 
         return $query
-            ->where('transaksi.status_keseluruhan', 'berjalan')
+            ->where(function (Builder $aktif) use ($role) {
+                $aktif->where('transaksi.status_keseluruhan', 'berjalan');
+
+                // PO yang sudah dikirim ke Keuangan tetap harus muncul walau transaksi
+                // keburu ditandai selesai oleh penutupan Sergab. Yang menentukan selesai
+                // untuk antrean Keuangan adalah pembayaran PO, bukan status transaksi.
+                if ($role === 'keuangan') {
+                    $aktif->orWhereHas('poDetail.dataPengadaan', fn (Builder $po) => $po
+                        ->where('data_pengadaan.review_status', 'menunggu_review')
+                        ->whereDoesntHave('dataKeuangan', fn (Builder $keu) => $keu
+                            ->where('review_status', 'diterima')));
+                }
+            })
             ->where(function (Builder $antrean) use ($stageRoles, $role) {
                 $antrean->whereIn('transaksi.current_stage', $stageRoles ?: [$role]);
 
@@ -139,6 +151,15 @@ class Transaksi extends Model
                     $antrean->orWhereHas('poDetail.dataPengadaan', fn (Builder $po) => $po
                         ->whereNotNull('no_spp')
                         ->whereNotIn('status', ['lengkap', 'dibatalkan']));
+                }
+
+                // Sumber pekerjaan Keuangan adalah status PO. Fallback ini membuat PO
+                // yang sudah dikirim tetap muncul apabila current_stage lama belum tersinkron.
+                if ($role === 'keuangan') {
+                    $antrean->orWhereHas('poDetail.dataPengadaan', fn (Builder $po) => $po
+                        ->where('review_status', 'menunggu_review')
+                        ->whereDoesntHave('dataKeuangan', fn (Builder $keu) => $keu
+                            ->where('review_status', 'diterima')));
                 }
             })
             ->when($role === 'keuangan', fn (Builder $q) => $q
