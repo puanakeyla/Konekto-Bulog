@@ -15,11 +15,10 @@ class AdminUserResource extends JsonResource
             'role_id' => $this->role_id,
             'role' => $this->whenLoaded('role'),
             'nama_maklon' => $this->nama_maklon,
-            'nama_gudang' => $this->nama_gudang,
             'kecamatan' => $this->kecamatan,
             'kabupaten' => $this->kabupaten,
             'is_active' => $this->is_active,
-            'akses_edit_dibuka_at' => $this->akses_edit_dibuka_at,
+            'akses_edit_sisa' => (int) $this->akses_edit_sisa,
             'created_at' => $this->created_at,
             'updated_at' => $this->updated_at,
         ];

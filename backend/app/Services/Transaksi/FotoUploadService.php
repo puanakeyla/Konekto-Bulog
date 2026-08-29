@@ -4,6 +4,7 @@ namespace App\Services\Transaksi;
 
 use App\Models\DataJemputPangan;
 use App\Models\DataMakloonMpp;
+use App\Models\DataMakloonTerima;
 use App\Models\DataMakloonTjp;
 use App\Models\DataUbJastasma;
 use App\Models\Transaksi;
@@ -38,14 +39,24 @@ class FotoUploadService
 
         $role = $actor->role->nama_role;
 
+        $koreksiFotoSergabOlehPengadaan = false;
+
         if ($roleOverride !== null) {
-            if ($role !== 'admin') {
-                abort(403, 'Hanya Admin yang boleh mengisi role secara eksplisit.');
+            if ($role !== 'admin' && $role !== 'pengadaan') {
+                abort(403, 'Hanya Admin atau Pengadaan yang boleh mengisi role secara eksplisit.');
             }
+
+            if ($role === 'pengadaan') {
+                $koreksiFotoSergabOlehPengadaan = $this->bolehKoreksiFotoSergab($transaksi, $roleOverride, $jenisFoto);
+                if (! $koreksiFotoSergabOlehPengadaan) {
+                    abort(403, 'Pengadaan hanya boleh mengoreksi foto Sergab pada transaksi yang sudah masuk PO.');
+                }
+            }
+
             $role = $roleOverride;
         }
 
-        $model = $this->resolveTargetModel($transaksi, $role);
+        $model = $this->resolveTargetModel($transaksi, $role, $jenisFoto);
 
         if (! $model) {
             abort(422, "Tidak ada data {$role} untuk transaksi ini.");
@@ -53,7 +64,7 @@ class FotoUploadService
 
         // Tahap terkunci: hanya admin, atau user yang aksesnya sedang dibuka admin lewat
         // Kelola User -- dan user seperti itu tetap dibatasi ke transaksinya sendiri.
-        if ($model->locked_at !== null) {
+        if ($model->locked_at !== null && ! $koreksiFotoSergabOlehPengadaan) {
             if (! $actor->bolehEditRekap()) {
                 abort(422, 'Data tahap ini sudah dikunci, foto tidak bisa diubah.');
             }
@@ -74,15 +85,54 @@ class FotoUploadService
     /**
      * @return (Model&HasMedia)|null
      */
-    private function resolveTargetModel(Transaksi $transaksi, string $role): (Model&HasMedia)|null
+    private function resolveTargetModel(Transaksi $transaksi, string $role, string $jenisFoto = ''): (Model&HasMedia)|null
     {
         return match ($role) {
             'jemput_pangan' => DataJemputPangan::where('transaksi_id', $transaksi->id_transaksi)->first(),
-            'makloon' => $transaksi->skema === 'MPP'
-                ? DataMakloonMpp::where('transaksi_id', $transaksi->id_transaksi)->first()
-                : DataMakloonTjp::where('transaksi_id', $transaksi->id_transaksi)->first(),
+            // MPP punya DUA tahap milik role makloon, jadi role saja tidak cukup menentukan
+            // pemiliknya -- surat jalan & nota timbang milik Makloon Terima, sisanya Kirim.
+            'makloon' => $transaksi->skema !== 'MPP'
+                ? DataMakloonTjp::where('transaksi_id', $transaksi->id_transaksi)->first()
+                : (in_array($jenisFoto, DataMakloonTerima::FOTO, true)
+                    ? DataMakloonTerima::where('transaksi_id', $transaksi->id_transaksi)->first()
+                    : DataMakloonMpp::where('transaksi_id', $transaksi->id_transaksi)->first()),
             'ub_jastasma' => DataUbJastasma::where('transaksi_id', $transaksi->id_transaksi)->first(),
             default => null,
         };
+    }
+
+    /**
+     * Foto Sergab yang boleh dikoreksi Pengadaan, per role pemiliknya. MPP: keempatnya milik
+     * makloon. TJP: kwitansi diunggah Jemput Pangan sebagai foto_kwitansi -- skema itu tidak
+     * punya collection foto_pembayaran sama sekali.
+     */
+    private const FOTO_SERGAB_PER_ROLE = [
+        'makloon' => [
+            'foto_gabah',
+            'foto_serah_terima',
+            'foto_pembayaran',
+            'foto_surat_pernyataan',
+        ],
+        'jemput_pangan' => [
+            'foto_gabah',
+            'foto_serah_terima',
+            'foto_kwitansi',
+            'foto_surat_pernyataan',
+        ],
+    ];
+
+    private function bolehKoreksiFotoSergab(Transaksi $transaksi, string $roleOverride, string $jenisFoto): bool
+    {
+        $fotoSergab = self::FOTO_SERGAB_PER_ROLE[$roleOverride] ?? null;
+
+        if ($fotoSergab === null) {
+            return false;
+        }
+
+        if (! $transaksi->poDetail()->exists()) {
+            return false;
+        }
+
+        return in_array($jenisFoto, $fotoSergab, true);
     }
 }

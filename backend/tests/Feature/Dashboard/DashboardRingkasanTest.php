@@ -5,7 +5,8 @@ namespace Tests\Feature\Dashboard;
 use App\Models\DataJemputPangan;
 use App\Models\DataMakloonMpp;
 use App\Models\DataMakloonTjp;
-use App\Models\DataUbJastasma;
+use App\Models\DataPengadaan;
+use App\Models\PoDetail;
 use App\Models\Role;
 use App\Models\Transaksi;
 use App\Models\User;
@@ -37,6 +38,32 @@ class DashboardRingkasanTest extends TestCase
             'status_keseluruhan' => $status,
             'created_by' => User::first()->id,
         ]);
+    }
+
+    /** Transaksi di tahap Keuangan lengkap dengan PO yang sudah dikirim Pengadaan lewat No. SPP. */
+    private function transaksiBerPo(string $skema, string $reviewStatus): Transaksi
+    {
+        $transaksi = $this->transaksi($skema, 'keuangan');
+
+        $po = DataPengadaan::create([
+            'tanggal_bongkar' => '2026-07-30',
+            'id_pemasok' => 'P-'.$transaksi->id_transaksi,
+            // Antrean Keuangan tidak menyaring per makloon, jadi pemiliknya tidak relevan di sini.
+            'makloon_user_id' => User::first()->id,
+            'total_kuantum' => 1000,
+            'total_harga' => 6_500_000,
+            'no_po' => 'PO-'.$transaksi->id_transaksi,
+            'no_spp' => 'SPP-'.$transaksi->id_transaksi,
+            'status' => 'proses',
+            'review_status' => $reviewStatus,
+        ]);
+        PoDetail::create([
+            'data_pengadaan_id' => $po->id,
+            'transaksi_id' => $transaksi->id_transaksi,
+            'kuantum_kontribusi' => 1000,
+        ]);
+
+        return $transaksi;
     }
 
     public function test_hitungan_antrean_mengelompokkan_tiap_kategori_kerjaan(): void
@@ -94,7 +121,27 @@ class DashboardRingkasanTest extends TestCase
      * tergabung ke PO sama sekali (kj_pd/kj_keu kosong) jatuh ke cabang ELSE ekspresi(),
      * sama seperti Pengadaan yang belum diisi PO -> 'isi'.
      */
-    public function test_keuangan_tanpa_po_berkategori_isi(): void
+    public function test_keuangan_berkategori_isi_setelah_po_ber_spp_diterima(): void
+    {
+        $keuangan = $this->user('keuangan');
+        Sanctum::actingAs($keuangan);
+
+        // Pekerjaan Keuangan dimulai dari No. SPP: Pengadaan mengirim PO lewat SPP, Keuangan
+        // mereview, lalu barulah "isi" (No. SPP + tanggal bayar) menjadi kerjaannya.
+        $this->transaksiBerPo('TJP', reviewStatus: 'diterima');
+        $this->transaksiBerPo('MPP', reviewStatus: 'diterima');
+
+        $this->getJson('/api/dashboard/ringkasan')
+            ->assertOk()
+            ->assertJsonPath('data.antrean.isi', 2);
+    }
+
+    /**
+     * Kebalikannya, dan inilah aturan yang dulu salah dikunci tes ini: transaksi yang sudah
+     * sampai tahap Keuangan tapi PO-nya belum dikirim lewat SPP bukan kerjaan Keuangan --
+     * jadi tidak boleh muncul di antreannya sama sekali, bukan berkategori "isi".
+     */
+    public function test_keuangan_tanpa_po_belum_masuk_antrean(): void
     {
         $keuangan = $this->user('keuangan');
         Sanctum::actingAs($keuangan);
@@ -104,7 +151,7 @@ class DashboardRingkasanTest extends TestCase
 
         $this->getJson('/api/dashboard/ringkasan')
             ->assertOk()
-            ->assertJsonPath('data.antrean.isi', 2);
+            ->assertJsonPath('data.antrean.total', 0);
     }
 
     public function test_filter_skema_ikut_diterapkan_pada_hitungan(): void

@@ -1,7 +1,7 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useMutation } from '@tanstack/react-query'
-import { toast } from 'sonner'
+import { toast } from '../lib/toast'
 import api from '../lib/api'
 import { apiErrorMessage } from '../lib/apiError'
 import { uploadSemuaFoto } from '../lib/uploadFoto'
@@ -56,6 +56,8 @@ const angkaAtauNull = (value: string) => value === '' ? null : Number(value)
 const fotoKurang = (fotos: Record<string, File | null>) =>
   FOTO_FIELDS.filter(({ key }) => !fotos[key]).map(({ label }) => label)
 
+const terisi = (value: string) => value.trim() !== ''
+
 export default function TransaksiJemputPanganPage() {
   const navigate = useNavigate()
   const [form, setForm] = useState<FormState>(initialState)
@@ -64,12 +66,22 @@ export default function TransaksiJemputPanganPage() {
   const [fotoGagal, setFotoGagal] = useState<string[]>([])
   const [warning, setWarning] = useState<string | null>(null)
   const [aksiBerjalan, setAksiBerjalan] = useState<AksiSimpan | null>(null)
+  const idTransaksiRef = useRef<string | null>(null)
 
   const mutation = useMutation({
     mutationFn: async ({ values, aksi }: { values: FormState; aksi: AksiSimpan }) => {
       setAksiBerjalan(aksi)
-      const { data: created } = await api.post<{ data: { id_transaksi: string } }>('/api/transaksi')
-      const idTransaksi = created.data.id_transaksi
+
+      // Transaksi dibuat SEKALI per halaman, bukan sekali per klik. Kalau langkah sesudahnya
+      // gagal -- validasi backend, unggahan foto, jaringan putus, atau gerbang jaminan -- nomor
+      // yang sudah terlanjur lahir dipakai ulang saat pengguna membetulkan datanya dan menekan
+      // tombol lagi. Tanpa ini setiap percobaan meninggalkan satu transaksi draft berisi data
+      // yang sama, dan itulah draft ganda yang muncul di daftar.
+      if (!idTransaksiRef.current) {
+        const { data: created } = await api.post<{ data: { id_transaksi: string } }>('/api/transaksi')
+        idTransaksiRef.current = created.data.id_transaksi
+      }
+      const idTransaksi = idTransaksiRef.current
 
       await api.patch(`/api/transaksi/${encodeURIComponent(idTransaksi)}/jemput-pangan`, {
         ...values,
@@ -94,10 +106,11 @@ export default function TransaksiJemputPanganPage() {
       return { idTransaksi, gagal, aksi }
     },
     onSuccess: ({ idTransaksi, gagal, aksi }) => {
+      idTransaksiRef.current = null
       setFotoGagal(gagal)
       toast.success(aksi === 'draft' ? `Transaksi ${idTransaksi} tersimpan sebagai draft.` : `Transaksi ${idTransaksi} dibuat & dikirim ke Makloon.`)
       gagal.forEach((f) => toast.error(`Foto "${fotoLabel(f)}" gagal diupload, coba ulangi.`))
-      if (gagal.length === 0) navigate('/dashboard')
+      navigate('/dashboard')
     },
     onError: (err) => toast.error(apiErrorMessage(err, 'Gagal membuat transaksi Jemput Pangan.')),
     onSettled: () => setAksiBerjalan(null),
@@ -109,8 +122,9 @@ export default function TransaksiJemputPanganPage() {
   const errorMessage =
     (mutation.error as { response?: { data?: { message?: string } } } | null)?.response?.data
       ?.message
-  const dataLengkap = !!(form.id_pemasok && form.supir && form.plat_mobil && form.nama_poktan_gapoktan && form.desa && form.kecamatan && form.kabupaten && form.makloon_user_id && form.tanggal_kirim && form.kuantum && form.jarak_ke_makloon_km)
+  const dataLengkap = !!(terisi(form.id_pemasok) && terisi(form.supir) && terisi(form.plat_mobil) && terisi(form.nama_poktan_gapoktan) && terisi(form.desa) && terisi(form.kecamatan) && terisi(form.kabupaten) && form.makloon_user_id && terisi(form.tanggal_kirim) && terisi(form.kuantum) && terisi(form.jarak_ke_makloon_km))
   const dokumenKurang = fotoKurang(fotos)
+  const kirimNonaktif = mutation.isPending || !dataLengkap || dokumenKurang.length > 0
 
   const simpan = (aksi: AksiSimpan) => {
     if (aksi === 'submit') {
@@ -282,9 +296,9 @@ export default function TransaksiJemputPanganPage() {
               </button>
               <button
                 type="button"
-                disabled={mutation.isPending}
+                disabled={kirimNonaktif}
                 onClick={() => simpan('submit')}
-                className={`rounded-lg bg-accent px-6 py-2.5 text-sm font-bold text-primary-dark shadow-sm transition-all hover:bg-primary hover:text-white hover:shadow-md disabled:cursor-not-allowed disabled:opacity-60 ${(!dataLengkap || dokumenKurang.length > 0) ? 'opacity-70' : ''}`}
+                className="rounded-lg bg-accent px-6 py-2.5 text-sm font-bold text-primary-dark shadow-sm transition-all hover:bg-primary hover:text-white hover:shadow-md disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {mutation.isPending && aksiBerjalan === 'submit' ? 'Mengirim...' : 'Kirim'}
               </button>

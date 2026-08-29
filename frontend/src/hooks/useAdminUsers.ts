@@ -13,12 +13,11 @@ export type AdminUser = {
   role_id: number
   role: Role
   nama_maklon: string | null
-  nama_gudang: string | null
   kecamatan: string | null
   kabupaten: string | null
   is_active: boolean
-  /** Non-null = akses edit rekap sementara sedang terbuka untuk user ini. */
-  akses_edit_dibuka_at: string | null
+  /** Sisa jatah simpan perbaikan rekap. 0 = terkunci; berkurang tiap penyimpanan berhasil. */
+  akses_edit_sisa: number
   created_at: string
   updated_at: string
 }

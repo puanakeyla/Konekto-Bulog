@@ -4,6 +4,7 @@ namespace Tests\Feature\Pengadaan;
 
 use App\Models\DataJemputPangan;
 use App\Models\DataMakloonMpp;
+use App\Models\DataMakloonTerima;
 use App\Models\DataMakloonTjp;
 use App\Models\DataUbJastasma;
 use App\Models\PoDetail;
@@ -14,7 +15,6 @@ use App\Services\Pengadaan\PoGroupingService;
 use App\Services\Transaksi\TransaksiStageService;
 use Database\Seeders\RoleSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Validation\ValidationException;
 use Laravel\Sanctum\Sanctum;
 use Symfony\Component\HttpKernel\Exception\HttpException;
 use Tests\TestCase;
@@ -280,8 +280,15 @@ class GabungkanPoTest extends TestCase
 
         $this->stageService->submitStage($transaksi, $this->makloon, 'makloon', DataMakloonMpp::class, $this->dataMakloonMpp($idPemasok, $tanggalBongkar, $kuantum));
 
-        // Tahap "Makloon Terima" (MPP) dikerjakan makloon sendiri, bukan UB Jastasma.
+        // Makloon Terima kini tahap berdata sendiri: makloon menerima data Kirim, mengisi hasil
+        // timbang, lalu mengirimnya -- baru setelah itu UB Jastasma yang memeriksanya.
         $this->stageService->terima($transaksi->fresh(), $this->makloon);
+        // PO menjumlahkan HASIL TIMBANG, bukan kuantum kirim -- jadi angka inilah yang harus
+        // mengikuti $kuantum. Sebelumnya 980 dipatok di sini sementara $kuantum cuma mengisi
+        // tahap Kirim, sehingga tiga test yang memeriksa total PO membandingkan angka yang
+        // memang tidak pernah dipakai perhitungannya.
+        $this->stageService->submitStage($transaksi->fresh(), $this->makloon, 'makloon_terima', DataMakloonTerima::class, ['kuantum_bongkar' => $kuantum]);
+        $this->stageService->terima($transaksi->fresh(), $this->ubJastasma);
         $this->stageService->submitStage($transaksi->fresh(), $this->ubJastasma, 'ub_jastasma', DataUbJastasma::class, $this->dataUbJastasma());
 
         $this->stageService->terima($transaksi->fresh(), $this->pengadaan);

@@ -1,6 +1,6 @@
 import { BrowserRouter, Navigate, Route, Routes, useParams } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { Toaster } from 'sonner'
+import { Toaster } from './lib/toast'
 import { AuthProvider, useAuth } from './hooks/useAuth'
 import LoginPage from './pages/LoginPage'
 import LandingPage from './pages/LandingPage'
@@ -15,6 +15,12 @@ import AdminUsersPage from './pages/AdminUsersPage'
 import MonitoringPage from './pages/MonitoringPage'
 import RekapTransaksiPage from './pages/RekapTransaksiPage'
 import AdminAuditLogPage from './pages/AdminAuditLogPage'
+import AdminGudangPage from './pages/AdminGudangPage'
+import PengolahanListPage from './pages/PengolahanListPage'
+import PengolahanDetailPage from './pages/PengolahanDetailPage'
+import MoPage from './pages/MoPage'
+import RekapPengolahanPage from './pages/RekapPengolahanPage'
+import JaminanMakloonPage from './pages/JaminanMakloonPage'
 
 const queryClient = new QueryClient()
 
@@ -53,9 +59,18 @@ function AppRoutes() {
         <Route path="/pengadaan" element={<PengadaanPage />} />
         <Route path="/keuangan" element={<KeuanganPage />} />
         <Route path="/admin/users" element={<AdminUsersPage />} />
+        <Route path="/admin/gudang" element={<AdminGudangPage />} />
+        {/* Komponen yang sama, mode baca-saja: role pengolahan tidak diarahkan ke URL /admin. */}
+        <Route path="/gudang" element={<AdminGudangPage />} />
         <Route path="/admin/audit-logs" element={<AdminAuditLogPage />} />
         <Route path="/monitoring" element={<MonitoringPage />} />
         <Route path="/rekap" element={<RekapTransaksiPage />} />
+        {/* Rantai pengolahan (GDG/UBJ), terpisah dari timeline transaksi TJP/MPP. */}
+        <Route path="/pengolahan" element={<PengolahanListPage />} />
+        <Route path="/pengolahan/:id" element={<PengolahanDetailPage />} />
+        <Route path="/mo" element={<MoPage />} />
+        <Route path="/operasi/jaminan-makloon" element={<JaminanMakloonPage />} />
+        <Route path="/rekap-pengolahan" element={<RekapPengolahanPage />} />
       </Route>
     </Routes>
   )

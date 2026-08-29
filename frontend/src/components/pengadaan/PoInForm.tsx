@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { toast } from 'sonner'
+import { useNavigate } from 'react-router-dom'
+import { toast } from '../../lib/toast'
 import api from '../../lib/api'
 import { apiErrorMessage } from '../../lib/apiError'
 import { formatMoney, formatNumber } from '../../lib/poFormat'
@@ -8,8 +9,10 @@ import type { PoItem } from '../../hooks/usePoList'
 import ConfirmDialog from '../ConfirmDialog'
 import PoProgressInfo from './PoProgressInfo'
 
-export default function PoInForm({ po, onChanged }: { po: PoItem; onChanged?: () => void }) {
+/** `onKembali` hanya terisi saat kartu ini dibuka ulang dari langkah No. SPP. */
+export default function PoInForm({ po, onChanged, onKembali }: { po: PoItem; onChanged?: () => void; onKembali?: () => void }) {
   const queryClient = useQueryClient()
+  const navigate = useNavigate()
   const [values, setValues] = useState<Record<number, string>>(() => Object.fromEntries(po.po_detail.map((detail) => [detail.id, detail.no_in ?? ''])))
   const [confirmIn, setConfirmIn] = useState(false)
   const [confirmBatal, setConfirmBatal] = useState(false)
@@ -28,14 +31,12 @@ export default function PoInForm({ po, onChanged }: { po: PoItem; onChanged?: ()
         .map((detail) => ({ po_detail_id: detail.id, no_in: (values[detail.id] ?? detail.no_in ?? '').trim() }))
         .filter((item) => item.no_in !== ''),
     }),
-    // Sengaja TIDAK pindah halaman: daftar PO di-invalidate sehingga langkah berikutnya
-    // (form SPP) langsung menggantikan kartu ini di tempat, tanpa mengeluarkan pengguna dari
-    // halaman pengisian yang sedang dikerjakannya.
     onSuccess: () => {
       setConfirmIn(false)
       setValues({})
       afterChange()
-      toast.success(`Nomor IN PO ${po.no_po} tersimpan dan dikunci. Lanjut isi No. SPP.`)
+      toast.success(`Nomor IN PO ${po.no_po} tersimpan dan dikunci.`)
+      navigate('/dashboard')
     },
     onError: (err) => toast.error(apiErrorMessage(err, 'Gagal menyimpan nomor IN.')),
   })
@@ -79,10 +80,7 @@ export default function PoInForm({ po, onChanged }: { po: PoItem; onChanged?: ()
               <tr key={d.id}>
                 <td className="font-semibold text-primary-dark">{d.transaksi_id}</td>
                 <td className="text-right">{formatNumber(d.kuantum_kontribusi)} kg</td>
-                {/* IN terkunci setelah No. SPP tersimpan -- KECUALI bila Keuangan menolak PO-nya:
-                    di situlah "Perbaiki nomor IN" dipakai, dan mengunci input membuat tombol itu
-                    membuka form yang tidak bisa diapa-apakan. Backend memang mengizinkannya
-                    (PoGroupingService::isiNomorIn hanya menolak PO batal/lengkap). */}
+                {/* IN terkunci setelah No. SPP tersimpan; koreksi setelah itu dilakukan lewat alur koreksi data, bukan dari form SPP. */}
                 <td><input className="input" placeholder="Masukkan nomor IN" disabled={!!po.no_spp && po.review_status !== 'ditolak'} value={values[d.id] ?? d.no_in ?? ''} onChange={(e) => setValues((prev) => ({ ...prev, [d.id]: e.target.value }))} /></td>
               </tr>
             ))}
@@ -90,7 +88,14 @@ export default function PoInForm({ po, onChanged }: { po: PoItem; onChanged?: ()
         </table>
       </div>
       <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4">
-        <button type="button" className="btn btn-outline-danger" onClick={() => setConfirmBatal(true)}>Batalkan PO</button>
+        <div className="flex flex-wrap items-center gap-3">
+          <button type="button" className="btn btn-outline-danger" onClick={() => setConfirmBatal(true)}>Batalkan PO</button>
+          {onKembali && (
+            <button type="button" onClick={onKembali} className="text-xs font-semibold text-slate-500 transition-colors hover:text-primary">
+              Batal, kembali ke No. SPP
+            </button>
+          )}
+        </div>
         <button type="submit" disabled={!semuaLengkap || mutation.isPending} className="btn btn-primary">{mutation.isPending ? 'Menyimpan...' : 'Simpan IN'}</button>
       </div>
 

@@ -4,11 +4,6 @@ import tailwindcss from '@tailwindcss/vite'
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
-  resolve: {
-    alias: {
-      sonner: '/src/lib/sonner.tsx',
-    },
-  },
   server: {
     port: 5173,
   },

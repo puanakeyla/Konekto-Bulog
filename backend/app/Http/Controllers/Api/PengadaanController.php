@@ -55,6 +55,45 @@ class PengadaanController extends Controller
         return DataPengadaanResource::collection($dataPengadaan);
     }
 
+    /**
+     * Empat kartu angka di layar Keuangan, dihitung DI DATABASE atas seluruh PO -- bukan atas
+     * 20 PO satu halaman seperti sebelumnya. Dulu keempatnya berubah-ubah begitu pengguna
+     * menekan "Berikutnya", karena yang dijumlah memang cuma halaman yang sedang terbuka.
+     *
+     * Definisinya dijaga sama persis dengan penyaring di layar: "di tahap Keuangan" berarti PO
+     * itu punya minimal satu transaksi anggota yang sedang berdiri di tahap keuangan. Tanpa
+     * syarat itu, PO lama yang sudah maju tetapi review_status-nya tertinggal ikut terhitung.
+     */
+    public function ringkasanKeuangan()
+    {
+        $diTahapKeuangan = fn ($query) => $query->whereExists(fn ($ada) => $ada
+            ->from('po_detail as pd')
+            ->join('transaksi as t', 't.id_transaksi', '=', 'pd.transaksi_id')
+            ->whereColumn('pd.data_pengadaan_id', 'dp.id')
+            ->where('t.current_stage', 'keuangan'));
+
+        $belumDibayar = "COALESCE(dk.status_bayar, '') <> 'dibayarkan'";
+
+        $antrean = DB::table('data_pengadaan as dp')
+            ->leftJoin('data_keuangan as dk', 'dk.data_pengadaan_id', '=', 'dp.id')
+            ->tap($diTahapKeuangan)
+            ->selectRaw("COALESCE(SUM(CASE WHEN dp.review_status = 'menunggu_review' THEN 1 ELSE 0 END), 0) as perlu_review")
+            ->selectRaw("COALESCE(SUM(CASE WHEN dp.review_status = 'diterima' AND {$belumDibayar} THEN 1 ELSE 0 END), 0) as siap_bayar")
+            ->selectRaw("COALESCE(SUM(CASE WHEN dp.review_status = 'diterima' AND {$belumDibayar} THEN dp.total_harga ELSE 0 END), 0) as nilai_antrean")
+            ->first();
+
+        // "Sudah dibayar" sengaja TIDAK dibatasi tahap: PO yang sudah lunas memang tidak lagi
+        // berdiri di tahap Keuangan, jadi menyaringnya akan selalu menghasilkan nol.
+        $sudahDibayar = DB::table('data_keuangan')->where('status_bayar', 'dibayarkan')->count();
+
+        return response()->json(['data' => [
+            'perlu_review' => (int) $antrean->perlu_review,
+            'siap_bayar' => (int) $antrean->siap_bayar,
+            'sudah_dibayar' => $sudahDibayar,
+            'nilai_antrean' => (float) $antrean->nilai_antrean,
+        ]]);
+    }
+
     public function show(Request $request, DataPengadaan $dataPengadaan)
     {
         $dataPengadaan->load(['poDetail.transaksi.riwayatPenolakan.penolak', 'dataKeuangan', 'makloon']);
@@ -312,16 +351,32 @@ class PengadaanController extends Controller
         ]);
     }
 
+    public function fotoLink(Request $request, DataPengadaan $dataPengadaan, string $jenisFoto)
+    {
+        if (! in_array($jenisFoto, self::FOTO_SERGAB, true)) {
+            abort(404);
+        }
+
+        $media = $dataPengadaan->getFirstMedia($jenisFoto);
+        if (! $media) {
+            abort(404, 'Foto belum diunggah.');
+        }
+
+        return response()->json([
+            'url' => URL::temporarySignedRoute('foto.stream', now()->addMinutes(5), array_filter([
+                'media' => $media->id,
+                'conversion' => $request->query('conversion'),
+                'download' => $request->boolean('download') ? 1 : null,
+            ])),
+        ]);
+    }
+
     public function fotoUpload(Request $request, DataPengadaan $dataPengadaan)
     {
         $validated = $request->validate([
             'jenis_foto' => ['required', Rule::in(self::FOTO_SERGAB)],
             'foto' => ['required', 'file', 'mimes:jpeg,png', 'max:5120'],
         ]);
-
-        if ($dataPengadaan->review_status === 'diterima') {
-            abort(422, 'Data Pengadaan sudah diterima dan foto tidak dapat diubah.');
-        }
 
         if ($dataPengadaan->status === 'dibatalkan') {
             abort(422, 'PO sudah dibatalkan dan foto tidak dapat diubah.');
@@ -338,6 +393,26 @@ class PengadaanController extends Controller
             'size' => $media->size,
             'mime_type' => $media->mime_type,
         ]], 201);
+    }
+
+    public function fotoHapus(Request $request, DataPengadaan $dataPengadaan, string $jenisFoto)
+    {
+        if (! in_array($jenisFoto, self::FOTO_SERGAB, true)) {
+            abort(404);
+        }
+
+        if ($dataPengadaan->status === 'dibatalkan') {
+            abort(422, 'PO sudah dibatalkan dan foto tidak dapat diubah.');
+        }
+
+        $media = $dataPengadaan->getFirstMedia($jenisFoto);
+        if (! $media) {
+            abort(404, 'Foto belum diunggah.');
+        }
+
+        $media->delete();
+
+        return response()->json(['message' => 'Foto dihapus.']);
     }
 
     public function pembayaran(Request $request, DataPengadaan $dataPengadaan)

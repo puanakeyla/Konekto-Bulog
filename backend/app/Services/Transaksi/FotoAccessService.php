@@ -4,6 +4,7 @@ namespace App\Services\Transaksi;
 
 use App\Models\DataJemputPangan;
 use App\Models\DataMakloonMpp;
+use App\Models\DataMakloonTerima;
 use App\Models\DataMakloonTjp;
 use App\Models\DataUbJastasma;
 use App\Models\Transaksi;
@@ -89,11 +90,12 @@ class FotoAccessService
             DataJemputPangan::class => 'jemput_pangan',
             DataMakloonTjp::class => 'makloon',
             DataMakloonMpp::class => 'makloon',
+            DataMakloonTerima::class => 'makloon',
             DataUbJastasma::class => 'ub_jastasma',
         ];
 
         $candidateModels = $transaksi->skema === 'MPP'
-            ? [DataMakloonMpp::class, DataUbJastasma::class]
+            ? [DataMakloonMpp::class, DataMakloonTerima::class, DataUbJastasma::class]
             : [DataJemputPangan::class, DataMakloonTjp::class, DataUbJastasma::class];
 
         $hasil = [];
@@ -134,7 +136,7 @@ class FotoAccessService
     private function resolveModel(Transaksi $transaksi, string $jenisFoto): (Model&HasMedia)|null
     {
         $candidateModels = $transaksi->skema === 'MPP'
-            ? [DataMakloonMpp::class, DataUbJastasma::class]
+            ? [DataMakloonMpp::class, DataMakloonTerima::class, DataUbJastasma::class]
             : [DataJemputPangan::class, DataMakloonTjp::class, DataUbJastasma::class];
 
         foreach ($candidateModels as $modelClass) {

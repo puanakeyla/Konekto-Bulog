@@ -49,14 +49,12 @@ class DataMakloonMpp extends Model implements HasMedia
         'foto_surat_pernyataan',
     ];
 
-    public const FOTO_TAHAP_TERIMA = [
-        'foto_surat_jalan',
-        'foto_nota_timbang',
-    ];
+    // FOTO_TAHAP_TERIMA dipindah ke DataMakloonTerima::FOTO sejak Makloon Terima punya tabel
+    // sendiri. Media lama ikut dialihkan kepemilikannya oleh migrasi pembuat tabel itu.
 
     public function registerMediaCollections(): void
     {
-        foreach ([...self::FOTO_TAHAP_KIRIM, ...self::FOTO_TAHAP_TERIMA] as $collection) {
+        foreach (self::FOTO_TAHAP_KIRIM as $collection) {
             $this->addMediaCollection($collection)
                 ->singleFile()
                 ->acceptsMimeTypes(['image/jpeg', 'image/png']);

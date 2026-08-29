@@ -56,27 +56,4 @@ class DataPengadaanResource extends JsonResource
             'reviewed_at' => $record->reviewed_at ?? null,
         ];
     }
-
-    private function reviewCollectionSummary($records, int $expectedCount): array
-    {
-        if ($expectedCount === 0 || $records->isEmpty()) {
-            return ['status' => 'belum_ada', 'total' => 0, 'diterima' => 0, 'ditolak' => 0, 'menunggu_review' => 0];
-        }
-
-        $counts = $records->countBy(fn ($record) => $record->review_status ?? 'menunggu_review');
-        $status = 'menunggu_review';
-        if (($counts['ditolak'] ?? 0) > 0) {
-            $status = 'ditolak';
-        } elseif ($records->count() === $expectedCount && ($counts['diterima'] ?? 0) === $expectedCount) {
-            $status = 'diterima';
-        }
-
-        return [
-            'status' => $status,
-            'total' => $records->count(),
-            'diterima' => $counts['diterima'] ?? 0,
-            'ditolak' => $counts['ditolak'] ?? 0,
-            'menunggu_review' => $counts['menunggu_review'] ?? 0,
-        ];
-    }
 }

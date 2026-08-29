@@ -35,6 +35,7 @@ class KerjaanTransaksi
             ->leftJoin('data_jemput_pangan as kj_jp', 'kj_jp.transaksi_id', '=', 'transaksi.id_transaksi')
             ->leftJoin('data_makloon_tjp as kj_tjp', 'kj_tjp.transaksi_id', '=', 'transaksi.id_transaksi')
             ->leftJoin('data_makloon_mpp as kj_mpp', 'kj_mpp.transaksi_id', '=', 'transaksi.id_transaksi')
+            ->leftJoin('data_makloon_terima as kj_mt', 'kj_mt.transaksi_id', '=', 'transaksi.id_transaksi')
             ->leftJoin('data_ub_jastasma as kj_ub', 'kj_ub.transaksi_id', '=', 'transaksi.id_transaksi')
             // Satu transaksi hanya bernaung di satu PO, jadi join ini tidak menggandakan baris.
             ->leftJoin('po_detail as kj_pod', 'kj_pod.transaksi_id', '=', 'transaksi.id_transaksi')
@@ -49,37 +50,29 @@ class KerjaanTransaksi
             WHEN kj_jp.status = 'ditolak'
               OR kj_tjp.status = 'ditolak'
               OR kj_mpp.status = 'ditolak'
+              OR kj_mt.status = 'ditolak'
               OR kj_ub.status = 'ditolak'
               OR kj_pd.review_status = 'ditolak'
               OR kj_keu.review_status = 'ditolak' THEN 'ditolak'
             WHEN (transaksi.current_stage = 'makloon' AND kj_jp.status = 'menunggu_review')
               OR (transaksi.current_stage = 'makloon_terima' AND kj_mpp.status = 'menunggu_review')
-              OR (transaksi.current_stage = 'ub_jastasma' AND transaksi.skema = 'MPP' AND kj_mpp.status = 'menunggu_review')
+              -- MPP di tahap UB: yang menunggu diperiksa adalah HASIL TIMBANG milik Makloon
+              -- Terima. Dulu di sini kj_mpp, dan sejak tahap itu punya tabel sendiri data MPP
+              -- selalu sudah 'diterima' saat sampai UB -- sehingga chip Perlu Dicek milik UB
+              -- tidak pernah menyala sama sekali.
+              OR (transaksi.current_stage = 'ub_jastasma' AND transaksi.skema = 'MPP' AND kj_mt.status = 'menunggu_review')
               OR (transaksi.current_stage = 'ub_jastasma' AND transaksi.skema = 'TJP' AND kj_tjp.status = 'menunggu_review')
               OR (transaksi.current_stage = 'pengadaan' AND kj_ub.status = 'menunggu_review')
               OR (transaksi.current_stage = 'keuangan' AND kj_pd.review_status = 'menunggu_review') THEN 'periksa'
             WHEN (transaksi.current_stage = 'jemput_pangan' AND kj_jp.status = 'draft')
               OR (transaksi.current_stage = 'makloon' AND kj_tjp.status = 'draft')
               OR (transaksi.current_stage = 'makloon_kirim' AND kj_mpp.status = 'draft')
+              OR (transaksi.current_stage = 'makloon_terima' AND kj_mt.status = 'draft')
               OR (transaksi.current_stage = 'ub_jastasma' AND kj_ub.status = 'draft')
               OR (transaksi.current_stage = 'pengadaan' AND kj_pd.review_status = 'draft')
               OR (transaksi.current_stage = 'keuangan' AND kj_keu.review_status IN ('draft', 'menunggu_review')) THEN 'draft'
             ELSE 'isi'
         END";
-    }
-
-    /**
-     * Hanya syarat "ditolak" -- cabang pertama dari ekspresi(). Dipakai untuk menghitung kartu
-     * Ditolak tanpa memaksa MySQL mengevaluasi seluruh CASE bertingkat untuk tiap baris.
-     */
-    public static function syaratDitolak(): string
-    {
-        return "(kj_jp.status = 'ditolak'
-            OR kj_tjp.status = 'ditolak'
-            OR kj_mpp.status = 'ditolak'
-            OR kj_ub.status = 'ditolak'
-            OR kj_pd.review_status = 'ditolak'
-            OR kj_keu.review_status = 'ditolak')";
     }
 
     /**

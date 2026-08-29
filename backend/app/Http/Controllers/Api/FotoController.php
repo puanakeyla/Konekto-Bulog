@@ -81,7 +81,21 @@ class FotoController extends Controller
 
     public function destroy(Request $request, Transaksi $transaksi, string $jenisFoto)
     {
-        abort_unless($request->user()->role->nama_role === 'admin', 403);
+        $role = $request->user()->role->nama_role;
+        // Daftar foto ini harus sinkron dengan FotoUploadService::FOTO_SERGAB_PER_ROLE:
+        // MPP punya foto_pembayaran (milik makloon), TJP punya foto_kwitansi (milik
+        // jemput_pangan) -- keduanya boleh dikoreksi Pengadaan selama transaksinya sudah masuk PO.
+        $bolehKoreksiSergab = $role === 'pengadaan'
+            && $transaksi->poDetail()->exists()
+            && in_array($jenisFoto, [
+                'foto_gabah',
+                'foto_serah_terima',
+                'foto_pembayaran',
+                'foto_kwitansi',
+                'foto_surat_pernyataan',
+            ], true);
+
+        abort_unless($role === 'admin' || $bolehKoreksiSergab, 403);
 
         $media = $this->accessService->resolveDanOtorisasi($transaksi, $jenisFoto, $request->user());
 

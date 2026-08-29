@@ -1,5 +1,6 @@
-import { useState, type Dispatch, type SetStateAction } from 'react'
-import { usePoList } from '../hooks/usePoList'
+import { useState } from 'react'
+import { usePoList, useRingkasanKeuangan } from '../hooks/usePoList'
+import PaginationBar from '../components/PaginationBar'
 import { SkeletonPoCards } from '../components/Skeleton'
 import FormHero from '../components/FormHero'
 import { formatMoney } from '../lib/poFormat'
@@ -19,8 +20,9 @@ export default function KeuanganPage() {
   const poTahapKeuangan = poList.filter((po) => po.current_stage?.includes('keuangan'))
   const perluReview = poTahapKeuangan.filter((po) => po.review_status === 'menunggu_review')
   const siapBayar = poTahapKeuangan.filter((po) => po.review_status === 'diterima' && po.data_keuangan?.status_bayar !== 'dibayarkan')
-  const sudahDibayar = poList.filter((po) => po.data_keuangan?.status_bayar === 'dibayarkan').length
-  const totalTagihan = siapBayar.reduce((sum, po) => sum + Number(po.total_harga || 0), 0)
+  // Kartu memakai angka dari backend, bukan hitungan atas poList: poList cuma berisi 20 PO
+  // halaman yang sedang terbuka, jadi keempat angkanya dulu berubah tiap ganti halaman.
+  const { data: ringkasan } = useRingkasanKeuangan()
 
   return (
     <div className="min-h-screen bg-surface">
@@ -32,16 +34,16 @@ export default function KeuanganPage() {
 
       <div className="relative mx-auto -mt-16 max-w-6xl space-y-6 px-6 pb-16">
           <div className="stats-grid">
-            <div className="stat-card"><div className="stat-label">Menunggu review</div><div className="stat-value">{perluReview.length}</div></div>
-            <div className="stat-card"><div className="stat-label">Menunggu bayar</div><div className="stat-value">{siapBayar.length}</div></div>
-            <div className="stat-card"><div className="stat-label">Sudah dibayar</div><div className="stat-value">{sudahDibayar}</div></div>
-            <div className="stat-card"><div className="stat-label">Nilai antrean</div><div className="stat-value text-base leading-tight">{formatMoney(totalTagihan)}</div></div>
+            <div className="stat-card"><div className="stat-label">Menunggu review</div><div className="stat-value">{ringkasan?.perlu_review ?? '-'}</div></div>
+            <div className="stat-card"><div className="stat-label">Menunggu bayar</div><div className="stat-value">{ringkasan?.siap_bayar ?? '-'}</div></div>
+            <div className="stat-card"><div className="stat-label">Sudah dibayar</div><div className="stat-value">{ringkasan?.sudah_dibayar ?? '-'}</div></div>
+            <div className="stat-card"><div className="stat-label">Nilai antrean</div><div className="stat-value text-base leading-tight">{ringkasan ? formatMoney(ringkasan.nilai_antrean) : '-'}</div></div>
           </div>
 
           <section className="panel panel-pad">
             <div className="toolbar-card mb-4">
               <div><h2 className="section-title">PO Menunggu Persetujuan</h2><p className="page-subtitle">Terima untuk mengunci data Pengadaan, atau tolak untuk minta revisi.</p></div>
-              <span className="badge badge-warning">{perluReview.length} antrean</span>
+              <span className="badge badge-warning">{ringkasan?.perlu_review ?? perluReview.length} antrean</span>
             </div>
 
             {isLoading && <SkeletonPoCards />}
@@ -56,7 +58,7 @@ export default function KeuanganPage() {
           <section className="panel panel-pad">
             <div className="toolbar-card mb-4">
               <div><h2 className="section-title">PO Siap Dibayar</h2><p className="page-subtitle">No. SPP dan status Sergab berasal dari Pengadaan; Keuangan melanjutkan pembayaran.</p></div>
-              <span className="badge badge-warning">{siapBayar.length} antrean</span>
+              <span className="badge badge-warning">{ringkasan?.siap_bayar ?? siapBayar.length} antrean</span>
             </div>
 
             {isLoading && <SkeletonPoCards />}
@@ -66,7 +68,7 @@ export default function KeuanganPage() {
             )}
 
             {!isError && <div className="space-y-4">{siapBayar.map((po) => <PembayaranForm key={po.id} po={po} />)}</div>}
-            {!isError && meta && meta.last_page > 1 && <PaginationBar meta={meta} page={page} setPage={setPage} />}
+            {!isError && meta && meta.last_page > 1 && <PaginationBar meta={meta} page={page} setPage={setPage} satuan="PO" />}
           </section>
       </div>
     </div>
@@ -77,19 +79,6 @@ function LoadError({ error, fallback }: { error: unknown; fallback: string }) {
   return (
     <div className="alert-danger">
       {pesanKegagalan(error) ?? apiErrorMessage(error, fallback)}
-    </div>
-  )
-}
-
-function PaginationBar({ meta, page, setPage }: { meta: { current_page: number; last_page: number; total: number; from: number | null; to: number | null }; page: number; setPage: Dispatch<SetStateAction<number>> }) {
-  return (
-    <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm text-muted">
-      <span>Menampilkan {meta.from ?? 0}-{meta.to ?? 0} dari {meta.total} PO</span>
-      <div className="flex gap-2">
-        <button className="btn btn-ghost" disabled={page <= 1} onClick={() => setPage((prev) => Math.max(1, prev - 1))}>Sebelumnya</button>
-        <span className="badge">Halaman {meta.current_page}/{meta.last_page}</span>
-        <button className="btn btn-ghost" disabled={page >= meta.last_page} onClick={() => setPage((prev) => prev + 1)}>Berikutnya</button>
-      </div>
     </div>
   )
 }

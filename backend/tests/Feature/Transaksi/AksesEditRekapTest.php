@@ -3,6 +3,7 @@
 namespace Tests\Feature\Transaksi;
 
 use App\Models\DataJemputPangan;
+use App\Models\DataMakloonTerima;
 use App\Models\DataMakloonTjp;
 use App\Models\DataPengadaan;
 use App\Models\PoDetail;
@@ -74,7 +75,37 @@ class AksesEditRekapTest extends TestCase
         $this->assertSame('Supir Baru', $transaksi->dataJemputPangan->fresh()->supir);
     }
 
-    public function test_akses_tertutup_sendiri_setelah_satu_kali_simpan(): void
+    /**
+     * Hasil timbang MPP pindah ke tabel tahap Makloon Terima, jadi koreksinya pun harus
+     * mendarat di sana. Kalau blok ini salah sasaran, penyimpanannya tetap menjawab 200 sambil
+     * tidak mengubah angka yang dibaca rekap maupun gerbang jaminan.
+     */
+    public function test_koreksi_kuantum_bongkar_mpp_mendarat_di_tabel_makloon_terima(): void
+    {
+        $transaksi = Transaksi::create([
+            'id_transaksi' => '00009/08/2026/MPP',
+            'skema' => 'MPP',
+            'current_stage' => 'ub_jastasma',
+            'status_keseluruhan' => 'berjalan',
+            'created_by' => $this->makloon->id,
+        ]);
+        DataMakloonTerima::create([
+            'transaksi_id' => $transaksi->id_transaksi,
+            'kuantum_bongkar' => 900,
+            'status' => 'diterima',
+        ]);
+
+        $this->bukaAkses($this->makloon);
+        Sanctum::actingAs($this->makloon);
+
+        $this->patchJson($this->urlRekap($transaksi), [
+            'data_makloon_terima' => ['kuantum_bongkar' => 1234],
+        ])->assertOk();
+
+        $this->assertEquals(1234, DataMakloonTerima::where('transaksi_id', $transaksi->id_transaksi)->value('kuantum_bongkar'));
+    }
+
+    public function test_jatah_satu_kali_habis_setelah_sekali_simpan(): void
     {
         $transaksi = $this->buatTjpTerkunci();
         $this->bukaAkses($this->jemputPangan);
@@ -85,7 +116,7 @@ class AksesEditRekapTest extends TestCase
             'data_jemput_pangan' => ['supir' => 'Sekali'],
         ])->assertOk();
 
-        $this->assertNull($this->jemputPangan->fresh()->akses_edit_dibuka_at);
+        $this->assertSame(0, $this->jemputPangan->fresh()->akses_edit_sisa);
 
         // Percobaan kedua harus ditolak, buktinya nilai lama bertahan.
         $this->patchJson($this->urlRekap($transaksi), [
@@ -93,6 +124,31 @@ class AksesEditRekapTest extends TestCase
         ])->assertForbidden();
 
         $this->assertSame('Sekali', $transaksi->dataJemputPangan->fresh()->supir);
+    }
+
+    /** Jatah lebih dari satu: itulah bedanya dengan token sekali pakai yang lama. */
+    public function test_jatah_tiga_kali_masih_sisa_dua_setelah_sekali_simpan(): void
+    {
+        $transaksi = $this->buatTjpTerkunci();
+        $this->bukaAkses($this->jemputPangan, 3);
+
+        Sanctum::actingAs($this->jemputPangan);
+
+        foreach (['Satu', 'Dua'] as $supir) {
+            $this->patchJson($this->urlRekap($transaksi), [
+                'data_jemput_pangan' => ['supir' => $supir],
+            ])->assertOk();
+        }
+
+        $this->assertSame(1, $this->jemputPangan->fresh()->akses_edit_sisa);
+        $this->assertSame('Dua', $transaksi->dataJemputPangan->fresh()->supir);
+
+        // Simpanan ketiga menghabiskan jatah, yang keempat ditolak.
+        $this->patchJson($this->urlRekap($transaksi), ['data_jemput_pangan' => ['supir' => 'Tiga']])->assertOk();
+        $this->patchJson($this->urlRekap($transaksi), ['data_jemput_pangan' => ['supir' => 'Empat']])->assertForbidden();
+
+        $this->assertSame(0, $this->jemputPangan->fresh()->akses_edit_sisa);
+        $this->assertSame('Tiga', $transaksi->dataJemputPangan->fresh()->supir);
     }
 
     public function test_field_milik_role_lain_diabaikan(): void
@@ -124,8 +180,8 @@ class AksesEditRekapTest extends TestCase
         ])->assertForbidden();
 
         $this->assertEquals(90, $transaksi->dataMakloonTjp->fresh()->kuantum_bongkar);
-        // Akses tidak boleh ikut hangus karena percobaan yang ditolak.
-        $this->assertNotNull($this->jemputPangan->fresh()->akses_edit_dibuka_at);
+        // Jatah tidak boleh ikut terpakai karena percobaan yang ditolak.
+        $this->assertSame(1, $this->jemputPangan->fresh()->akses_edit_sisa);
     }
 
     public function test_user_berakses_tidak_bisa_menyentuh_transaksi_petugas_lain(): void
@@ -242,32 +298,32 @@ class AksesEditRekapTest extends TestCase
         $this->assertSame('foto_petani', $media->collection_name);
     }
 
-    public function test_admin_membuka_lalu_mengunci_akses_lewat_kelola_user(): void
+    public function test_admin_menentukan_jatah_lalu_mengunci_lewat_kelola_user(): void
     {
         Sanctum::actingAs($this->admin);
 
-        $this->patchJson("/api/admin/users/{$this->jemputPangan->id}/akses-edit", ['buka' => true])
-            ->assertOk();
-        $this->assertNotNull($this->jemputPangan->fresh()->akses_edit_dibuka_at);
+        $this->patchJson("/api/admin/users/{$this->jemputPangan->id}/akses-edit", ['sisa' => 5])
+            ->assertOk()
+            ->assertJsonPath('data.akses_edit_sisa', 5);
 
-        $this->patchJson("/api/admin/users/{$this->jemputPangan->id}/akses-edit", ['buka' => false])
+        $this->patchJson("/api/admin/users/{$this->jemputPangan->id}/akses-edit", ['sisa' => 0])
             ->assertOk();
-        $this->assertNull($this->jemputPangan->fresh()->akses_edit_dibuka_at);
+        $this->assertSame(0, $this->jemputPangan->fresh()->akses_edit_sisa);
     }
 
     public function test_non_admin_tidak_bisa_membuka_akses_untuk_siapa_pun(): void
     {
         Sanctum::actingAs($this->makloon);
 
-        $this->patchJson("/api/admin/users/{$this->jemputPangan->id}/akses-edit", ['buka' => true])
+        $this->patchJson("/api/admin/users/{$this->jemputPangan->id}/akses-edit", ['sisa' => 3])
             ->assertForbidden();
 
-        $this->assertNull($this->jemputPangan->fresh()->akses_edit_dibuka_at);
+        $this->assertSame(0, $this->jemputPangan->fresh()->akses_edit_sisa);
     }
 
-    private function bukaAkses(User $user): void
+    private function bukaAkses(User $user, int $jatah = 1): void
     {
-        $user->update(['akses_edit_dibuka_at' => now()]);
+        $user->update(['akses_edit_sisa' => $jatah]);
     }
 
     private function urlRekap(Transaksi $transaksi): string

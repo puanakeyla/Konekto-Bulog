@@ -1,17 +1,19 @@
 import { useState, type ReactNode } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { toast } from 'sonner'
+import { toast } from '../lib/toast'
 import FormHero from '../components/FormHero'
 import DataSpreadsheet, { type SheetColumn } from '../components/DataSpreadsheet'
 import DokumenGaleriModal from '../components/DokumenGaleriModal'
+import KartuFoto from '../components/KartuFoto'
 import AngkaInput from '../components/AngkaInput'
 import KabupatenSelect from '../components/KabupatenSelect'
 import { useAuth } from '../hooks/useAuth'
-import { useRekapTransaksi, type RekapTransaksi } from '../hooks/useRekapTransaksi'
+import { ambilSemuaRekapTransaksi, useRekapTransaksi, useRingkasanRekap, type RekapTransaksi, type RingkasanRekap } from '../hooks/useRekapTransaksi'
+import PaginationBar from '../components/PaginationBar'
 import { useMakloonOptions } from '../hooks/useMakloonOptions'
+import { ambilFotoTransaksi, useDokumenTransaksi } from '../hooks/useFotoTransaksi'
 import api, { pesanKegagalan } from '../lib/api'
-import { bukaTabBaru } from '../lib/bukaTabBaru'
-import { formatDesimal, formatMoney, formatNumber, trimDesimal } from '../lib/poFormat'
+import { formatDesimal, formatMoney, formatNumber, labelStatusSergab, trimDesimal } from '../lib/poFormat'
 import ModalPortal from '../components/ModalPortal'
 
 /**
@@ -64,11 +66,6 @@ function numeric(v: string) {
   return clean === '' ? null : Number(clean)
 }
 
-function numberValue(v: string | number | null | undefined) {
-  if (v === null || v === undefined || v === '') return 0
-  const parsed = Number(v)
-  return Number.isFinite(parsed) ? parsed : 0
-}
 
 function formatKg(value: number) {
   return new Intl.NumberFormat('id-ID', { maximumFractionDigits: 0 }).format(value)
@@ -96,6 +93,7 @@ function rejectedStages(row: RekapTransaksi): RejectInfo[] {
   if (row.data_makloon_tjp?.status === 'ditolak' || row.data_makloon_mpp?.status === 'ditolak') {
     items.push({ stage: row.skema === 'MPP' ? 'makloon_kirim' : 'makloon', catatan: (row.data_makloon_tjp?.catatan_penolakan ?? row.data_makloon_mpp?.catatan_penolakan) ?? null })
   }
+  if (row.data_makloon_terima?.status === 'ditolak') items.push({ stage: 'makloon_terima', catatan: null })
   if (row.data_ub_jastasma?.status === 'ditolak') items.push({ stage: 'ub_jastasma', catatan: row.data_ub_jastasma.catatan_penolakan ?? null })
   if (row.data_pengadaan?.review_status === 'ditolak') items.push({ stage: 'pengadaan', catatan: null })
   if (row.data_pengadaan?.data_keuangan?.review_status === 'ditolak') items.push({ stage: 'keuangan', catatan: null })
@@ -156,7 +154,12 @@ const COLS_MAKLOON_MPP: SheetColumn<RekapTransaksi>[] = [
   { key: 'mk_kab', label: 'Makloon · Kabupaten', value: (r) => r.data_makloon_mpp?.kabupaten ?? null },
   { key: 'mk_tgl', label: 'Makloon · Tanggal Bongkar', value: (r) => tgl(r.data_makloon_mpp?.tanggal_bongkar) },
   { key: 'mk_kuantum', label: 'Makloon · Kuantum (kg)', value: (r) => num(r.data_makloon_mpp?.kuantum), render: (r) => r.data_makloon_mpp?.kuantum != null ? formatNumber(r.data_makloon_mpp.kuantum) : '-', align: 'right' },
-  { key: 'mk_kuantum_bongkar', label: 'Makloon · Kuantum Bongkar (kg)', value: (r) => num(r.data_makloon_mpp?.kuantum_bongkar), render: (r) => r.data_makloon_mpp?.kuantum_bongkar != null ? formatNumber(r.data_makloon_mpp.kuantum_bongkar) : '-', align: 'right' },
+]
+
+// Hasil timbang MPP milik tahap Makloon Terima, bukan Makloon Kirim -- jadi kolomnya pun
+// berdiri di grup sendiri dan baru terisi setelah tahap itu diterima.
+const COLS_MAKLOON_TERIMA: SheetColumn<RekapTransaksi>[] = [
+  { key: 'mt_kuantum_bongkar', label: 'Makloon Terima · Kuantum Bongkar (kg)', value: (r) => num(r.data_makloon_terima?.kuantum_bongkar), render: (r) => r.data_makloon_terima?.kuantum_bongkar != null ? formatNumber(r.data_makloon_terima.kuantum_bongkar) : '-', align: 'right' },
 ]
 
 const COLS_UB: SheetColumn<RekapTransaksi>[] = ([
@@ -201,6 +204,9 @@ const COLS_PENGADAAN: SheetColumn<RekapTransaksi>[] = [
   { key: 'po_harga', label: 'Pengadaan · Harga/kg', value: (r) => r.data_pengadaan?.harga != null ? formatMoney(r.data_pengadaan.harga) : null, mergeKey: poMerge, align: 'right' },
   { key: 'po_kuantum', label: 'Pengadaan · Total Kuantum (kg)', value: (r) => num(r.data_pengadaan?.total_kuantum), render: (r) => r.data_pengadaan?.total_kuantum != null ? formatNumber(r.data_pengadaan.total_kuantum) : '-', mergeKey: poMerge, align: 'right' },
   { key: 'po_total', label: 'Pengadaan · Total Harga', value: (r) => r.data_pengadaan?.total_harga != null ? formatMoney(r.data_pengadaan.total_harga) : null, mergeKey: poMerge, align: 'right' },
+  // Baca saja. Status Sergab menandai sergab sudah didokumentasikan, bukan syarat alur mana pun,
+  // jadi ia tidak ikut daftar field yang bisa diperbaiki lewat Edit Rekap.
+  { key: 'po_status', label: 'Pengadaan · Status Sergab', value: (r) => labelStatusSergab(r.data_pengadaan?.status), mergeKey: poMerge, filterable: true },
 ]
 
 const COLS_KEUANGAN: SheetColumn<RekapTransaksi>[] = [
@@ -244,6 +250,38 @@ const JUDUL: Record<string, { title: string; badge: string; sub: string }> = {
   admin: { title: 'Rekap Seluruh Tahap', badge: 'Rekap Admin', sub: 'Seluruh kolom lintas tahap, dipisah tabel TJP dan MPP.' },
 }
 
+/**
+ * Kolom sebuah tahap baru terisi setelah tahap itu DITERIMA.
+ *
+ * Selama masih draft/menunggu review/ditolak, angkanya belum final: role di tahap itu masih
+ * boleh menolak lalu mengedit, dan rekap yang menampilkannya akan berubah sendiri di bawah
+ * pembacanya. Yang paling terasa di admin -- satu-satunya role yang kolomnya menjangkau sampai
+ * Keuangan, jadi selalu ada tahap di depannya yang belum tentu selesai. Untuk role lain ini
+ * tidak berefek: kolomnya kumulatif sampai tahap sendiri, dan tahap sebelumnya pasti sudah
+ * diterima sebelum barisnya masuk rekap.
+ *
+ * Sel kosong dirender '-' seperti kolom kosong lainnya, dan `value` null membuat kolomnya juga
+ * kosong di ekspor CSV -- angka belum final tidak boleh ikut keluar ke berkas.
+ */
+function hanyaSetelahDiterima(
+  cols: SheetColumn<RekapTransaksi>[],
+  sudahDiterima: (r: RekapTransaksi) => boolean,
+): SheetColumn<RekapTransaksi>[] {
+  return cols.map((col) => ({
+    ...col,
+    value: (r: RekapTransaksi) => (sudahDiterima(r) ? col.value(r) : null),
+    render: (r: RekapTransaksi) => (sudahDiterima(r) ? (col.render ? col.render(r) : (col.value(r) ?? '-')) : '-'),
+  }))
+}
+
+const jpDiterima = (r: RekapTransaksi) => r.data_jemput_pangan?.status === 'diterima'
+const makloonDiterima = (r: RekapTransaksi) =>
+  (r.skema === 'TJP' ? r.data_makloon_tjp?.status : r.data_makloon_mpp?.status) === 'diterima'
+const makloonTerimaDiterima = (r: RekapTransaksi) => r.data_makloon_terima?.status === 'diterima'
+const ubDiterima = (r: RekapTransaksi) => r.data_ub_jastasma?.status === 'diterima'
+const poDiterima = (r: RekapTransaksi) => r.data_pengadaan?.review_status === 'diterima'
+const keuanganDiterima = (r: RekapTransaksi) => r.data_pengadaan?.data_keuangan?.review_status === 'diterima'
+
 /** Skema yang relevan untuk role: Jemput Pangan hanya ada di alur TJP. */
 function skemaUntukRole(role: string): ('TJP' | 'MPP')[] {
   return role === 'jemput_pangan' ? ['TJP'] : ['TJP', 'MPP']
@@ -261,11 +299,15 @@ function kolomUntukRoleSkema(role: string, skema: 'TJP' | 'MPP'): SheetColumn<Re
     : COLS_UMUM
   if (batas < 0) return colsUmum
   const stageCols = STAGE_ORDER.slice(0, batas + 1).flatMap((s): SheetColumn<RekapTransaksi>[] => {
-    if (s === 'jemput_pangan') return skema === 'TJP' ? COLS_JP : []
-    if (s === 'makloon') return skema === 'TJP' ? COLS_MAKLOON_TJP : COLS_MAKLOON_MPP
-    if (s === 'ub_jastasma') return COLS_UB
-    if (s === 'pengadaan') return COLS_PENGADAAN
-    return COLS_KEUANGAN
+    if (s === 'jemput_pangan') return skema === 'TJP' ? hanyaSetelahDiterima(COLS_JP, jpDiterima) : []
+    if (s === 'makloon') {
+      const kirim = hanyaSetelahDiterima(skema === 'TJP' ? COLS_MAKLOON_TJP : COLS_MAKLOON_MPP, makloonDiterima)
+      // MPP punya dua tahap makloon; hasil timbangnya menyusul dengan kunci diterima sendiri.
+      return skema === 'TJP' ? kirim : [...kirim, ...hanyaSetelahDiterima(COLS_MAKLOON_TERIMA, makloonTerimaDiterima)]
+    }
+    if (s === 'ub_jastasma') return hanyaSetelahDiterima(COLS_UB, ubDiterima)
+    if (s === 'pengadaan') return hanyaSetelahDiterima(COLS_PENGADAAN, poDiterima)
+    return hanyaSetelahDiterima(COLS_KEUANGAN, keuanganDiterima)
   })
   return [...colsUmum, ...stageCols]
 }
@@ -273,25 +315,17 @@ function kolomUntukRoleSkema(role: string, skema: 'TJP' | 'MPP'): SheetColumn<Re
 type KuantumSummaryItem = { key: string; label: string; value: number }
 
 /**
- * Semua kartu memakai KUANTUM BONGKAR (hasil timbang di makloon), bukan kuantum kirim,
- * supaya TJP dan MPP dihitung dengan ukuran yang sama dan boleh dijumlahkan. Kolomnya
- * beda per skema: TJP di data_makloon_tjp, MPP di data_makloon_mpp.
+ * Kartu mengikuti skema yang relevan untuk role (JP cuma punya TJP), bukan tahapnya.
+ *
+ * Semua angka memakai KUANTUM BONGKAR (hasil timbang di makloon), bukan kuantum kirim, supaya
+ * TJP dan MPP dihitung dengan ukuran yang sama dan boleh dijumlahkan.
  */
-function totalBongkar(rows: RekapTransaksi[], skema: 'TJP' | 'MPP') {
-  return rows.reduce((total, row) => {
-    if (row.skema !== skema) return total
-    const bongkar = skema === 'TJP' ? row.data_makloon_tjp?.kuantum_bongkar : row.data_makloon_mpp?.kuantum_bongkar
-    return total + numberValue(bongkar)
-  }, 0)
-}
-
-/** Kartu mengikuti skema yang relevan untuk role (JP cuma punya TJP), bukan tahapnya. */
-function kuantumSummaryUntukRole(role: string, rows: RekapTransaksi[]): KuantumSummaryItem[] {
+function kuantumSummaryUntukRole(role: string, ringkasan?: RingkasanRekap): KuantumSummaryItem[] {
   const daftarSkema = skemaUntukRole(role)
   const items: KuantumSummaryItem[] = daftarSkema.map((skema) => ({
     key: skema.toLowerCase(),
     label: `Total Kuantum ${skema}`,
-    value: totalBongkar(rows, skema),
+    value: skema === 'TJP' ? (ringkasan?.bongkar_tjp ?? 0) : (ringkasan?.bongkar_mpp ?? 0),
   }))
 
   if (items.length > 1) {
@@ -460,32 +494,77 @@ function payloadDariForm(row: RekapTransaksi, form: RekapEditForm) {
   }
 }
 
+/**
+ * Satu skema = satu tabel DENGAN halamannya sendiri.
+ *
+ * Halaman dipisah per tabel, bukan dibagi bersama: server mengurutkan seluruh blok TJP lebih
+ * dulu, jadi satu halaman bersama membuat tabel MPP kosong sampai baris TJP habis. Dengan 670
+ * TJP dan 200 baris per halaman itu berarti MPP baru muncul di halaman keempat -- yang di layar
+ * terbaca sebagai "MPP tidak ada sama sekali".
+ */
+function TabelSkema({
+  skema,
+  role,
+  judul,
+  renderRowActions,
+}: {
+  skema: 'TJP' | 'MPP'
+  role: string
+  judul: string
+  renderRowActions: (row: RekapTransaksi) => ReactNode
+}) {
+  const [page, setPage] = useState(1)
+  const { data, isLoading, isError, error } = useRekapTransaksi(skema, page)
+  const rows = data?.items ?? []
+  const meta = data?.meta
+  const columns = kolomUntukRoleSkema(role, skema)
+
+  return (
+    <section className="panel panel-pad">
+      <div className="toolbar-card mb-4">
+        <div>
+          <h2 className="section-title">Tabel {judul} — {skema}</h2>
+          <p className="page-subtitle">
+            Satu baris = satu transaksi {skema} · {columns.length} kolom · {rows.length} dari {meta?.total ?? 0} baris
+          </p>
+        </div>
+        <span className="badge badge-success">Hanya menampilkan data yang sudah terkunci</span>
+      </div>
+
+      <DataSpreadsheet
+        rows={rows}
+        columns={columns}
+        rowKey={(r) => r.id_transaksi}
+        namaFile={`rekap-${role || 'transaksi'}-${skema.toLowerCase()}`}
+        ambilSemuaBaris={() => ambilSemuaRekapTransaksi(skema)}
+        isLoading={isLoading}
+        isError={isError}
+        errorMessage={pesanKegagalan(error)}
+        emptyTitle={`Belum ada transaksi ${skema}`}
+        emptyCopy={`Data muncul setelah transaksi dibuat pada alur ${skema}.`}
+        renderRowActions={renderRowActions}
+      />
+
+      {meta && meta.last_page > 1 && <PaginationBar meta={meta} page={page} setPage={setPage} satuan={`transaksi ${skema}`} />}
+    </section>
+  )
+}
+
 export default function RekapTransaksiPage() {
   const { user } = useAuth()
   const role = user?.role.nama_role ?? ''
   const queryClient = useQueryClient()
-  const { data, isLoading, isError, error } = useRekapTransaksi()
+  // Kartu angka dihitung backend atas SELURUH data. Sebelumnya dijumlah dari baris yang sedang
+  // dimuat, sehingga begitu datanya lewat satu halaman angkanya berkurang tanpa tanda apa pun.
+  const { data: ringkasan } = useRingkasanRekap()
   const { data: makloonOptions = [] } = useMakloonOptions()
-  const rows = data?.items ?? []
   const [editing, setEditing] = useState<RekapTransaksi | null>(null)
   const [editForm, setEditForm] = useState<RekapEditForm | null>(null)
   const [dokumenTransaksi, setDokumenTransaksi] = useState<string | null>(null)
-  // Baris yang lolos pencarian/filter tiap tabel, dilaporkan balik oleh DataSpreadsheet.
-  // Kartu total dihitung dari sini supaya angkanya selalu sama dengan yang terlihat.
-  const [barisTampil, setBarisTampil] = useState<Record<string, RekapTransaksi[]>>({})
 
   const judul = JUDUL[role] ?? { title: 'Rekap Transaksi', badge: 'Rekap', sub: 'Rekap data transaksi lintas tahap.' }
   const daftarSkema = skemaUntukRole(role)
 
-  // Sebelum tabel sempat melapor (render pertama), pakai seluruh baris skema itu supaya
-  // kartu tidak sempat berkedip 0.
-  const rowsTampil = daftarSkema.flatMap(
-    (skema) => barisTampil[skema] ?? rows.filter((r) => r.skema === skema),
-  )
-
-  // Semua baris kini pasti terkunci (disaring backend), jadi kartu "terkunci" tak lagi
-  // bermakna. Jumlah PO unik lebih informatif sekarang setelah kolom No. PO digabung.
-  const totalPo = new Set(rows.map((r) => r.data_pengadaan?.no_po).filter(Boolean)).size
 
   const updateMutation = useMutation({
     mutationFn: ({ row, form }: { row: RekapTransaksi; form: RekapEditForm }) =>
@@ -494,8 +573,8 @@ export default function RekapTransaksiPage() {
       toast.success(`Transaksi ${vars.row.id_transaksi} diperbarui.`)
       setEditing(null)
       setEditForm(null)
-      // Akses sementara hangus setelah satu kali simpan (backend menutupnya), jadi data
-      // user harus disegarkan supaya tombol Edit ikut hilang tanpa perlu reload.
+      // Jatah berkurang tiap simpan (backend yang mengurangi), jadi data user harus
+      // disegarkan supaya sisa jatah -- dan tombol Edit saat habis -- ikut menyesuaikan.
       queryClient.invalidateQueries({ queryKey: ['me'] })
       queryClient.invalidateQueries({ queryKey: ['rekap-transaksi'] })
       queryClient.invalidateQueries({ queryKey: ['transaksi-list'] })
@@ -520,9 +599,10 @@ export default function RekapTransaksiPage() {
     setEditForm(formDariRekap(row))
   }
 
-  // Admin selalu; role lain hanya selama admin membukakan aksesnya di Kelola User, dan
+  // Admin selalu; role lain hanya selama jatah simpan dari admin masih tersisa, dan
   // hanya untuk blok data miliknya sendiri (dibatasi lagi di backend).
-  const aksesSementara = role !== 'admin' && !!user?.akses_edit_dibuka_at
+  const sisaJatah = user?.akses_edit_sisa ?? 0
+  const aksesSementara = role !== 'admin' && sisaJatah > 0
   const bolehEditBaris = (row: RekapTransaksi) =>
     role === 'admin' || (aksesSementara && dimilikiUser(row, role, user?.id))
 
@@ -576,53 +656,28 @@ export default function RekapTransaksiPage() {
       <div className="relative mx-auto -mt-16 max-w-6xl space-y-6 px-6 pb-16">
         {aksesSementara && (
           <div className="alert-warning">
-            Admin membuka akses perbaikan untuk Anda. Tekan <strong>Edit</strong> pada transaksi yang salah, perbaiki data atau ganti fotonya, lalu simpan — akses langsung terkunci kembali setelah satu kali simpan.
+            Admin membuka akses perbaikan untuk Anda: <strong>sisa {sisaJatah} kali simpan</strong>. Tekan <strong>Edit</strong> pada transaksi yang salah, perbaiki data atau ganti fotonya, lalu simpan — tiap penyimpanan memakai satu jatah, dan data terkunci kembali begitu jatahnya habis.
           </div>
         )}
 
         <div className="stats-grid">
-          <div className="stat-card"><div className="stat-label">Total transaksi</div><div className="stat-value">{rows.length}</div></div>
-          <div className="stat-card"><div className="stat-label">TJP</div><div className="stat-value">{rows.filter((r) => r.skema === 'TJP').length}</div></div>
-          <div className="stat-card"><div className="stat-label">MPP</div><div className="stat-value">{rows.filter((r) => r.skema === 'MPP').length}</div></div>
-          <div className="stat-card"><div className="stat-label">Total PO</div><div className="stat-value">{totalPo}</div></div>
+          <div className="stat-card"><div className="stat-label">Total transaksi</div><div className="stat-value">{ringkasan ? ringkasan.jumlah_tjp + ringkasan.jumlah_mpp : '-'}</div></div>
+          <div className="stat-card"><div className="stat-label">TJP</div><div className="stat-value">{ringkasan?.jumlah_tjp ?? '-'}</div></div>
+          <div className="stat-card"><div className="stat-label">MPP</div><div className="stat-value">{ringkasan?.jumlah_mpp ?? '-'}</div></div>
+          <div className="stat-card"><div className="stat-label">Total PO</div><div className="stat-value">{ringkasan?.total_po ?? '-'}</div></div>
         </div>
 
-        {daftarSkema.map((skema) => {
-          const rowsSkema = rows.filter((r) => r.skema === skema)
-          const columns = kolomUntukRoleSkema(role, skema)
+        {daftarSkema.map((skema) => (
+          <TabelSkema
+            key={skema}
+            skema={skema}
+            role={role}
+            judul={judul.title}
+            renderRowActions={renderRowActions}
+          />
+        ))}
 
-          return (
-            <section key={skema} className="panel panel-pad">
-              <div className="toolbar-card mb-4">
-                <div>
-                  <h2 className="section-title">Tabel {judul.title} — {skema}</h2>
-                  <p className="page-subtitle">Satu baris = satu transaksi {skema} · {columns.length} kolom · {rowsSkema.length} baris</p>
-                </div>
-                <span className="badge badge-success">Hanya menampilkan data yang sudah terkunci</span>
-              </div>
-
-              <DataSpreadsheet
-                rows={rowsSkema}
-                columns={columns}
-                rowKey={(r) => r.id_transaksi}
-                namaFile={`rekap-${role || 'transaksi'}-${skema.toLowerCase()}`}
-                isLoading={isLoading}
-                isError={isError}
-                errorMessage={pesanKegagalan(error)}
-                emptyTitle={`Belum ada transaksi ${skema}`}
-                emptyCopy={`Data muncul setelah transaksi dibuat pada alur ${skema}.`}
-                renderRowActions={renderRowActions}
-                onFilteredChange={(hasil) => setBarisTampil((prev) => ({ ...prev, [skema]: hasil }))}
-              />
-            </section>
-          )
-        })}
-
-        <KuantumSummary
-          items={kuantumSummaryUntukRole(role, rowsTampil)}
-          jumlahTampil={rowsTampil.length}
-          jumlahTotal={rows.length}
-        />
+        <KuantumSummary items={kuantumSummaryUntukRole(role, ringkasan)} />
       </div>
 
 
@@ -649,18 +704,14 @@ export default function RekapTransaksiPage() {
   )
 }
 
-function KuantumSummary({ items, jumlahTampil, jumlahTotal }: { items: KuantumSummaryItem[]; jumlahTampil: number; jumlahTotal: number }) {
+function KuantumSummary({ items }: { items: KuantumSummaryItem[] }) {
   if (items.length === 0) return null
 
   return (
     <div className="mt-4 rounded-lg border border-border bg-surface px-4 py-3">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <span className="section-title">Total keseluruhan kuantum</span>
-        <span className="text-xs font-semibold text-slate-500">
-          {jumlahTampil === jumlahTotal
-            ? 'Kuantum bongkar dari seluruh baris rekap'
-            : `Kuantum bongkar mengikuti filter tabel — ${jumlahTampil} dari ${jumlahTotal} baris`}
-        </span>
+        <span className="text-xs font-semibold text-slate-500">Kuantum bongkar seluruh data rekap, bukan halaman ini saja</span>
       </div>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {items.map((item) => (
@@ -707,7 +758,7 @@ function RekapEditModal({ row, form, role, makloonOptions, isSaving, onChange, o
               <p className="mt-1 text-sm text-white/70">
                 {isAdmin
                   ? 'Koreksi data terkunci tanpa mengulang alur transaksi.'
-                  : 'Akses dibuka Admin dan berlaku sekali: setelah disimpan, data terkunci kembali.'}
+                  : 'Akses dibuka Admin dengan jatah terbatas: tiap penyimpanan memakai satu jatah.'}
               </p>
             </div>
             <div className="flex gap-2">
@@ -802,7 +853,10 @@ function RekapEditModal({ row, form, role, makloonOptions, isSaving, onChange, o
 }
 
 function DokumenAdminPanel({ row, role }: { row: RekapTransaksi; role: string }) {
-  const [busyKey, setBusyKey] = useState<string | null>(null)
+  const queryClient = useQueryClient()
+  // Satu request untuk SELURUH thumbnail panel ini (jenis_foto -> thumb_url); slot yang belum
+  // punya foto memang tidak muncul di daftar dan kartunya tampil sebagai "Belum diunggah".
+  const { data: tersimpan = [] } = useDokumenTransaksi(row.id_transaksi)
   const isAdmin = role === 'admin'
   const semuaField = [
     ...(row.skema === 'TJP' ? DOKUMEN_TJP : DOKUMEN_MPP),
@@ -815,48 +869,25 @@ function DokumenAdminPanel({ row, role }: { row: RekapTransaksi; role: string })
 
   if (fields.length === 0) return null
 
-  const bukaDokumen = (field: DokumenField) => {
-    setBusyKey(`open:${field.key}`)
-    return bukaTabBaru(async () => {
-      const { data } = await api.get<{ url: string }>(`/api/transaksi/${encodeURIComponent(row.id_transaksi)}/foto/${field.key}`)
-      return data.url
-    })
-      .catch((err: unknown) => toast.error(pesanKegagalan(err) ?? 'Dokumen belum tersedia.'))
-      .finally(() => setBusyKey(null))
-  }
+  // Thumbnail baru datang dari daftar, jadi tiap penggantian/penghapusan menyegarkannya.
+  const segarkan = () => queryClient.invalidateQueries({ queryKey: ['dokumen-transaksi', row.id_transaksi] })
 
-  const gantiDokumen = async (field: DokumenField, file: File | null) => {
-    if (!file) return
-    setBusyKey(`upload:${field.key}`)
-    try {
-      const formData = new FormData()
-      formData.append('jenis_foto', field.key)
-      formData.append('foto', file)
-      // `role` adalah override khusus admin (backend menolaknya dari role lain); untuk
-      // non-admin biarkan backend memakai role pengunggah itu sendiri.
-      if (isAdmin) formData.append('role', field.role)
-      await api.post(`/api/transaksi/${encodeURIComponent(row.id_transaksi)}/foto`, formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      })
-      toast.success(`${field.label} diperbarui.`)
-    } catch (err) {
-      toast.error(pesanKegagalan(err) ?? 'Gagal mengganti dokumen.')
-    } finally {
-      setBusyKey(null)
-    }
+  const gantiDokumen = async (field: DokumenField, file: File) => {
+    const formData = new FormData()
+    formData.append('jenis_foto', field.key)
+    formData.append('foto', file)
+    // `role` adalah override khusus admin (backend menolaknya dari role lain); untuk
+    // non-admin biarkan backend memakai role pengunggah itu sendiri.
+    if (isAdmin) formData.append('role', field.role)
+    await api.post(`/api/transaksi/${encodeURIComponent(row.id_transaksi)}/foto`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+    await segarkan()
   }
 
   const hapusDokumen = async (field: DokumenField) => {
-    if (!window.confirm(`Hapus ${field.label} dari transaksi ${row.id_transaksi}?`)) return
-    setBusyKey(`delete:${field.key}`)
-    try {
-      await api.delete(`/api/transaksi/${encodeURIComponent(row.id_transaksi)}/foto/${field.key}`)
-      toast.success(`${field.label} dihapus.`)
-    } catch (err) {
-      toast.error(pesanKegagalan(err) ?? 'Gagal menghapus dokumen.')
-    } finally {
-      setBusyKey(null)
-    }
+    await api.delete(`/api/transaksi/${encodeURIComponent(row.id_transaksi)}/foto/${field.key}`)
+    await segarkan()
   }
 
   return (
@@ -866,33 +897,24 @@ function DokumenAdminPanel({ row, role }: { row: RekapTransaksi; role: string })
           <h3 className="text-sm font-extrabold text-primary-dark">Dokumen {row.skema}</h3>
           <p className="mt-1 text-xs text-slate-500">
             {isAdmin
-              ? 'Buka/download ulang, ganti file, atau hapus dokumen transaksi.'
-              : 'Buka/download ulang atau ganti file dokumen tahap Anda.'}
+              ? 'Lihat/download ulang, ganti file, atau hapus dokumen transaksi.'
+              : 'Lihat/download ulang atau ganti file dokumen tahap Anda.'}
           </p>
         </div>
         <span className="rounded-full bg-primary-tint px-3 py-1 text-[0.68rem] font-bold text-primary">{fields.length} slot dokumen</span>
       </div>
-      <div className="grid gap-3 md:grid-cols-2">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {fields.map((field) => (
-          <div key={`${field.role}:${field.key}`} className="rounded-lg border border-border bg-surface px-3 py-3">
-            <div className="mb-3 flex items-center justify-between gap-3">
-              <span className="text-xs font-bold text-primary-dark">{field.label}</span>
-              <span className="rounded bg-white px-2 py-0.5 text-[0.65rem] font-bold uppercase text-slate-500">{field.role.replaceAll('_', ' ')}</span>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <button type="button" className="btn btn-ghost border border-border bg-white px-3 py-1.5 text-xs" disabled={busyKey === `open:${field.key}`} onClick={() => bukaDokumen(field)}>
-                {busyKey === `open:${field.key}` ? 'Membuka...' : 'Buka/Download'}
-              </button>
-              <label className="btn btn-ghost cursor-pointer border border-primary/20 bg-primary-tint px-3 py-1.5 text-xs text-primary">
-                {busyKey === `upload:${field.key}` ? 'Mengunggah...' : 'Ganti'}
-                <input type="file" accept="image/jpeg,image/png" className="hidden" disabled={busyKey === `upload:${field.key}`} onChange={(event) => gantiDokumen(field, event.target.files?.[0] ?? null)} />
-              </label>
-              {/* Hapus foto tetap admin-only (route DELETE-nya juga role:admin). */}
-              <button type="button" hidden={!isAdmin} className="btn btn-ghost border border-danger/20 bg-danger-bg px-3 py-1.5 text-xs text-danger" disabled={busyKey === `delete:${field.key}`} onClick={() => hapusDokumen(field)}>
-                {busyKey === `delete:${field.key}` ? 'Menghapus...' : 'Hapus'}
-              </button>
-            </div>
-          </div>
+          <KartuFoto
+            key={`${field.role}:${field.key}`}
+            label={field.label}
+            badge={field.role.replaceAll('_', ' ')}
+            thumbUrl={tersimpan.find((f) => f.jenis_foto === field.key)?.thumb_url ?? null}
+            ambilAsli={(opts) => ambilFotoTransaksi(row.id_transaksi, field.key, opts)}
+            onGanti={(file) => gantiDokumen(field, file)}
+            // Hapus foto tetap admin-only (route DELETE-nya juga role:admin).
+            onHapus={isAdmin ? () => hapusDokumen(field) : undefined}
+          />
         ))}
       </div>
     </section>

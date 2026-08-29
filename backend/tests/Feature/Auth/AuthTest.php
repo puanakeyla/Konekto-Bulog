@@ -40,6 +40,92 @@ class AuthTest extends TestCase
             ->assertStatus(422);
     }
 
+    public function test_login_gagal_berulang_dikunci_setelah_lima_percobaan(): void
+    {
+        $user = $this->buatUser();
+
+        for ($i = 0; $i < 5; $i++) {
+            $this->postJson('/api/login', ['username' => $user->username, 'password' => 'salah'])
+                ->assertStatus(422);
+        }
+
+        $this->postJson('/api/login', ['username' => $user->username, 'password' => 'salah'])
+            ->assertStatus(429)
+            ->assertJsonPath('message', fn (string $pesan) => str_contains($pesan, 'Terlalu banyak percobaan'));
+
+        // Password yang benar pun ikut ditolak selama terkunci -- itulah gunanya.
+        $this->postJson('/api/login', ['username' => $user->username, 'password' => 'password'])
+            ->assertStatus(429);
+    }
+
+    /**
+     * Jaminan bahwa pembatas ini tidak mengganggu pemakaian normal: berapa pun banyaknya
+     * orang masuk bersamaan (kantor berbagi satu IP publik), tidak ada yang terkunci karena
+     * yang dihitung cuma kegagalan.
+     */
+    public function test_login_berhasil_tidak_memakai_jatah_percobaan(): void
+    {
+        $user = $this->buatUser();
+
+        for ($i = 0; $i < 10; $i++) {
+            $this->postJson('/api/login', ['username' => $user->username, 'password' => 'password'])
+                ->assertOk();
+        }
+    }
+
+    public function test_login_berhasil_mengembalikan_jatah_yang_sudah_terpakai(): void
+    {
+        $user = $this->buatUser();
+
+        for ($i = 0; $i < 4; $i++) {
+            $this->postJson('/api/login', ['username' => $user->username, 'password' => 'salah'])->assertStatus(422);
+        }
+
+        $this->postJson('/api/login', ['username' => $user->username, 'password' => 'password'])->assertOk();
+
+        // Jatah sudah bersih lagi: empat kegagalan berikutnya belum boleh mengunci.
+        for ($i = 0; $i < 4; $i++) {
+            $this->postJson('/api/login', ['username' => $user->username, 'password' => 'salah'])->assertStatus(422);
+        }
+    }
+
+    public function test_akun_yang_terkunci_tidak_menyeret_akun_lain(): void
+    {
+        $korban = $this->buatUser('makloon', ['username' => 'akun-dihajar']);
+        $lain = $this->buatUser('makloon', ['username' => 'akun-lain']);
+
+        for ($i = 0; $i < 6; $i++) {
+            $this->postJson('/api/login', ['username' => $korban->username, 'password' => 'salah']);
+        }
+
+        $this->postJson('/api/login', ['username' => $korban->username, 'password' => 'password'])->assertStatus(429);
+        $this->postJson('/api/login', ['username' => $lain->username, 'password' => 'password'])->assertOk();
+    }
+
+    /**
+     * Kolom username bercollation case-insensitive di MySQL, jadi tanpa penyaringan ulang
+     * "ADMIN" akan cocok dengan baris "admin". Untuk kredensial, "hampir sama" tidak cukup.
+     */
+    public function test_login_menolak_username_yang_beda_besar_kecil_hurufnya(): void
+    {
+        $user = $this->buatUser('makloon', ['username' => 'operator1']);
+
+        $this->postJson('/api/login', ['username' => 'Operator1', 'password' => 'password'])->assertStatus(422);
+        $this->postJson('/api/login', ['username' => 'OPERATOR1', 'password' => 'password'])->assertStatus(422);
+
+        // Ejaan yang persis tetap boleh masuk.
+        $this->postJson('/api/login', ['username' => $user->username, 'password' => 'password'])->assertOk();
+    }
+
+    public function test_login_menolak_password_yang_beda_besar_kecil_hurufnya(): void
+    {
+        $user = $this->buatUser('makloon', ['password' => bcrypt('RahasiaKu')]);
+
+        $this->postJson('/api/login', ['username' => $user->username, 'password' => 'rahasiaku'])->assertStatus(422);
+        $this->postJson('/api/login', ['username' => $user->username, 'password' => 'RAHASIAKU'])->assertStatus(422);
+        $this->postJson('/api/login', ['username' => $user->username, 'password' => 'RahasiaKu'])->assertOk();
+    }
+
     public function test_login_menolak_akun_nonaktif(): void
     {
         $user = $this->buatUser('makloon', ['is_active' => false]);

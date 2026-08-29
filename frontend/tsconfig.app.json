@@ -17,10 +17,6 @@
     "moduleDetection": "force",
     "noEmit": true,
     "jsx": "react-jsx",
-    "paths": {
-      "sonner": ["./src/lib/sonner.tsx"]
-    },
-
     /* Linting */
     "noUnusedLocals": true,
     "noUnusedParameters": true,

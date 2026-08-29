@@ -1,0 +1,417 @@
+<?php
+
+namespace App\Services\Pengolahan;
+
+use App\Models\NomorUrutTransaksi;
+use App\Models\RiwayatPenolakan;
+use App\Models\TransaksiPengolahan;
+use App\Models\User;
+use App\Services\AuditLogService;
+use App\Services\NotifikasiService;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\DB;
+
+/**
+ * Padanan TransaksiStageService untuk rantai pengolahan.
+ *
+ * Sengaja kelas terpisah, bukan menggeneralisasi TransaksiStageService: yang terakhir memegang
+ * alur SerGab yang sedang berjalan, dan menyentuhnya berarti mempertaruhkan produksi sekaligus
+ * memaksimalkan konflik merge ke main. Ongkosnya duplikasi terkendali di berkas ini saja.
+ */
+class PengolahanStageService
+{
+    public function __construct(private AuditLogService $auditLog, private NotifikasiService $notifikasi)
+    {
+    }
+
+    /**
+     * Transaksi dimulai dari GUDANG-nya, bukan makloon: satu pengolahan adalah "isi gudang Y",
+     * dan makloon asalnya baru diketahui saat tahap pertama diisi (lihat setMakloon).
+     */
+    public function createTransaksi(User $creator, string $skema, int $gudangId): TransaksiPengolahan
+    {
+        if (! in_array($skema, PengolahanStages::SKEMA, true)) {
+            abort(422, 'Skema pengolahan tidak dikenal.');
+        }
+
+        // Admin tidak ikut mengerjakan rantai pengolahan -- perannya membaca & memperbaiki
+        // lewat Rekap Pengolahan, bukan menjalankan tahapnya.
+        if ($creator->role->nama_role !== PengolahanStages::PEMBUAT[$skema]) {
+            abort(403, 'Role Anda tidak dapat memulai skema pengolahan ini.');
+        }
+
+        return DB::transaction(function () use ($creator, $skema, $gudangId) {
+            $firstStage = PengolahanStages::stageAt($skema, 0);
+
+            $transaksi = TransaksiPengolahan::create([
+                'id_pengolahan' => $this->generateId($skema),
+                'skema' => $skema,
+                'gudang_id' => $gudangId,
+                'current_stage' => $firstStage['role'],
+                'status_keseluruhan' => 'berjalan',
+                'created_by' => $creator->id,
+            ]);
+
+            $this->auditLog->logPengolahan($creator, 'buat_pengolahan', $transaksi->id_pengolahan, [
+                'skema' => $skema,
+                'gudang_id' => $gudangId,
+            ]);
+
+            KerjaanPengolahan::segarkan($transaksi->id_pengolahan);
+
+            return $transaksi;
+        });
+    }
+
+    /**
+     * Makloon ditetapkan oleh pengisi tahap PERTAMA (Gudang di GDG, UB Jastasma di UBJ) dan
+     * setelah itu hanya bisa dibaca -- tahap kedua mencocokkan, bukan menentukan ulang.
+     */
+    public function setMakloon(TransaksiPengolahan $transaksi, string $role, ?int $makloonUserId): void
+    {
+        if ($makloonUserId === null) {
+            return;
+        }
+
+        $tahapPertama = PengolahanStages::stageAt($transaksi->skema, 0)['role'];
+
+        if ($role !== $tahapPertama || $transaksi->makloon_user_id === $makloonUserId) {
+            return;
+        }
+
+        $transaksi->makloon_user_id = $makloonUserId;
+        $transaksi->save();
+    }
+
+    public function saveDraft(TransaksiPengolahan $transaksi, User $actor, string $role, array $data): Model
+    {
+        [$index, $stage, $record] = $this->recordUntukDiisi($transaksi, $actor, $role);
+
+        return DB::transaction(function () use ($record, $data, $transaksi, $actor, $role, $stage, $index) {
+            unset($index, $stage);
+
+            $record->fill($data);
+            $record->transaksi_pengolahan_id = $transaksi->id_pengolahan;
+            $record->status = 'draft';
+            $record->submitted_by = null;
+            $record->submitted_at = null;
+            $record->save();
+
+            $this->auditLog->logPengolahan($actor, 'simpan_draft_pengolahan', $transaksi->id_pengolahan, [
+                'stage' => $role,
+                'skema' => $transaksi->skema,
+            ]);
+
+            KerjaanPengolahan::segarkan($transaksi->id_pengolahan);
+
+            return $record;
+        });
+    }
+
+    /**
+     * Kolom yang WAJIB terisi sebelum tahap dikirim ke tahap berikutnya. Kirim tidak sama dengan
+     * simpan draft: draft memang boleh setengah jadi, yang dikirim tidak -- begitu diteruskan,
+     * tahap berikutnya tidak punya cara memperbaikinya sendiri.
+     *
+     * Layar juga menahannya, tapi itu cuma sopan santun: satu request langsung ke endpoint
+     * melewatinya, dan sebelum gerbang ini ada, LHPK kosong bisa masuk antrean review.
+     */
+    private const WAJIB_KIRIM = [
+        'gudang' => [
+            'tanggal_masuk_gudang' => 'Tanggal masuk gudang',
+            'kuantum_hgl' => 'Kuantum HGL',
+            'plat_mobil' => 'Plat mobil',
+            'supir' => 'Supir',
+        ],
+        'ub_jastasma' => [
+            'no_lhpk' => 'Nomor LHPK',
+            'tanggal_lhpk' => 'Tanggal LHPK',
+            'kuantum_gabah_diolah' => 'Kuantum gabah yang sudah diolah',
+            'kuantum_beras_hgl' => 'Kuantum beras HGL',
+            'broken' => 'Broken',
+            'menir' => 'Menir',
+            'katul' => 'Katul',
+            'ka1' => 'KA1',
+            'ka2' => 'KA2',
+            'ka3' => 'KA3',
+            'reject' => 'Reject',
+        ],
+    ];
+
+    public function submitStage(TransaksiPengolahan $transaksi, User $actor, string $role, array $data): Model
+    {
+        [$index, $stage, $record] = $this->recordUntukDiisi($transaksi, $actor, $role);
+        unset($stage);
+
+        return DB::transaction(function () use ($record, $data, $transaksi, $actor, $index, $role) {
+            $record->fill($data);
+            $this->assertLengkap($transaksi, $record, $role);
+            $record->transaksi_pengolahan_id = $transaksi->id_pengolahan;
+            $record->status = 'menunggu_review';
+            $record->submitted_by = $actor->id;
+            $record->submitted_at = now();
+            $record->save();
+
+            $this->auditLog->logPengolahan($actor, 'submit_stage_pengolahan', $transaksi->id_pengolahan, [
+                'stage' => $role,
+                'skema' => $transaksi->skema,
+            ]);
+
+            $next = PengolahanStages::stageAt($transaksi->skema, $index + 1);
+            if ($next) {
+                $transaksi->current_stage = $next['role'];
+                $transaksi->save();
+
+                $this->kirimNotifikasi(
+                    [$next['role']],
+                    $actor,
+                    'dikirim',
+                    'Pengolahan dikirim',
+                    "Pengolahan {$transaksi->id_pengolahan} dikirim dari {$role} ke {$next['role']}.",
+                    $transaksi,
+                    ['stage' => $role, 'next_stage' => $next['role']],
+                );
+            }
+
+            KerjaanPengolahan::segarkan($transaksi->id_pengolahan);
+
+            return $record;
+        });
+    }
+
+    /**
+     * Diperiksa pada RECORD yang sudah terisi data kiriman, bukan pada kiriman itu sendiri:
+     * kolom yang sudah tersimpan di draft lalu tidak ikut dikirim ulang tetap terhitung ada.
+     */
+    private function assertLengkap(TransaksiPengolahan $transaksi, Model $record, string $role): void
+    {
+        $kurang = [];
+
+        // Makloon ditetapkan pengisi tahap pertama; tanpa itu baris ini tidak punya pemilik dan
+        // tidak akan pernah muncul di neraca gabah mana pun.
+        if ($role === PengolahanStages::stageAt($transaksi->skema, 0)['role'] && ! $transaksi->makloon_user_id) {
+            $kurang[] = 'Makloon asal';
+        }
+
+        foreach (self::WAJIB_KIRIM[$role] ?? [] as $kolom => $label) {
+            if (trim((string) $record->{$kolom}) === '') {
+                $kurang[] = $label;
+            }
+        }
+
+        if ($kurang !== []) {
+            abort(422, 'Belum lengkap: '.implode(', ', $kurang).'.');
+        }
+    }
+
+    public function terima(TransaksiPengolahan $transaksi, User $actor): Model
+    {
+        [$prevStage, $record] = $this->pendingReview($transaksi, $actor);
+
+        return DB::transaction(function () use ($transaksi, $actor, $prevStage, $record) {
+            $record->status = 'diterima';
+            $record->locked_at = now();
+            $record->locked_by = $actor->id;
+            $record->save();
+
+            $this->auditLog->logPengolahan($actor, 'terima_pengolahan', $transaksi->id_pengolahan, [
+                'stage' => $prevStage['role'],
+                'review_stage' => $transaksi->current_stage,
+            ]);
+
+            $this->kirimNotifikasi(
+                [$prevStage['role']],
+                $actor,
+                'diterima',
+                'Data pengolahan diterima',
+                "Data {$prevStage['role']} pengolahan {$transaksi->id_pengolahan} diterima.",
+                $transaksi,
+                ['stage' => $prevStage['role']],
+            );
+
+            KerjaanPengolahan::segarkan($transaksi->id_pengolahan);
+
+            return $record;
+        });
+    }
+
+    public function tolak(TransaksiPengolahan $transaksi, User $actor, string $catatan): Model
+    {
+        [$prevStage, $record] = $this->pendingReview($transaksi, $actor);
+
+        return DB::transaction(function () use ($transaksi, $actor, $catatan, $prevStage, $record) {
+            RiwayatPenolakan::create([
+                'pengolahan_id' => $transaksi->id_pengolahan,
+                'tahap' => $prevStage['role'],
+                'catatan' => $catatan,
+                'ditolak_oleh' => $actor->id,
+                'ditolak_pada' => now(),
+            ]);
+
+            $record->status = 'ditolak';
+            $record->catatan_penolakan = $catatan;
+            $record->save();
+
+            $this->auditLog->logPengolahan($actor, 'tolak_pengolahan', $transaksi->id_pengolahan, [
+                'stage' => $prevStage['role'],
+                'review_stage' => $transaksi->current_stage,
+                'catatan' => $catatan,
+            ]);
+
+            $this->kirimNotifikasi(
+                [$prevStage['role']],
+                $actor,
+                'ditolak',
+                'Data pengolahan ditolak',
+                "Data {$prevStage['role']} pengolahan {$transaksi->id_pengolahan} ditolak: {$catatan}",
+                $transaksi,
+                ['stage' => $prevStage['role'], 'catatan' => $catatan],
+            );
+
+            $transaksi->current_stage = $prevStage['role'];
+            $transaksi->save();
+
+            KerjaanPengolahan::segarkan($transaksi->id_pengolahan);
+
+            return $record;
+        });
+    }
+
+    /**
+     * Record tahap yang sedang boleh diisi role ini, beserta posisinya di sequence.
+     *
+     * @return array{0:int,1:array,2:Model}
+     */
+    private function recordUntukDiisi(TransaksiPengolahan $transaksi, User $actor, string $role): array
+    {
+        if ($transaksi->current_stage !== $role) {
+            abort(422, 'Transaksi bukan sedang berada di tahap ini.');
+        }
+
+        $index = PengolahanStages::indexOfRole($transaksi->skema, $role);
+        if ($index === null) {
+            abort(422, 'Tahap tidak dikenal untuk skema ini.');
+        }
+
+        $stage = PengolahanStages::stageAt($transaksi->skema, $index);
+        $this->assertRole($actor, $stage['role']);
+
+        // Tahap kedua baru boleh diisi setelah tahap pertama DITERIMA -- tanpa ini, penolakan
+        // di tahap pertama bisa dilangkahi begitu saja.
+        if ($index > 0) {
+            $prev = PengolahanStages::stageAt($transaksi->skema, $index - 1);
+            $prevRecord = $prev['model']::where('transaksi_pengolahan_id', $transaksi->id_pengolahan)->first();
+            if (! $prevRecord || $prevRecord->status !== 'diterima') {
+                abort(422, 'Data tahap sebelumnya belum diterima.');
+            }
+        }
+
+        $record = $stage['model']::firstOrNew(['transaksi_pengolahan_id' => $transaksi->id_pengolahan]);
+
+        if (in_array($record->status, ['menunggu_review', 'diterima'], true)) {
+            abort(422, 'Data tahap ini sudah dikirim dan tidak dapat diubah.');
+        }
+
+        return [$index, $stage, $record];
+    }
+
+    /**
+     * Tahap sebelumnya yang datanya sedang menunggu review oleh pemegang tahap saat ini.
+     *
+     * @return array{0:array,1:Model}
+     */
+    private function pendingReview(TransaksiPengolahan $transaksi, User $actor): array
+    {
+        $index = PengolahanStages::indexOfRole($transaksi->skema, $transaksi->current_stage);
+        if ($index === null || $index === 0) {
+            abort(422, 'Tidak ada data tahap sebelumnya untuk direview.');
+        }
+
+        $this->assertRole($actor, PengolahanStages::stageAt($transaksi->skema, $index)['role']);
+
+        $prevStage = PengolahanStages::stageAt($transaksi->skema, $index - 1);
+        if (($prevStage['model'] ?? null) === null) {
+            abort(422, 'Tidak ada data tahap sebelumnya untuk direview.');
+        }
+
+        $record = $prevStage['model']::where('transaksi_pengolahan_id', $transaksi->id_pengolahan)->first();
+
+        if (! $record || $record->status !== 'menunggu_review') {
+            abort(422, 'Tidak ada data yang menunggu review saat ini.');
+        }
+
+        return [$prevStage, $record];
+    }
+
+    /**
+     * Tanpa jalan pintas admin: route terima/tolak pengolahan memang tidak memasang
+     * middleware role (tahapnya ditentukan data, bukan URL), jadi di sinilah admin
+     * dihentikan dari ikut mengerjakan alur.
+     */
+    private function assertRole(User $actor, string $expectedRole): void
+    {
+        if ($actor->role->nama_role !== $expectedRole) {
+            abort(403, 'Anda tidak berwenang melakukan aksi ini.');
+        }
+    }
+
+    /**
+     * Notifikasi rantai pengolahan menumpang kolom notifikasi.transaksi_id (string tanpa FK),
+     * jadi penanda modul WAJIB ikut supaya klik notifikasi tidak mengarah ke halaman transaksi
+     * SerGab yang id-nya kebetulan berformat mirip.
+     */
+    private function kirimNotifikasi(array $roles, User $actor, string $tipe, string $judul, string $pesan, TransaksiPengolahan $transaksi, array $data = []): void
+    {
+        $this->notifikasi->kirimKeRole($roles, $actor, $tipe, $judul, $pesan, $transaksi->id_pengolahan, [
+            ...$data,
+            'modul' => 'pengolahan',
+            'skema' => $transaksi->skema,
+        ]);
+    }
+
+    /**
+     * Memakai counter atomik yang sama dengan alur SerGab (lihat TransaksiStageService::
+     * generateIdTransaksi untuk alasan panjangnya). lockForUpdate menahan baris counter sampai
+     * insert commit, jadi dua request bersamaan tidak bisa membaca angka yang sama.
+     */
+    private function generateId(string $skema): string
+    {
+        $month = (int) now()->format('m');
+        $year = (int) now()->format('Y');
+
+        NomorUrutTransaksi::insertOrIgnore([
+            'skema' => $skema,
+            'tahun' => $year,
+            'bulan' => $month,
+            'urut' => 0,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $counter = NomorUrutTransaksi::where('skema', $skema)
+            ->where('tahun', $year)
+            ->where('bulan', $month)
+            ->lockForUpdate()
+            ->first();
+
+        // Nomor diturunkan dari id TERBESAR yang benar-benar ada, bukan dari nilai counter yang
+        // terus naik. Baris counter tetap dipakai -- tapi sebagai KUNCI, supaya dua permintaan
+        // bersamaan tidak membaca angka yang sama (yang kedua menunggu transaksi pertama commit,
+        // lalu membaca MAX yang sudah memuat baris baru itu).
+        //
+        // Bedanya dengan alur SerGab (yang sengaja TIDAK memakai ulang nomor): di sini yang boleh
+        // dihapus hanyalah pengolahan yang masih KOSONG -- lihat PengolahanController::destroy().
+        // Tidak ada data, dokumen, atau MO yang pernah menunjuk nomor itu, jadi memakainya ulang
+        // tidak menimpa jejak apa pun. Tanpa ini, tiap kali seseorang membuka form lalu
+        // membatalkannya, penomoran bulan itu meninggalkan lubang permanen.
+        $suffix = sprintf('/%02d/%04d/%s', $month, $year, $skema);
+        $terakhir = TransaksiPengolahan::where('id_pengolahan', 'like', '%'.$suffix)
+            ->orderByDesc('id_pengolahan')
+            ->value('id_pengolahan');
+
+        $counter->urut = ($terakhir ? (int) substr($terakhir, 0, 5) : 0) + 1;
+        $counter->save();
+
+        return sprintf('%05d/%02d/%04d/%s', $counter->urut, $month, $year, $skema);
+    }
+}

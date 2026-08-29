@@ -13,6 +13,7 @@ class RiwayatPenolakan extends Model
 
     protected $fillable = [
         'transaksi_id',
+        'pengolahan_id',
         'tahap',
         'catatan',
         'ditolak_oleh',

@@ -5,7 +5,7 @@ namespace Tests\Feature\Transaksi;
 use App\Models\DataJemputPangan;
 use App\Models\DataKeuangan;
 use App\Models\DataMakloonMpp;
-use App\Models\DataMakloonTjp;
+use App\Models\DataMakloonTerima;
 use App\Models\DataPengadaan;
 use App\Models\DataUbJastasma;
 use App\Models\PoDetail;
@@ -63,6 +63,32 @@ class RekapTerkunciTest extends TestCase
         $this->assertNotContains($belumTerkunci->id_transaksi, $ids);
     }
 
+    /**
+     * per_page dijepit 1-500 di server. Ekspor CSV memanggil endpoint ini halaman demi halaman;
+     * tanpa batas atas, satu `?per_page=100000` menarik seluruh rekap beserta relasinya ke memori
+     * PHP sekaligus -- dan yang gagal bukan cuma permintaan itu, melainkan proses php-fpm-nya.
+     */
+    public function test_per_page_rekap_dijepit_antara_1_dan_500(): void
+    {
+        $this->buatTjpDenganJpTerkunci();
+
+        Sanctum::actingAs($this->jemputPangan);
+
+        $this->getJson('/api/transaksi/rekap?per_page=100000')
+            ->assertOk()
+            ->assertJsonPath('meta.per_page', 500);
+
+        // Batas bawah sama pentingnya: per_page=0 membuat LengthAwarePaginator membagi nol.
+        $this->getJson('/api/transaksi/rekap?per_page=0')
+            ->assertOk()
+            ->assertJsonPath('meta.per_page', 1);
+
+        // Nilai wajar tetap dihormati apa adanya.
+        $this->getJson('/api/transaksi/rekap?per_page=25')
+            ->assertOk()
+            ->assertJsonPath('meta.per_page', 25);
+    }
+
     public function test_makloon_hanya_melihat_transaksi_yang_tahap_makloon_sudah_terkunci(): void
     {
         // TJP: JP terkunci tapi Makloon belum -> tidak boleh muncul untuk role makloon.
@@ -100,6 +126,28 @@ class RekapTerkunciTest extends TestCase
         $this->assertNotContains($belumApaApa->id_transaksi, $ids);
     }
 
+    /**
+     * Tabel rekap dipisah per skema di layar, tapi halamannya dipotong server dan urutannya
+     * menaruh seluruh blok TJP lebih dulu. Tanpa penyaring skema, tabel MPP kosong sampai baris
+     * TJP habis -- dengan 670 TJP dan 200 baris per halaman itu berarti tiga halaman penuh tanpa
+     * satu pun MPP, yang di layar terbaca sebagai "MPP tidak ada sama sekali".
+     */
+    public function test_rekap_dapat_disaring_per_skema(): void
+    {
+        $tjp = $this->buatTjpDenganJpTerkunci();
+        $mpp = $this->buatMppDenganMakloonTerkunci();
+
+        Sanctum::actingAs($this->buatUser('admin'));
+
+        $hanyaMpp = collect($this->getJson('/api/transaksi/rekap?skema=MPP')->assertOk()->json('data'));
+        $this->assertSame(['MPP'], $hanyaMpp->pluck('skema')->unique()->all());
+        $this->assertContains($mpp->id_transaksi, $hanyaMpp->pluck('id_transaksi')->all());
+
+        $hanyaTjp = collect($this->getJson('/api/transaksi/rekap?skema=TJP')->assertOk()->json('data'));
+        $this->assertSame(['TJP'], $hanyaTjp->pluck('skema')->unique()->all());
+        $this->assertContains($tjp->id_transaksi, $hanyaTjp->pluck('id_transaksi')->all());
+    }
+
     public function test_ub_jastasma_hanya_melihat_transaksi_yang_tahap_ub_sudah_terkunci(): void
     {
         $terkunci = $this->buatMppDenganUbTerkunci();
@@ -117,7 +165,38 @@ class RekapTerkunciTest extends TestCase
         $this->assertNotContains($belumTerkunci->id_transaksi, $ids);
     }
 
-    public function test_urutan_rekap_adalah_skema_lalu_kelompok_po_berdasar_id_minimum_lalu_id_transaksi(): void
+    /**
+     * Keluhan yang dilaporkan: "PO 25-27, di bawahnya 30, eh tiba-tiba ada 24."
+     *
+     * Blok PO dulu diurutkan menurut id_transaksi terkecil anggotanya, yang tidak punya
+     * hubungan apa pun dengan tanggal -- jadi blok tersusun menurut urutan pembuatan, bukan
+     * waktu kejadian. Sekarang kuncinya tanggal TERAWAL dalam satu PO.
+     */
+    public function test_blok_po_tersusun_menurut_tanggal_terawal_anggotanya(): void
+    {
+        // Dibuat dengan urutan yang SENGAJA berlawanan dengan urutan tanggalnya: kalau kunci
+        // urutnya masih id terkecil, hasilnya persis keluhan di atas (25-27, 30, lalu 24).
+        $x1 = $this->buatTjpDenganJpTerkunci('2026-07-25');
+        $x2 = $this->buatTjpDenganJpTerkunci('2026-07-27');
+        $y = $this->buatTjpDenganJpTerkunci('2026-07-30');
+        $z = $this->buatTjpDenganJpTerkunci('2026-07-24');
+
+        $this->pasangPo('PO-X', [$x1->id_transaksi, $x2->id_transaksi]);
+        $this->pasangPo('PO-Y', [$y->id_transaksi]);
+        $this->pasangPo('PO-Z', [$z->id_transaksi]);
+
+        Sanctum::actingAs($this->buatUser('admin'));
+        $ids = collect($this->getJson('/api/transaksi/rekap')->assertOk()->json('data'))->pluck('id_transaksi')->all();
+
+        $this->assertSame([
+            $z->id_transaksi,   // PO-Z, 24 Jul -- blok paling awal walau dibuat paling akhir
+            $x1->id_transaksi,  // PO-X, 25 Jul
+            $x2->id_transaksi,  // PO-X, 27 Jul -- anggota kedua, tetap berdampingan
+            $y->id_transaksi,   // PO-Y, 30 Jul
+        ], $ids);
+    }
+
+    public function test_urutan_rekap_adalah_skema_lalu_kelompok_po_lalu_id_transaksi(): void
     {
         // Enam TJP dan satu MPP, semuanya terkunci di tahap awal supaya lolos filter admin.
         $tjpA = $this->buatTjpDenganJpTerkunci();
@@ -251,7 +330,7 @@ class RekapTerkunciTest extends TestCase
     }
 
     /** TJP dengan tahap Jemput Pangan sudah diterima Makloon (= terkunci). */
-    private function buatTjpDenganJpTerkunci(): Transaksi
+    private function buatTjpDenganJpTerkunci(string $tanggalKirim = '2026-07-09'): Transaksi
     {
         $transaksi = $this->stageService->createTransaksi($this->jemputPangan);
 
@@ -264,7 +343,7 @@ class RekapTerkunciTest extends TestCase
             'kecamatan' => 'Kecamatan',
             'kabupaten' => 'Kabupaten',
             'makloon_user_id' => $this->makloon->id,
-            'tanggal_kirim' => '2026-07-09',
+            'tanggal_kirim' => $tanggalKirim,
             'kuantum' => 100,
             'jarak_ke_makloon_km' => 5,
         ]);
@@ -291,8 +370,11 @@ class RekapTerkunciTest extends TestCase
             'jarak_ke_makloon_km' => 7,
         ]);
 
-        // Tahap "Makloon Terima" (MPP) dikerjakan makloon sendiri, bukan UB Jastasma.
+        // Makloon Terima kini tahap berdata sendiri: makloon menerima data Kirim, MENGISI hasil
+        // timbang, lalu mengirimnya -- baru setelah itu UB Jastasma yang memeriksanya.
         $this->stageService->terima($transaksi->fresh(), $this->makloon);
+        $this->stageService->submitStage($transaksi->fresh(), $this->makloon, 'makloon_terima', DataMakloonTerima::class, ['kuantum_bongkar' => 980]);
+        $this->stageService->terima($transaksi->fresh(), $this->ubJastasma);
 
         return $transaksi->fresh();
     }

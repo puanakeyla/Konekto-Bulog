@@ -1,19 +1,47 @@
 import { useEffect, useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { toast } from 'sonner'
+import { toast } from '../../lib/toast'
 import api from '../../lib/api'
 import { apiErrorMessage } from '../../lib/apiError'
-import { formatMoney, formatNumber } from '../../lib/poFormat'
+import { labelFoto } from '../../lib/fotoDokumen'
+import { LABEL_STATUS_SERGAB, formatMoney, formatNumber } from '../../lib/poFormat'
+import { ambilFotoPo, ambilFotoTransaksi, useDokumenPo, useDokumenTransaksi } from '../../hooks/useFotoTransaksi'
 import type { PoItem } from '../../hooks/usePoList'
 import ConfirmDialog from '../ConfirmDialog'
+import KartuFoto from '../KartuFoto'
 import PoProgressInfo from './PoProgressInfo'
 import PoTransaksiRows from './PoTransaksiRows'
 
-const statusOptions: { value: PoItem['status']; label: string }[] = [
-  { value: 'lengkap', label: 'Lengkap' },
-  { value: 'kwitansi_belum_upload', label: 'Kwitansi belum upload' },
-  { value: 'foto_belum_lengkap', label: 'Foto belum lengkap' },
-  { value: 'dibatalkan', label: 'Dibatalkan' },
+// 'proses' sengaja tidak ditawarkan: itu nilai awal, bukan pilihan.
+const statusOptions: { value: PoItem['status']; label: string }[] = (
+  ['lengkap', 'kwitansi_belum_upload', 'foto_belum_lengkap', 'dibatalkan'] as const
+).map((value) => ({ value, label: LABEL_STATUS_SERGAB[value] }))
+
+const fotoSergab = [
+  'foto_barang',
+  'foto_serah_terima',
+  'foto_bukti_pembayaran',
+  'foto_surat_pernyataan_usia_panen',
+] as const
+
+type SlotFotoSergab = { jenisFoto: string; role: 'makloon' | 'jemput_pangan'; label: string }
+
+// Slot foto mengikuti nama collection milik skemanya. MPP: bukti pembayaran diunggah Makloon
+// sebagai foto_pembayaran. TJP: kwitansi itu diunggah Jemput Pangan sebagai foto_kwitansi --
+// skema TJP tidak punya collection foto_pembayaran sama sekali, jadi memaksa slot mencari
+// foto_pembayaran membuat kartunya selalu "Belum diunggah" padahal fotonya sudah ada.
+const fotoSergabTransaksiMpp: SlotFotoSergab[] = [
+  { jenisFoto: 'foto_gabah', role: 'makloon', label: 'Foto Barang' },
+  { jenisFoto: 'foto_serah_terima', role: 'makloon', label: 'Foto Serah Terima' },
+  { jenisFoto: 'foto_pembayaran', role: 'makloon', label: 'Foto Bukti Pembayaran' },
+  { jenisFoto: 'foto_surat_pernyataan', role: 'makloon', label: 'Foto Surat Pernyataan' },
+]
+
+const fotoSergabTransaksiTjp: SlotFotoSergab[] = [
+  { jenisFoto: 'foto_gabah', role: 'jemput_pangan', label: 'Foto Barang' },
+  { jenisFoto: 'foto_serah_terima', role: 'jemput_pangan', label: 'Foto Serah Terima' },
+  { jenisFoto: 'foto_kwitansi', role: 'jemput_pangan', label: 'Foto Bukti Pembayaran' },
+  { jenisFoto: 'foto_surat_pernyataan', role: 'jemput_pangan', label: 'Foto Surat Pernyataan' },
 ]
 
 /**
@@ -23,7 +51,7 @@ const statusOptions: { value: PoItem['status']; label: string }[] = [
  * Tidak ada unggah foto di sini -- bukti foto sudah dikumpulkan di tahap-tahap transaksi
  * (Jemput Pangan / Makloon / UB Jastasma) dan bisa dilihat lewat baris transaksi di bawah.
  */
-export default function PoStatusSergabForm({ po, onChanged }: { po: PoItem; onChanged?: () => void }) {
+export default function PoStatusSergabForm({ po, transaksiIdDokumen, onChanged }: { po: PoItem; transaksiIdDokumen?: string; onChanged?: () => void }) {
   const queryClient = useQueryClient()
   const [statusPo, setStatusPo] = useState<PoItem['status']>(po.status === 'proses' ? 'lengkap' : po.status)
   const [confirmSimpan, setConfirmSimpan] = useState(false)
@@ -70,6 +98,8 @@ export default function PoStatusSergabForm({ po, onChanged }: { po: PoItem; onCh
       {errorMessage && <div className="alert-danger mb-3">{errorMessage}</div>}
       <PoTransaksiRows po={po} />
 
+      <PanelFotoSergab po={po} transaksiIdDokumen={transaksiIdDokumen} />
+
       <label className="block">
         <span className="label">Status Sergab</span>
         <select className="input" value={statusPo} onChange={(e) => setStatusPo(e.target.value as PoItem['status'])}>
@@ -97,5 +127,90 @@ export default function PoStatusSergabForm({ po, onChanged }: { po: PoItem; onCh
         onConfirm={() => mutation.mutate()}
       />
     </form>
+  )
+}
+
+function skemaFotoTransaksi(po: PoItem): 'TJP' | 'MPP' {
+  // Seluruh anggota PO dijamin punya skema sama: kunci pengelompokan PO (PoGroupingService)
+  // memastikan transaksi dalam satu PO sejenis.
+  return (po.po_detail[0]?.skema ?? 'TJP') === 'MPP' ? 'MPP' : 'TJP'
+}
+
+function PanelFotoSergab({ po, transaksiIdDokumen }: { po: PoItem; transaksiIdDokumen?: string }) {
+  const queryClient = useQueryClient()
+  const { data: dokumenPo = [] } = useDokumenPo(po.id)
+  const { data: dokumenTransaksi = [] } = useDokumenTransaksi(transaksiIdDokumen)
+  const path = `/api/po/${po.id}/foto`
+  const thumbPoByJenis = new Map(dokumenPo.map((item) => [item.jenis_foto, item.thumb_url]))
+  const thumbTransaksiByJenis = new Map(dokumenTransaksi.map((item) => [item.jenis_foto, item.thumb_url]))
+  const segarkanPo = async () => {
+    await queryClient.invalidateQueries({ queryKey: ['dokumen-po', po.id] })
+    await queryClient.invalidateQueries({ queryKey: ['po-list'] })
+  }
+
+  const segarkanTransaksi = async () => {
+    await queryClient.invalidateQueries({ queryKey: ['dokumen-transaksi', transaksiIdDokumen] })
+    await queryClient.invalidateQueries({ queryKey: ['transaksi-detail', transaksiIdDokumen] })
+    await queryClient.invalidateQueries({ queryKey: ['po-list'] })
+  }
+
+  const memakaiDokumenTransaksi = !!transaksiIdDokumen
+  const slots = memakaiDokumenTransaksi
+    ? (skemaFotoTransaksi(po) === 'MPP' ? fotoSergabTransaksiMpp : fotoSergabTransaksiTjp)
+    : null
+
+  return (
+    <section className="my-4 border-y border-border py-4">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <h3 className="text-sm font-extrabold text-primary-dark">Foto Sergab</h3>
+          <p className="mt-1 text-xs text-slate-500">Lengkapi, ganti, atau hapus foto sebelum Status Sergab disimpan.</p>
+        </div>
+        <span className="rounded-full bg-primary-tint px-3 py-1 text-[0.68rem] font-bold text-primary">4 foto</span>
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2">
+        {slots?.map(({ jenisFoto, role, label }) => (
+          <KartuFoto
+            key={jenisFoto}
+            label={label}
+            badge="Sergab"
+            thumbUrl={thumbTransaksiByJenis.get(jenisFoto) ?? null}
+            ambilAsli={(opts) => ambilFotoTransaksi(transaksiIdDokumen!, jenisFoto, opts)}
+            onGanti={async (file) => {
+              const body = new FormData()
+              body.append('jenis_foto', jenisFoto)
+              body.append('role', role)
+              body.append('foto', file)
+              await api.post(`/api/transaksi/${encodeURIComponent(transaksiIdDokumen!)}/foto`, body, { headers: { 'Content-Type': 'multipart/form-data' } })
+              await segarkanTransaksi()
+            }}
+            onHapus={async () => {
+              await api.delete(`/api/transaksi/${encodeURIComponent(transaksiIdDokumen!)}/foto/${jenisFoto}`)
+              await segarkanTransaksi()
+            }}
+          />
+        ))}
+        {!memakaiDokumenTransaksi && fotoSergab.map((jenisFoto) => (
+          <KartuFoto
+            key={jenisFoto}
+            label={labelFoto(jenisFoto)}
+            badge="Sergab"
+            thumbUrl={thumbPoByJenis.get(jenisFoto) ?? null}
+            ambilAsli={(opts) => ambilFotoPo(po.id, jenisFoto, opts)}
+            onGanti={async (file) => {
+              const body = new FormData()
+              body.append('jenis_foto', jenisFoto)
+              body.append('foto', file)
+              await api.post(path, body, { headers: { 'Content-Type': 'multipart/form-data' } })
+              await segarkanPo()
+            }}
+            onHapus={async () => {
+              await api.delete(`${path}/${jenisFoto}`)
+              await segarkanPo()
+            }}
+          />
+        ))}
+      </div>
+    </section>
   )
 }

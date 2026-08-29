@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
+import InputPassword from '../components/InputPassword'
+import { apiErrorMessage } from '../lib/apiError'
 import logoSergab from '../assets/logo-sergab.svg'
 
 export default function LoginPage() {
@@ -18,8 +20,13 @@ export default function LoginPage() {
     try {
       await login(username, password)
       navigate('/dashboard')
-    } catch {
-      setError('Username atau password salah.')
+    } catch (err) {
+      // 429 = terkunci sementara karena percobaan gagal beruntun. Tanpa cabang ini pengguna
+      // cuma melihat "password salah" lalu mencoba terus, padahal yang dibutuhkan menunggu.
+      const status = (err as { response?: { status?: number } } | null)?.response?.status
+      setError(status === 429
+        ? apiErrorMessage(err, 'Terlalu banyak percobaan masuk. Coba lagi beberapa saat lagi.')
+        : 'Username atau password salah.')
     } finally {
       setLoading(false)
     }
@@ -104,9 +111,7 @@ export default function LoginPage() {
 
             <div className="mt-4">
               <label className="label">Password</label>
-              <input
-                type="password"
-                className="input"
+              <InputPassword
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
               />

@@ -10,7 +10,7 @@ export type NotifikasiItem = {
   data: Record<string, unknown> | null
   read_at: string | null
   created_at: string
-  actor: { id: number; username: string; role: string | null; nama_maklon: string | null; nama_gudang: string | null } | null
+  actor: { id: number; username: string; role: string | null; nama_maklon: string | null } | null
 }
 
 export function useNotifikasi(enabled = true) {

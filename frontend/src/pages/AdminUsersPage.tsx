@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react'
 import { Navigate } from 'react-router-dom'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { toast } from 'sonner'
+import { toast } from '../lib/toast'
+import InputPassword from '../components/InputPassword'
 import api from '../lib/api'
 import { useAuth } from '../hooks/useAuth'
 import { useAdminRoles, useAdminUsers, type AdminUser } from '../hooks/useAdminUsers'
@@ -14,7 +15,6 @@ type UserForm = {
   password_confirmation: string
   role_id: string
   nama_maklon: string
-  nama_gudang: string
   kecamatan: string
   kabupaten: string
   is_active: boolean
@@ -33,7 +33,6 @@ const emptyForm: UserForm = {
   password_confirmation: '',
   role_id: '',
   nama_maklon: '',
-  nama_gudang: '',
   kecamatan: '',
   kabupaten: '',
   is_active: true,
@@ -49,7 +48,7 @@ function errorMessage(error: unknown) {
 export default function AdminUsersPage() {
   const { user } = useAuth()
   const [page, setPage] = useState(1)
-  const { data: usersResult, isLoading: loadingUsers } = useAdminUsers(page)
+  const { data: usersResult, isLoading: loadingUsers } = useAdminUsers(page, 10)
   const { data: roles, isLoading: loadingRoles } = useAdminRoles()
   const queryClient = useQueryClient()
   const users = usersResult?.items ?? []
@@ -66,7 +65,6 @@ export default function AdminUsersPage() {
     [form.role_id, roles],
   )
   const isMakloon = selectedRole?.nama_role === 'makloon'
-  const isGudang = selectedRole?.nama_role === 'gudang'
 
   const saveMutation = useMutation({
     mutationFn: () => {
@@ -74,7 +72,6 @@ export default function AdminUsersPage() {
         username: form.username,
         role_id: Number(form.role_id),
         nama_maklon: isMakloon ? form.nama_maklon : null,
-        nama_gudang: isGudang ? form.nama_gudang : null,
         kecamatan: form.kecamatan || null,
         kabupaten: form.kabupaten || null,
         is_active: form.is_active,
@@ -107,14 +104,17 @@ export default function AdminUsersPage() {
     onError: (err) => toast.error(errorMessage(err)),
   })
 
-  // Buka/kunci akses perbaikan data terkunci milik satu user. Dipakai saat petugas salah
-  // input (mis. foto keliru): akses dibuka, user memperbaiki bagiannya sendiri, lalu
-  // tertutup sendiri setelah satu kali simpan.
+  // Beri jatah perbaikan data terkunci milik satu user. Dipakai saat petugas salah input
+  // (mis. foto keliru): admin menentukan BERAPA KALI simpan yang diizinkan, user memperbaiki
+  // bagiannya sendiri, dan jatahnya berkurang tiap penyimpanan sampai habis. `sisa: 0`
+  // mengunci kembali seketika.
   const aksesMutation = useMutation({
-    mutationFn: ({ target, buka }: { target: AdminUser; buka: boolean }) =>
-      api.patch(`/api/admin/users/${target.id}/akses-edit`, { buka }),
-    onSuccess: (_data, { target, buka }) => {
-      toast.success(`Akses edit ${target.username} ${buka ? 'dibuka' : 'dikunci'}.`)
+    mutationFn: ({ target, sisa }: { target: AdminUser; sisa: number }) =>
+      api.patch(`/api/admin/users/${target.id}/akses-edit`, { sisa }),
+    onSuccess: (_data, { target, sisa }) => {
+      toast.success(sisa > 0
+        ? `${target.username} diberi jatah ${sisa} kali simpan.`
+        : `Akses edit ${target.username} dikunci.`)
       queryClient.invalidateQueries({ queryKey: ['admin-users'] })
     },
     onError: (err) => toast.error(errorMessage(err)),
@@ -153,7 +153,6 @@ export default function AdminUsersPage() {
       password_confirmation: '',
       role_id: String(target.role_id),
       nama_maklon: target.nama_maklon ?? '',
-      nama_gudang: target.nama_gudang ?? '',
       kecamatan: target.kecamatan ?? '',
       kabupaten: target.kabupaten ?? '',
       is_active: target.is_active,
@@ -234,20 +233,6 @@ export default function AdminUsersPage() {
               </label>
             )}
 
-            {isGudang && (
-              <label className="block @md:col-span-2">
-                <span className="label">Nama Gudang</span>
-                <input
-                  required
-                  className="input"
-                  value={form.nama_gudang}
-                  onChange={(event) =>
-                    setForm((prev) => ({ ...prev, nama_gudang: event.target.value }))
-                  }
-                />
-              </label>
-            )}
-
             <label className="block">
               <span className="label">Kecamatan</span>
               <input
@@ -270,10 +255,8 @@ export default function AdminUsersPage() {
               <span className="label">
                 Password {editing ? 'baru' : ''}
               </span>
-              <input
+              <InputPassword
                 required={!editing}
-                type="password"
-                className="input"
                 value={form.password}
                 onChange={(event) => setForm((prev) => ({ ...prev, password: event.target.value }))}
               />
@@ -281,10 +264,8 @@ export default function AdminUsersPage() {
 
             <label className="block">
               <span className="label">Konfirmasi Password</span>
-              <input
+              <InputPassword
                 required={!editing || form.password !== ''}
-                type="password"
-                className="input"
                 value={form.password_confirmation}
                 onChange={(event) =>
                   setForm((prev) => ({ ...prev, password_confirmation: event.target.value }))
@@ -400,24 +381,25 @@ export default function AdminUsersPage() {
                   <th className="px-5 py-3 text-xs font-bold uppercase tracking-wide">Role</th>
                   <th className="px-5 py-3 text-xs font-bold uppercase tracking-wide">Nama Mitra/Gudang</th>
                   <th className="px-5 py-3 text-xs font-bold uppercase tracking-wide">Status</th>
+                  <th className="px-5 py-3 text-center text-xs font-bold uppercase tracking-wide">Jatah Edit Rekap</th>
                   <th className="px-5 py-3 text-center text-xs font-bold uppercase tracking-wide">Aksi</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border bg-white">
                 {loadingUsers && Array.from({ length: 4 }, (_, i) => (
                   <tr key={i}>
-                    <td className="px-5 py-4" colSpan={5}><Skeleton className="h-4 w-full" /></td>
+                    <td className="px-5 py-4" colSpan={6}><Skeleton className="h-4 w-full" /></td>
                   </tr>
                 ))}
                 {!loadingUsers && users.length === 0 && (
                   <tr>
-                    <td className="px-5 py-4 text-gray-400" colSpan={5}>
+                    <td className="px-5 py-4 text-gray-400" colSpan={6}>
                       Belum ada user.
                     </td>
                   </tr>
                 )}
                 {users.map((target) => {
-                  const aksesTerbuka = target.akses_edit_dibuka_at !== null
+                  const aksesTerbuka = target.akses_edit_sisa > 0
                   const isAdminRow = target.role.nama_role === 'admin'
 
                   return (
@@ -426,7 +408,7 @@ export default function AdminUsersPage() {
                   <tr key={target.id} className={aksesTerbuka ? 'bg-danger-bg/60' : 'transition-colors hover:bg-surface'}>
                     <td className="px-5 py-3 font-semibold text-primary-dark">{target.username}</td>
                     <td className="px-5 py-3 capitalize text-gray-600">{target.role.nama_role.replaceAll('_', ' ')}</td>
-                    <td className="px-5 py-3 text-gray-600">{target.nama_maklon ?? target.nama_gudang ?? '-'}</td>
+                    <td className="px-5 py-3 text-gray-600">{target.nama_maklon ?? '-'}</td>
                     <td className="px-5 py-3">
                       <span
                         className={
@@ -440,25 +422,15 @@ export default function AdminUsersPage() {
                       </span>
                     </td>
                     <td className="px-5 py-3">
+                      <JatahEditAkses
+                        target={target}
+                        isAdminRow={isAdminRow}
+                        isPending={aksesMutation.isPending}
+                        onSimpan={(sisa) => aksesMutation.mutate({ target, sisa })}
+                      />
+                    </td>
+                    <td className="px-5 py-3">
                       <div className="flex justify-center gap-2">
-                        {!isAdminRow && (
-                          <button
-                            type="button"
-                            disabled={aksesMutation.isPending}
-                            title={aksesTerbuka
-                              ? 'Kunci kembali akses perbaikan user ini'
-                              : 'Izinkan user ini memperbaiki data tahapnya sendiri yang sudah terkunci'}
-                            className={
-                              'rounded-lg px-3 py-1.5 text-xs font-bold transition-colors disabled:cursor-not-allowed disabled:opacity-50 ' +
-                              (aksesTerbuka
-                                ? 'border border-danger bg-danger text-white hover:bg-danger/90'
-                                : 'border border-border bg-white text-primary-dark hover:border-primary hover:bg-primary-tint')
-                            }
-                            onClick={() => aksesMutation.mutate({ target, buka: !aksesTerbuka })}
-                          >
-                            {aksesTerbuka ? 'Kunci Akses' : 'Buka Akses'}
-                          </button>
-                        )}
                         <button
                           type="button"
                           className="rounded-lg border border-primary/20 bg-primary-tint px-3 py-1.5 text-xs font-bold text-primary transition-colors hover:border-primary hover:bg-primary hover:text-white"
@@ -490,14 +462,83 @@ export default function AdminUsersPage() {
             <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border bg-white px-5 py-4 text-sm text-muted">
               <span>Menampilkan {meta.from ?? 0}-{meta.to ?? 0} dari {meta.total} user</span>
               <div className="flex items-center gap-2">
-                <button className="btn btn-ghost" disabled={page <= 1} onClick={() => setPage((prev) => Math.max(1, prev - 1))}>Preview</button>
+                <button className="btn btn-ghost" disabled={page <= 1} onClick={() => setPage((prev) => Math.max(1, prev - 1))}>Sebelumnya</button>
                 <span className="badge">Halaman {meta.current_page}/{meta.last_page}</span>
-                <button className="btn btn-ghost" disabled={page >= meta.last_page} onClick={() => setPage((prev) => prev + 1)}>Next</button>
+                <button className="btn btn-ghost" disabled={page >= meta.last_page} onClick={() => setPage((prev) => prev + 1)}>Berikutnya</button>
               </div>
             </div>
           )}
         </section>
       </div>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * Jatah edit rekap: berapa kali user boleh menyimpan perbaikan data yang sudah terkunci.
+ * Dulu ini saklar sekali pakai -- satu koreksi lalu terkunci lagi -- padahal petugas yang
+ * salah input biasanya punya beberapa baris yang harus dibenahi sekaligus.
+ *
+ * Angkanya bebas diketik (backend membatasi 0-99); tombol pintas 1/3/5 ada karena itulah
+ * yang dipakai sehari-hari.
+ */
+function JatahEditAkses({
+  target,
+  isAdminRow,
+  isPending,
+  onSimpan,
+}: {
+  target: AdminUser
+  isAdminRow: boolean
+  isPending: boolean
+  onSimpan: (sisa: number) => void
+}) {
+  const [draft, setDraft] = useState('3')
+
+  if (isAdminRow) {
+    return <p className="text-center text-xs text-gray-400">Akses penuh</p>
+  }
+
+  const jumlah = Math.min(99, Math.max(1, Number(draft) || 1))
+
+  return (
+    <div className="flex flex-col items-center gap-2">
+      {target.akses_edit_sisa > 0 && (
+        <span className="inline-flex rounded-full bg-danger-bg px-2.5 py-1 text-xs font-bold text-danger">
+          Sisa {target.akses_edit_sisa}x simpan
+        </span>
+      )}
+      <div className="flex items-center gap-1.5">
+        <input
+          type="number"
+          min={1}
+          max={99}
+          aria-label={`Jumlah perubahan untuk ${target.username}`}
+          className="input h-8 w-16 px-2 py-1 text-center text-xs"
+          value={draft}
+          onChange={(event) => setDraft(event.target.value)}
+        />
+        <button
+          type="button"
+          disabled={isPending}
+          title={`Izinkan ${target.username} menyimpan ${jumlah} kali perbaikan pada data tahapnya sendiri`}
+          className="rounded-lg border border-border bg-white px-3 py-1.5 text-xs font-bold text-primary-dark transition-colors hover:border-primary hover:bg-primary-tint disabled:cursor-not-allowed disabled:opacity-50"
+          onClick={() => onSimpan(jumlah)}
+        >
+          Beri Akses
+        </button>
+        {target.akses_edit_sisa > 0 && (
+          <button
+            type="button"
+            disabled={isPending}
+            title="Kunci kembali sekarang, sisa jatah hangus"
+            className="rounded-lg border border-danger bg-danger px-3 py-1.5 text-xs font-bold text-white transition-colors hover:bg-danger/90 disabled:cursor-not-allowed disabled:opacity-50"
+            onClick={() => onSimpan(0)}
+          >
+            Kunci
+          </button>
+        )}
       </div>
     </div>
   )

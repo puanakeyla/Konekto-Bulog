@@ -22,6 +22,8 @@ export type TransaksiListItem = {
   makloon_kecamatan: string | null
   makloon_kabupaten: string | null
   data_makloon_mpp?: { id_pemasok: string; tanggal_bongkar: string; kuantum: string; kuantum_bongkar?: string | null; status?: string; catatan_penolakan?: string | null } | null
+  /** Tahap Makloon Terima (MPP): hasil timbang setelah bongkar, punya siklus statusnya sendiri. */
+  data_makloon_terima?: { kuantum_bongkar?: string | null; status?: string; catatan_penolakan?: string | null; locked_at?: string | null } | null
   data_makloon_tjp?: { tanggal_bongkar: string; kuantum_bongkar: string; status?: string; catatan_penolakan?: string | null } | null
   data_jemput_pangan?: { id_pemasok: string; makloon_user_id: number; tanggal_kirim?: string | null; status?: string; catatan_penolakan?: string | null } | null
   data_ub_jastasma?: { status?: string; catatan_penolakan?: string | null } | null
@@ -52,14 +54,17 @@ export function useTransaksiList(page = 1, perPage = 20, siapPo = false) {
  * Menyaring di browser hanya menyaring halaman yang kebetulan terbuka, sehingga jumlah baris
  * tidak akan cocok dengan angka pada chip filter begitu antreannya lebih dari satu halaman.
  */
-export function useAntreanTransaksi(page: number, skema: string, kerjaan: string, perPage = 25, search = '', pengadaanTahap = 'semua') {
+export function useAntreanTransaksi(page: number, skema: string, kerjaan: string, perPage = 25, search = '', pengadaanTahap = 'semua', perMakloon = false) {
   return useQuery({
-    queryKey: ['antrean-transaksi', page, skema, kerjaan, perPage, search, pengadaanTahap],
+    queryKey: ['antrean-transaksi', page, skema, kerjaan, perPage, search, pengadaanTahap, perMakloon],
     queryFn: async () => {
       const { data } = await api.get<{ data: TransaksiListItem[]; meta: PaginationMeta }>('/api/transaksi', {
         params: {
           page,
           per_page: perPage,
+          // Dengan per_makloon, `per_page` menghitung MAKLOON dan meta.total pun jumlah makloon.
+          // Satu makloon selalu utuh dalam satu halaman, jadi akordionnya tidak pernah kembar.
+          ...(perMakloon ? { per_makloon: 1 } : {}),
           ...(skema === 'semua' ? {} : { skema }),
           ...(kerjaan === 'semua' ? {} : { kerjaan }),
           ...(pengadaanTahap === 'semua' ? {} : { pengadaan_tahap: pengadaanTahap }),
