@@ -19,6 +19,7 @@ class RoleSeeder extends Seeder
             'operasi',
             'gudang',
             'admin',
+            'dashboard',
         ])->each(function (string $nama) {
             Role::firstOrCreate(['nama_role' => $nama]);
             PermissionRole::firstOrCreate(['name' => $nama, 'guard_name' => 'web']);

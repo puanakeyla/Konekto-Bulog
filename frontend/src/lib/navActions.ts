@@ -24,6 +24,16 @@ export function buildActions(role: string): NavAction[] {
     ]
   }
 
+  // Role baca-saja: cermin halaman awal admin (kartu ringkasan + Neraca Gabah) tanpa satu pun
+  // menu yang menulis. Backend menegakkan hal yang sama, menu ini cuma tidak menawarkannya.
+  if (role === 'dashboard') {
+    return [
+      { to: '/monitoring', label: 'Monitoring' },
+      { to: '/rekap', label: 'Rekap Sergab' },
+      { to: '/rekap-pengolahan', label: 'Rekap Pengolahan' },
+    ]
+  }
+
   const actions: NavAction[] = []
   const rekap: NavAction[] = []
   const push = (list: NavAction[], action: NavAction) => {

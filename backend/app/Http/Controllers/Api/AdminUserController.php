@@ -202,7 +202,9 @@ class AdminUserController extends Controller
             'sisa' => ['required', 'integer', 'min:0', 'max:99'],
         ]);
 
-        abort_if($user->role->nama_role === 'admin', 422, 'Admin sudah punya akses penuh.');
+        // Dashboard adalah role baca-saja: membuka jatah edit untuknya tidak berefek apa pun
+        // (tak ada blok field miliknya di SCOPE_EDIT_REKAP), jadi ditolak di sini agar jelas.
+        abort_if(in_array($user->role->nama_role, ['admin', 'dashboard'], true), 422, 'Role ini tidak butuh akses edit rekap.');
 
         $user->update(['akses_edit_sisa' => $validated['sisa']]);
 

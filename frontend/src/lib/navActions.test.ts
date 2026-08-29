@@ -46,3 +46,10 @@ test('tidak ada menu ganda walau sebuah role lolos dua cabang', () => {
     assert.equal(new Set(tujuan).size, tujuan.length, `role ${role}`)
   }
 })
+
+// Role baca-saja: tiga menu pantau saja, tidak boleh ada satu pun pintu masuk yang menulis
+// (Kelola User, Master Gudang, Buat Transaksi/MPP, Pengolahan, MO, Jaminan Makloon).
+test('dashboard hanya dapat menu pantau, tanpa pintu masuk yang menulis', () => {
+  const tujuan = buildActions('dashboard').map((item) => item.to)
+  assert.deepEqual(tujuan, ['/monitoring', '/rekap', '/rekap-pengolahan'])
+})

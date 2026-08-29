@@ -22,7 +22,7 @@ use Illuminate\Validation\Rule;
 class PengolahanController extends Controller
 {
     /** Role yang boleh melihat rantai pengolahan sama sekali. Makloon sengaja tidak termasuk. */
-    private const ROLE_PEMBACA = ['gudang', 'ub_jastasma', 'operasi', 'pengadaan', 'admin'];
+    private const ROLE_PEMBACA = ['gudang', 'ub_jastasma', 'operasi', 'pengadaan', 'admin', 'dashboard'];
 
     /** Batas baris kandidat MO. Layar Operasi memilih dari daftar, bukan membaca laporan. */
     private const BATAS_KANDIDAT = 200;
@@ -252,7 +252,8 @@ class PengolahanController extends Controller
             'operasi' => $query->whereHas('moDetail.mo', fn (Builder $q) => $q->where('review_status', 'diterima')),
             'pengadaan' => $query->where('status_keseluruhan', 'selesai'),
             // Tahap pertama tiap skema: Gudang untuk GDG, UB Jastasma untuk UBJ.
-            'admin' => $query->where(function (Builder $q) {
+            // Dashboard (baca-saja) memakai aturan yang sama supaya angkanya identik dengan admin.
+            'admin', 'dashboard' => $query->where(function (Builder $q) {
                 $q->where(fn (Builder $t) => $t->where('skema', 'GDG')
                     ->whereHas('dataGudang', fn (Builder $g) => $g->where('status', 'diterima')))
                     ->orWhere(fn (Builder $t) => $t->where('skema', 'UBJ')

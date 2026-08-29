@@ -6,10 +6,11 @@ class FieldVisibility
 {
     /**
      * Bagian 3.3: kuantum & foto surat jalan milik Jemput Pangan tidak boleh terlihat oleh
-     * UB Jastasma, Pengadaan, Keuangan, Operasi, Gudang. Admin bypass semua pembatasan (Bagian 3.5).
+     * UB Jastasma, Pengadaan, Keuangan, Operasi, Gudang. Admin bypass semua pembatasan (Bagian 3.5),
+     * begitu pula role baca-saja Dashboard -- ia memang cermin pandangan admin, tanpa jalur tulis.
      */
     public static function bolehLihatDataSensitifJp(?string $role): bool
     {
-        return in_array($role, ['jemput_pangan', 'makloon', 'admin'], true);
+        return in_array($role, ['jemput_pangan', 'makloon', 'admin', 'dashboard'], true);
     }
 }

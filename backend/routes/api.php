@@ -64,12 +64,12 @@ Route::middleware(['auth:sanctum', 'user.aktif', 'throttle:240,1'])->group(funct
         Route::get('/sebaran-tahap', [MonitoringController::class, 'sebaranTahap']);
         // Perbandingan volume antar-makloon adalah alat pengawasan internal BULOG. Tanpa gerbang
         // ini seorang mitra makloon bisa melihat nama & jumlah transaksi seluruh pesaingnya.
-        Route::get('/makloon', [MonitoringController::class, 'makloon'])->middleware('role:admin');
+        Route::get('/makloon', [MonitoringController::class, 'makloon'])->middleware('role:admin|dashboard');
         // Alasan yang sama: peringkat volume olahan per makloon adalah perbandingan antar-mitra.
-        Route::get('/pengolahan', [MonitoringController::class, 'pengolahan'])->middleware('role:admin');
+        Route::get('/pengolahan', [MonitoringController::class, 'pengolahan'])->middleware('role:admin|dashboard');
         // Neraca gabah per makloon (SerGab + Pengolahan dalam satu baris). Perbandingan antar-mitra
         // yang paling telanjang di seluruh sistem, jadi admin saja.
-        Route::get('/rekap-makloon', [MonitoringController::class, 'rekapMakloon'])->middleware('role:admin');
+        Route::get('/rekap-makloon', [MonitoringController::class, 'rekapMakloon'])->middleware('role:admin|dashboard');
     });
 
     Route::middleware('role:admin')->prefix('admin')->group(function () {
@@ -91,9 +91,9 @@ Route::middleware(['auth:sanctum', 'user.aktif', 'throttle:240,1'])->group(funct
     // Kartu angka Rekap. Ikut aturan urutan yang sama dengan '/transaksi/rekap' di bawah:
     // harus mendahului '/transaksi/{transaksi}' yang polanya greedy.
     Route::get('/transaksi/rekap/ringkasan', [TransaksiController::class, 'ringkasanRekap'])
-        ->middleware('role:jemput_pangan|makloon|ub_jastasma|pengadaan|keuangan|admin');
+        ->middleware('role:jemput_pangan|makloon|ub_jastasma|pengadaan|keuangan|admin|dashboard');
     Route::get('/transaksi/rekap', [TransaksiController::class, 'rekap'])
-        ->middleware('role:jemput_pangan|makloon|ub_jastasma|pengadaan|keuangan|admin');
+        ->middleware('role:jemput_pangan|makloon|ub_jastasma|pengadaan|keuangan|admin|dashboard');
     // Route dengan suffix di belakang {transaksi} (pattern '.*', greedy) HARUS didaftarkan
     // sebelum GET /transaksi/{transaksi} (show) -- kalau tidak, show akan menelan seluruh
     // sisa path (mis. "/foto/foto_petani") sebagai bagian dari {transaksi} karena ia

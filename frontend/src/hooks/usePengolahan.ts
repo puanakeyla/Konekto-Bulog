@@ -90,7 +90,8 @@ export const URUTAN_TAHAP: Record<SkemaPengolahan, TahapPengolahan[]> = {
  */
 export function tahapTerlihat(role: string, skema: SkemaPengolahan): TahapPengolahan[] {
   const urutan = URUTAN_TAHAP[skema]
-  if (role === 'admin') return [...urutan]
+  // 'dashboard' baca-saja tapi melihat semua tahap, sama seperti admin.
+  if (role === 'admin' || role === 'dashboard') return [...urutan]
   const batas = urutan.indexOf(role as TahapPengolahan)
   return batas < 0 ? [] : urutan.slice(0, batas + 1)
 }

@@ -24,6 +24,10 @@ type PengadaanTahapFilter = 'semua' | PengadaanTahapId
 // Semua role operasional + Admin, KECUALI Makloon (dia hanya melihat transaksinya sendiri).
 const GROUPED_ROLES = new Set(['jemput_pangan', 'ub_jastasma', 'pengadaan', 'keuangan', 'operasi', 'gudang', 'admin'])
 
+// Role baca-saja yang halaman awalnya sama persis dengan admin: kartu ringkasan menyeluruh
+// + Neraca Gabah, tanpa daftar antrean (tidak ada tahap yang dikerjakannya).
+const PANDANGAN_ADMIN = ['admin', 'dashboard']
+
 // Label ramah + kalimat pembuka per role untuk hero sambutan dashboard.
 const ROLE_LABEL: Record<string, string> = {
   admin: 'Administrator',
@@ -34,6 +38,7 @@ const ROLE_LABEL: Record<string, string> = {
   operasi: 'Operasi',
   gudang: 'Gudang',
   makloon: 'Makloon',
+  dashboard: 'Dashboard',
 }
 
 const ROLE_SUBTITLE: Record<string, string> = {
@@ -45,6 +50,7 @@ const ROLE_SUBTITLE: Record<string, string> = {
   gudang: 'Catat gabah masuk gudang dan cek data LHPK pada alur pengolahan.',
   admin: 'Pantau seluruh alur TJP dan MPP dari input awal sampai penerimaan gudang.',
   makloon: 'Kelola bongkar dan proses gabah dari mitra dengan rapi dan tepat waktu.',
+  dashboard: 'Pantau neraca gabah, monitoring, dan rekap dari satu tempat. Akses Anda baca-saja.',
 }
 
 // Urutan blok tahap pada tabel datar: TJP dulu baru MPP, sama seperti pengurutan rekap.
@@ -296,7 +302,7 @@ export default function DashboardPage() {
   // endpoint daftar. Sekarang server mengklasifikasi keduanya dari kondisi PO-nya (kj_pd/kj_keu)
   // sama seperti tahap lain, jadi kartu ketiga sama untuk semua role.
   const kartuKetiga = { label: 'Perlu diisi', value: hitungKerjaan.isi + hitungKerjaan.draft, sub: 'termasuk draft', tone: 'accent' as const, icon: ICONS.total }
-  const statCards = role === 'admin' && ringkasan?.rekap
+  const statCards = PANDANGAN_ADMIN.includes(role) && ringkasan?.rekap
     ? [
         { label: 'Total transaksi', value: ringkasan.rekap.total, sub: 'seluruh transaksi', tone: 'primary' as const, icon: ICONS.total },
         { label: 'Perlu diproses', value: ringkasan.rekap.perlu_diproses, sub: 'tahap aktif', tone: 'warning' as const, icon: ICONS.berjalan },
@@ -398,7 +404,7 @@ export default function DashboardPage() {
           blok di bawah). Yang menggantikannya: neraca gabah per makloon -- pandangan menyeluruh
           kedua rantai sekaligus. Wadahnya sengaja lebih lebar dari bagian lain: 19 kolom angka
           tidak masuk akal dijejalkan ke lebar 6xl. */}
-      {role === 'admin' && (
+      {PANDANGAN_ADMIN.includes(role) && (
         <div className="mx-auto max-w-[100rem] px-6 py-8">
           <RekapMakloonTabel />
         </div>
@@ -406,7 +412,7 @@ export default function DashboardPage() {
 
       {/* Operasi & Gudang adalah modul mandiri (lepas dari timeline transaksi),
           jadi daftar transaksi menunggu tindakan tidak relevan untuk dua role ini. */}
-      {!['operasi', 'gudang', 'admin'].includes(role) && (
+      {!['operasi', 'gudang', ...PANDANGAN_ADMIN].includes(role) && (
       <div className="mx-auto max-w-6xl px-6 py-8">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
           <div>

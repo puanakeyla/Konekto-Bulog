@@ -420,7 +420,8 @@ class TransaksiController extends Controller
             'keuangan' => $query->whereHas('poDetail.dataPengadaan.dataKeuangan',
                 fn (Builder $q) => $q->where('review_status', 'diterima')),
             // Tahap awal: Jemput Pangan untuk TJP, Makloon untuk MPP (lihat TransaksiStages::sequence()).
-            'admin' => $query->where(function (Builder $q) {
+            // Dashboard (baca-saja) memakai aturan yang sama supaya angkanya identik dengan admin.
+            'admin', 'dashboard' => $query->where(function (Builder $q) {
                 $q->where(fn (Builder $t) => $t->where('skema', 'TJP')
                     ->whereHas('dataJemputPangan', fn (Builder $m) => $m->where('status', 'diterima')))
                     ->orWhere(fn (Builder $t) => $t->where('skema', 'MPP')

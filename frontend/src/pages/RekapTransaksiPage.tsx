@@ -293,7 +293,8 @@ function skemaUntukRole(role: string): ('TJP' | 'MPP')[] {
  * bongkar saja, MPP = detail lapangan lengkap).
  */
 function kolomUntukRoleSkema(role: string, skema: 'TJP' | 'MPP'): SheetColumn<RekapTransaksi>[] {
-  const batas = role === 'admin' ? STAGE_ORDER.length - 1 : STAGE_ORDER.indexOf(role as StageKey)
+  // 'dashboard' ikut jalur admin: baca-saja, tapi pandangannya penuh.
+  const batas = ['admin', 'dashboard'].includes(role) ? STAGE_ORDER.length - 1 : STAGE_ORDER.indexOf(role as StageKey)
   const colsUmum = ['makloon', 'ub_jastasma'].includes(role)
     ? COLS_UMUM.filter((col) => col.key !== 'tahap')
     : COLS_UMUM

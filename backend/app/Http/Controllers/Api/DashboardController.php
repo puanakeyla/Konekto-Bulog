@@ -50,7 +50,7 @@ class DashboardController extends Controller
 
         // Kartu Admin memandang SELURUH transaksi lintas tahap, bukan hanya antreannya sendiri
         // (antrean admin memang selalu kosong -- tidak ada tahap yang aktornya admin).
-        if ($role === 'admin' || $role === 'keuangan') {
+        if (in_array($role, ['admin', 'keuangan', 'dashboard'], true)) {
             $data['rekap'] = $this->ringkasanRekap($validated['skema'] ?? null);
         }
 

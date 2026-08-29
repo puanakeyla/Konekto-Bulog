@@ -15,6 +15,7 @@ const roleLabels: Record<string, string> = {
   operasi: 'Operasi',
   gudang: 'Gudang',
   makloon: 'Makloon',
+  dashboard: 'Dashboard',
 }
 
 // Top bar global untuk seluruh halaman terproteksi (per-role).
