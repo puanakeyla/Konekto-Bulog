@@ -24,12 +24,25 @@ const fotoSergab = [
   'foto_surat_pernyataan_usia_panen',
 ] as const
 
-const fotoSergabTransaksi = [
-  { jenisFoto: 'foto_gabah', label: 'Foto Barang' },
-  { jenisFoto: 'foto_serah_terima', label: 'Foto Serah Terima' },
-  { jenisFoto: 'foto_pembayaran', label: 'Foto Bukti Pembayaran' },
-  { jenisFoto: 'foto_surat_pernyataan', label: 'Foto Surat Pernyataan' },
-] as const
+type SlotFotoSergab = { jenisFoto: string; role: 'makloon' | 'jemput_pangan'; label: string }
+
+// Slot foto mengikuti nama collection milik skemanya. MPP: bukti pembayaran diunggah Makloon
+// sebagai foto_pembayaran. TJP: kwitansi itu diunggah Jemput Pangan sebagai foto_kwitansi --
+// skema TJP tidak punya collection foto_pembayaran sama sekali, jadi memaksa slot mencari
+// foto_pembayaran membuat kartunya selalu "Belum diunggah" padahal fotonya sudah ada.
+const fotoSergabTransaksiMpp: SlotFotoSergab[] = [
+  { jenisFoto: 'foto_gabah', role: 'makloon', label: 'Foto Barang' },
+  { jenisFoto: 'foto_serah_terima', role: 'makloon', label: 'Foto Serah Terima' },
+  { jenisFoto: 'foto_pembayaran', role: 'makloon', label: 'Foto Bukti Pembayaran' },
+  { jenisFoto: 'foto_surat_pernyataan', role: 'makloon', label: 'Foto Surat Pernyataan' },
+]
+
+const fotoSergabTransaksiTjp: SlotFotoSergab[] = [
+  { jenisFoto: 'foto_gabah', role: 'jemput_pangan', label: 'Foto Barang' },
+  { jenisFoto: 'foto_serah_terima', role: 'jemput_pangan', label: 'Foto Serah Terima' },
+  { jenisFoto: 'foto_kwitansi', role: 'jemput_pangan', label: 'Foto Bukti Pembayaran' },
+  { jenisFoto: 'foto_surat_pernyataan', role: 'jemput_pangan', label: 'Foto Surat Pernyataan' },
+]
 
 /**
  * Langkah PENUTUP Pengadaan. PO sudah dikirim ke Keuangan saat No. SPP disimpan, jadi di sini
@@ -117,6 +130,12 @@ export default function PoStatusSergabForm({ po, transaksiIdDokumen, onChanged }
   )
 }
 
+function skemaFotoTransaksi(po: PoItem): 'TJP' | 'MPP' {
+  // Seluruh anggota PO dijamin punya skema sama: kunci pengelompokan PO (PoGroupingService)
+  // memastikan transaksi dalam satu PO sejenis.
+  return (po.po_detail[0]?.skema ?? 'TJP') === 'MPP' ? 'MPP' : 'TJP'
+}
+
 function PanelFotoSergab({ po, transaksiIdDokumen }: { po: PoItem; transaksiIdDokumen?: string }) {
   const queryClient = useQueryClient()
   const { data: dokumenPo = [] } = useDokumenPo(po.id)
@@ -136,6 +155,9 @@ function PanelFotoSergab({ po, transaksiIdDokumen }: { po: PoItem; transaksiIdDo
   }
 
   const memakaiDokumenTransaksi = !!transaksiIdDokumen
+  const slots = memakaiDokumenTransaksi
+    ? (skemaFotoTransaksi(po) === 'MPP' ? fotoSergabTransaksiMpp : fotoSergabTransaksiTjp)
+    : null
 
   return (
     <section className="my-4 border-y border-border py-4">
@@ -147,27 +169,28 @@ function PanelFotoSergab({ po, transaksiIdDokumen }: { po: PoItem; transaksiIdDo
         <span className="rounded-full bg-primary-tint px-3 py-1 text-[0.68rem] font-bold text-primary">4 foto</span>
       </div>
       <div className="grid gap-3 sm:grid-cols-2">
-        {memakaiDokumenTransaksi ? fotoSergabTransaksi.map(({ jenisFoto, label }) => (
+        {slots?.map(({ jenisFoto, role, label }) => (
           <KartuFoto
             key={jenisFoto}
             label={label}
             badge="Sergab"
             thumbUrl={thumbTransaksiByJenis.get(jenisFoto) ?? null}
-            ambilAsli={(opts) => ambilFotoTransaksi(transaksiIdDokumen, jenisFoto, opts)}
+            ambilAsli={(opts) => ambilFotoTransaksi(transaksiIdDokumen!, jenisFoto, opts)}
             onGanti={async (file) => {
               const body = new FormData()
               body.append('jenis_foto', jenisFoto)
-              body.append('role', 'makloon')
+              body.append('role', role)
               body.append('foto', file)
-              await api.post(`/api/transaksi/${encodeURIComponent(transaksiIdDokumen)}/foto`, body, { headers: { 'Content-Type': 'multipart/form-data' } })
+              await api.post(`/api/transaksi/${encodeURIComponent(transaksiIdDokumen!)}/foto`, body, { headers: { 'Content-Type': 'multipart/form-data' } })
               await segarkanTransaksi()
             }}
             onHapus={async () => {
-              await api.delete(`/api/transaksi/${encodeURIComponent(transaksiIdDokumen)}/foto/${jenisFoto}`)
+              await api.delete(`/api/transaksi/${encodeURIComponent(transaksiIdDokumen!)}/foto/${jenisFoto}`)
               await segarkanTransaksi()
             }}
           />
-        )) : fotoSergab.map((jenisFoto) => (
+        ))}
+        {!memakaiDokumenTransaksi && fotoSergab.map((jenisFoto) => (
           <KartuFoto
             key={jenisFoto}
             label={labelFoto(jenisFoto)}

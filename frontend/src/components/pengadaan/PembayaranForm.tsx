@@ -56,7 +56,7 @@ export default function PembayaranForm({ po, onChanged }: { po: PoItem; onChange
       <PoTransaksiRows po={po} />
       <div className="grid gap-4 @md:grid-cols-2">
         <label className="block"><span className="label">No. SPP (dari Pengadaan)</span><input readOnly className="input bg-surface text-slate-600" value={po.no_spp ?? '-'} /></label>
-        <label className="block"><span className="label">Tanggal Bayar (wajib untuk menandai dibayarkan)</span><input required type="date" className="input" value={tanggalBayar} onChange={(e) => setTanggalBayar(e.target.value)} /></label>
+        <label className="block"><span className="label">Tanggal Bayar</span><input required type="date" className="input" value={tanggalBayar} onChange={(e) => setTanggalBayar(e.target.value)} /></label>
       </div>
       {/* Simpan menahan tanggal tanpa melunasi. "Tandai Dibayarkan" mengunci baris Keuangan dan
           tidak bisa dibatalkan, tapi TIDAK menutup transaksinya. */}

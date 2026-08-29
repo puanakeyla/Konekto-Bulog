@@ -101,9 +101,31 @@ class FotoUploadService
         };
     }
 
+    /**
+     * Foto Sergab yang boleh dikoreksi Pengadaan, per role pemiliknya. MPP: keempatnya milik
+     * makloon. TJP: kwitansi diunggah Jemput Pangan sebagai foto_kwitansi -- skema itu tidak
+     * punya collection foto_pembayaran sama sekali.
+     */
+    private const FOTO_SERGAB_PER_ROLE = [
+        'makloon' => [
+            'foto_gabah',
+            'foto_serah_terima',
+            'foto_pembayaran',
+            'foto_surat_pernyataan',
+        ],
+        'jemput_pangan' => [
+            'foto_gabah',
+            'foto_serah_terima',
+            'foto_kwitansi',
+            'foto_surat_pernyataan',
+        ],
+    ];
+
     private function bolehKoreksiFotoSergab(Transaksi $transaksi, string $roleOverride, string $jenisFoto): bool
     {
-        if ($roleOverride !== 'makloon') {
+        $fotoSergab = self::FOTO_SERGAB_PER_ROLE[$roleOverride] ?? null;
+
+        if ($fotoSergab === null) {
             return false;
         }
 
@@ -111,11 +133,6 @@ class FotoUploadService
             return false;
         }
 
-        return in_array($jenisFoto, [
-            'foto_gabah',
-            'foto_serah_terima',
-            'foto_pembayaran',
-            'foto_surat_pernyataan',
-        ], true);
+        return in_array($jenisFoto, $fotoSergab, true);
     }
 }
