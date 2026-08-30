@@ -154,6 +154,7 @@ export default function PengolahanDetailPage() {
       queryClient.invalidateQueries({ queryKey: ['mo-list'] })
       queryClient.invalidateQueries({ queryKey: ['mo-detail'] })
       toast.success('MO dibuat dan dikirim ke Pengadaan.')
+      kembaliKeDaftar()
     },
     onError: (err) => toast.error(apiErrorMessage(err, 'Gagal menggabungkan LHPK menjadi MO.')),
   })
@@ -166,6 +167,7 @@ export default function PengolahanDetailPage() {
       queryClient.invalidateQueries({ queryKey: ['mo-list'] })
       queryClient.invalidateQueries({ queryKey: ['mo-detail'] })
       toast.success('MO dikirim ke Pengadaan.')
+      kembaliKeDaftar()
     },
     onError: (err) => toast.error(apiErrorMessage(err, 'Gagal mengirim MO ke Pengadaan.')),
   })
@@ -188,6 +190,7 @@ export default function PengolahanDetailPage() {
       queryClient.invalidateQueries({ queryKey: ['mo-list'] })
       queryClient.invalidateQueries({ queryKey: ['mo-detail'] })
       toast.success('MO ditolak dan dikembalikan ke Operasi.')
+      kembaliKeDaftar()
     },
     onError: (err) => toast.error(apiErrorMessage(err, 'Gagal menolak MO.')),
   })
@@ -201,6 +204,7 @@ export default function PengolahanDetailPage() {
       queryClient.invalidateQueries({ queryKey: ['mo-list'] })
       queryClient.invalidateQueries({ queryKey: ['mo-detail'] })
       toast.success('Nomor OUT diterbitkan; pengolahan selesai.')
+      kembaliKeDaftar()
     },
     onError: (err) => toast.error(apiErrorMessage(err, 'Gagal menerbitkan Nomor OUT.')),
   })
